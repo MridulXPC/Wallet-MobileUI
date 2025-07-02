@@ -109,49 +109,66 @@ class _MainWalletDashboardState extends State<MainWalletDashboard>
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
-      elevation: 0,
-      automaticallyImplyLeading: false,
-      title: Text(
-        'Main Wallet',
-        style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-          color: AppTheme.darkTheme.colorScheme.onSurface,
-          fontWeight: FontWeight.w600,
-        ),
+PreferredSizeWidget _buildAppBar() {
+  return AppBar(
+    backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
+    elevation: 0,
+    automaticallyImplyLeading: false,
+    title: Text(
+      'Main Wallet',
+      style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
+        color: AppTheme.darkTheme.colorScheme.onSurface,
+        fontWeight: FontWeight.w600,
       ),
-      actions: [
-        Stack(
-          children: [
-            IconButton(
-              onPressed: () {
-                // Navigate to notifications
-              },
-              icon: CustomIconWidget(
-                iconName: 'notifications_outlined',
-                color: AppTheme.darkTheme.colorScheme.onSurface,
-                size: 24,
-              ),
-            ),
-            Positioned(
-              right: 8,
-              top: 8,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: AppTheme.error,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ],
+    ),
+    actions: [
+      // Transaction Icon Button
+      IconButton(
+        onPressed: () {
+          // Navigate to transaction history
+        },
+        icon: CustomIconWidget(
+          iconName: 'receipt_long', // Use a relevant transaction icon name
+          color: AppTheme.darkTheme.colorScheme.onSurface,
+          size: 24,
         ),
-        SizedBox(width: 2.w),
-      ],
-    );
-  }
+        tooltip: 'Transactions',
+      ),
+
+      // Notification Icon Button with Badge
+      Stack(
+        children: [
+          IconButton(
+            onPressed: () {
+              // Navigate to notifications
+            },
+            icon: CustomIconWidget(
+              iconName: 'notifications_outlined',
+              color: AppTheme.darkTheme.colorScheme.onSurface,
+              size: 24,
+            ),
+            tooltip: 'Notifications',
+          ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: AppTheme.error,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      SizedBox(width: 2.w),
+    ],
+  );
+}
+
 
   Widget _buildTabSection() {
     return Container(
