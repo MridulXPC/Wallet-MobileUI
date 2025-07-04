@@ -125,10 +125,9 @@ PreferredSizeWidget _buildAppBar() {
       // Transaction Icon Button
       IconButton(
         onPressed: () {
-          // Navigate to transaction history
-        },
+  Navigator.of(context).pushNamed('/transaction-history');        },
         icon: CustomIconWidget(
-          iconName: 'receipt_long', // Use a relevant transaction icon name
+          iconName: 'history', // Use a relevant transaction icon name
           color: AppTheme.darkTheme.colorScheme.onSurface,
           size: 24,
         ),
@@ -169,7 +168,6 @@ PreferredSizeWidget _buildAppBar() {
   );
 }
 
-
   Widget _buildTabSection() {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
@@ -206,94 +204,94 @@ PreferredSizeWidget _buildAppBar() {
     );
   }
 
-  Widget _buildEmptyState({
-    required String title,
-    required String subtitle,
-    required String actionText,
-  }) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8.w),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CustomIconWidget(
-              iconName: 'account_balance_wallet_outlined',
-              color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-              size: 64,
-            ),
-            SizedBox(height: 3.h),
-            Text(
-              title,
-              style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-                color: AppTheme.darkTheme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              subtitle,
-              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-                color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 4.h),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // Navigate to buy crypto
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: AppTheme.onPrimary,
-                      padding: EdgeInsets.symmetric(vertical: 2.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'Buy Crypto',
-                      style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                        color: AppTheme.onPrimary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 4.w),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      // Navigate to deposit crypto
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primary,
-                      side: BorderSide(color: AppTheme.primary, width: 1.5),
-                      padding: EdgeInsets.symmetric(vertical: 2.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'Deposit Crypto',
-                      style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                        color: AppTheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildEmptyState({
+  //   required String title,
+  //   required String subtitle,
+  //   required String actionText,
+  // }) {
+  //   return Center(
+  //     child: Padding(
+  //       padding: EdgeInsets.symmetric(horizontal: 8.w),
+  //       child: Column(
+  //         mainAxisAlignment: MainAxisAlignment.center,
+  //         children: [
+  //           CustomIconWidget(
+  //             iconName: 'account_balance_wallet_outlined',
+  //             color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+  //             size: 64,
+  //           ),
+  //           SizedBox(height: 3.h),
+  //           Text(
+  //             title,
+  //             style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
+  //               color: AppTheme.darkTheme.colorScheme.onSurface,
+  //               fontWeight: FontWeight.w600,
+  //             ),
+  //             textAlign: TextAlign.center,
+  //           ),
+  //           SizedBox(height: 1.h),
+  //           Text(
+  //             subtitle,
+  //             style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+  //               color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+  //             ),
+  //             textAlign: TextAlign.center,
+  //           ),
+  //           SizedBox(height: 4.h),
+  //           Row(
+  //             children: [
+  //               Expanded(
+  //                 child: ElevatedButton(
+  //                   onPressed: () {
+  //                     // Navigate to buy crypto
+  //                   },
+  //                   style: ElevatedButton.styleFrom(
+  //                     backgroundColor: AppTheme.primary,
+  //                     foregroundColor: AppTheme.onPrimary,
+  //                     padding: EdgeInsets.symmetric(vertical: 2.h),
+  //                     shape: RoundedRectangleBorder(
+  //                       borderRadius: BorderRadius.circular(12),
+  //                     ),
+  //                   ),
+  //                   child: Text(
+  //                     'Buy Crypto',
+  //                     style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+  //                       color: AppTheme.onPrimary,
+  //                       fontWeight: FontWeight.w600,
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ),
+  //               SizedBox(width: 4.w),
+  //               Expanded(
+  //                 child: OutlinedButton(
+  //                   onPressed: () {
+  //                     // Navigate to deposit crypto
+  //                   },
+  //                   style: OutlinedButton.styleFrom(
+  //                     foregroundColor: AppTheme.primary,
+  //                     side: BorderSide(color: AppTheme.primary, width: 1.5),
+  //                     padding: EdgeInsets.symmetric(vertical: 2.h),
+  //                     shape: RoundedRectangleBorder(
+  //                       borderRadius: BorderRadius.circular(12),
+  //                     ),
+  //                   ),
+  //                   child: Text(
+  //                     'Deposit Crypto',
+  //                     style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+  //                       color: AppTheme.primary,
+  //                       fontWeight: FontWeight.w600,
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(

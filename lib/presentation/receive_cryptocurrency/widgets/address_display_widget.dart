@@ -74,7 +74,7 @@ class AddressDisplayWidget extends StatelessWidget {
                 // Copy Button
                 SizedBox(
                   width: double.infinity,
-                  height: 5.h,
+                  height: 6.h,
                   child: OutlinedButton.icon(
                     onPressed: onCopy,
                     icon: CustomIconWidget(

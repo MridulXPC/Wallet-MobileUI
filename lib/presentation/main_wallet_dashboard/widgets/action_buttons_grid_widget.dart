@@ -22,8 +22,8 @@ class ActionButtonsGridWidget extends StatelessWidget {
         "color": AppTheme.primary,
       },
       {
-        "title": "Transactions",
-        "icon": "history",
+        "title": "Swap",
+        "icon": "swap_horiz",
         "route": "/transaction-history",
         "color": AppTheme.primary,
       },
