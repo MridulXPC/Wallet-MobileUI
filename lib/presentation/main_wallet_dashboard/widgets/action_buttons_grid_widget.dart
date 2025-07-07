@@ -24,7 +24,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
       {
         "title": "Swap",
         "icon": "swap_horiz",
-        "route": "/transaction-history",
+        "route": "/crypto-swap-screen",
         "color": AppTheme.primary,
       },
     ];
@@ -50,7 +50,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
       ),
     );
   }
-
+  
   Widget _buildActionButton(
     BuildContext context, {
     required String title,

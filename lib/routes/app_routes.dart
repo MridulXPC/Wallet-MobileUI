@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/swap_screen.dart/swap_screen.dart';
 import 'package:flutter/material.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 import '../presentation/biometric_authentication/biometric_authentication.dart';
@@ -17,6 +18,9 @@ class AppRoutes {
   static const String sendCryptocurrency = '/send-cryptocurrency';
   static const String transactionHistory = '/transaction-history';
   static const String tokenDetailScreen = '/token-detail-screen';
+  static const String cryptoswapscreen = '/crypto-swap-screen';
+
+
 
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
@@ -27,6 +31,7 @@ class AppRoutes {
     sendCryptocurrency: (context) => const SendCryptocurrency(),
     transactionHistory: (context) => const TransactionHistory(),
     tokenDetailScreen: (context) => const TokenDetailScreen(),
+    cryptoswapscreen: (context) => const CryptoSwapScreen(),
     // TODO: Add your other routes here
   };
 }
