@@ -125,9 +125,10 @@ PreferredSizeWidget _buildAppBar() {
       // Transaction Icon Button
       IconButton(
         onPressed: () {
-  Navigator.of(context).pushNamed('/transaction-history');        },
+          Navigator.of(context).pushNamed('/transaction-history');
+        },
         icon: CustomIconWidget(
-          iconName: 'history', // Use a relevant transaction icon name
+          iconName: 'history',
           color: AppTheme.darkTheme.colorScheme.onSurface,
           size: 24,
         ),
@@ -161,6 +162,22 @@ PreferredSizeWidget _buildAppBar() {
             ),
           ),
         ],
+      ),
+
+      // Profile Icon Button
+      IconButton(
+        onPressed: () {
+            Navigator.of(context).pushNamed('/profile-screen');
+        },
+        icon: CircleAvatar(
+          backgroundColor: AppTheme.primary.withOpacity(0.15),
+          child: Icon(
+            Icons.person,
+            color: AppTheme.primary,
+            size: 20,
+          ),
+        ),
+        tooltip: 'Profile',
       ),
 
       SizedBox(width: 2.w),
