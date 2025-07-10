@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:http/http.dart' as http;
@@ -12,20 +13,31 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool isScanning = false;
+  Future<bool> _authorizeWebSession(String sessionId) async {
+    const String token =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkMWM2YzZhYmViZTYwZDAxNDBiZGYiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzUxOTQ3NTM2LCJleHAiOjE3NTI1NTIzMzZ9.6eb8xkFm5ELOl6wb7tFSOnFvPKOKIHa_H5ynDs7nuGs';
 
-  Future<bool> _authorizeWebSession(String sessionCode) async { 
     try {
       final response = await http.post(
-        Uri.parse('https://yourbackend.com/api/link-web-session'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('https://test-backend-56yq.onrender.com/api/auth/confirm-session'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: jsonEncode({
-          'session_code': sessionCode,
-          'user_token': 'mock-mobile-user-token', // Replace with real token
+          "sessionId": sessionId,
         }),
       );
-      return response.statusCode == 200;
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ Web session authorized: ${response.body}');
+        return true;
+      } else {
+        debugPrint('❌ Authorization failed: ${response.statusCode} - ${response.body}');
+        return false;
+      }
     } catch (e) {
+      debugPrint('❌ Exception: $e');
       return false;
     }
   }
@@ -39,17 +51,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         MaterialPageRoute(
           builder: (_) => QRScannerScreen(
             onScan: (code) async {
+              debugPrint('📦 Scanned session ID: $code');
               final result = await _authorizeWebSession(code);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    result
-                        ? '✅ Web session authorized!'
-                        : '❌ Failed to authorize session',
+              if (result) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SessionInfoScreen(sessionId: code),
                   ),
-                ),
-              );
-              Navigator.pop(context);
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('❌ Failed to authorize session')),
+                );
+                Navigator.pop(context);
+              }
             },
           ),
         ),
@@ -94,10 +110,33 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   void _handleDetection(BarcodeCapture capture) {
     if (_hasScanned) return;
-    final code = capture.barcodes.firstOrNull?.rawValue;
-    if (code != null) {
-      _hasScanned = true;
-      widget.onScan(code);
+
+    for (final barcode in capture.barcodes) {
+      final code = barcode.rawValue;
+      final format = barcode.format;
+
+      if (code != null) {
+        _hasScanned = true;
+        debugPrint('📦 Scanned Code: $code,',);
+   debugPrint(code.runtimeType.toString());
+        debugPrint('🔍 Format: $format');
+        try {
+
+          debugPrint('📦 Attempting to parse JSON from QR code...');
+          // final Map<String, dynamic> data = jsonDecode(code);
+          final sessionId = code;
+
+          debugPrint('📦 Extracted session ID: $sessionId');
+          widget.onScan(sessionId);
+                } catch (e) {
+          debugPrint('❌ Invalid QR content: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid QR code format.')),
+          );
+          Navigator.pop(context);
+        }
+        break;
+      }
     }
   }
 
@@ -111,8 +150,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             controller: _controller,
             onDetect: _handleDetection,
           ),
-
-          // Top bar with back and flash
           Positioned(
             top: 48,
             left: 20,
@@ -138,8 +175,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               ],
             ),
           ),
-
-          // Scan frame
           Center(
             child: SizedBox(
               width: 260,
@@ -147,8 +182,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               child: CustomPaint(painter: CornerFramePainter()),
             ),
           ),
-
-          // Instruction
           const Positioned(
             bottom: 100,
             left: 0,
@@ -176,19 +209,15 @@ class CornerFramePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     double length = 30;
 
-    // Top left
     canvas.drawLine(Offset(0, 0), Offset(length, 0), _paint);
     canvas.drawLine(Offset(0, 0), Offset(0, length), _paint);
 
-    // Top right
     canvas.drawLine(Offset(size.width, 0), Offset(size.width - length, 0), _paint);
     canvas.drawLine(Offset(size.width, 0), Offset(size.width, length), _paint);
 
-    // Bottom left
     canvas.drawLine(Offset(0, size.height), Offset(length, size.height), _paint);
     canvas.drawLine(Offset(0, size.height), Offset(0, size.height - length), _paint);
 
-    // Bottom right
     canvas.drawLine(Offset(size.width, size.height), Offset(size.width - length, size.height), _paint);
     canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - length), _paint);
   }

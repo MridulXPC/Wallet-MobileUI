@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/profile_screen.dart';
 import 'package:cryptowallet/presentation/swap_screen.dart/swap_screen.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ class AppRoutes {
   static const String tokenDetailScreen = '/token-detail-screen';
   static const String cryptoswapscreen = '/crypto-swap-screen';
   static const String profilescreen = '/profile-screen';
+  static const String sessionInfoScreen = '/session-info-screen';
 
 
 
@@ -36,6 +38,7 @@ class AppRoutes {
     tokenDetailScreen: (context) => const TokenDetailScreen(),
     cryptoswapscreen: (context) => const CryptoSwapScreen(),
     profilescreen: (context) => const ProfileScreen(),
+    sessionInfoScreen: (context) => SessionInfoScreen(sessionId: ModalRoute.of(context)?.settings.arguments as String),
 
     // TODO: Add your other routes here
   };
