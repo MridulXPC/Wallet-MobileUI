@@ -19,6 +19,7 @@ class SessionInfoScreen extends StatelessWidget {
         backgroundColor: Colors.green,
       ),
       body: Padding(
+        
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

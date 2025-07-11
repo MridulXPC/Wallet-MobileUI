@@ -137,7 +137,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Simulate navigation logic based on user status
     // For demo purposes, navigate to main wallet dashboard
-    Navigator.pushReplacementNamed(context, '/main-wallet-dashboard');
+    Navigator.pushReplacementNamed(context, '/secret-phrase-login');
   }
 
   void _retryInitialization() {

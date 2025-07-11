@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/authantication/loginscreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/profile_screen.dart';
 import 'package:cryptowallet/presentation/swap_screen.dart/swap_screen.dart';
@@ -14,6 +15,7 @@ class AppRoutes {
   // TODO: Add your routes here
   static const String initial = '/';
   static const String splashScreen = '/splash-screen';
+   static const String secretPhraseLogin = '/secret-phrase-login';
   static const String biometricAuthentication = '/biometric-authentication';
   static const String mainWalletDashboard = '/main-wallet-dashboard';
   static const String receiveCryptocurrency = '/receive-cryptocurrency';
@@ -25,11 +27,10 @@ class AppRoutes {
   static const String sessionInfoScreen = '/session-info-screen';
 
 
-
-
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
     splashScreen: (context) => const SplashScreen(),
+    secretPhraseLogin: (context) => const SecretPhraseLoginScreen(),
     biometricAuthentication: (context) => const BiometricAuthentication(),
     mainWalletDashboard: (context) => const MainWalletDashboard(),
     receiveCryptocurrency: (context) => const ReceiveCryptocurrency(),
@@ -39,7 +40,7 @@ class AppRoutes {
     cryptoswapscreen: (context) => const CryptoSwapScreen(),
     profilescreen: (context) => const ProfileScreen(),
     sessionInfoScreen: (context) => SessionInfoScreen(sessionId: ModalRoute.of(context)?.settings.arguments as String),
-
-    // TODO: Add your other routes here
+    
+// TODO: Add your other routes here
   };
 }
