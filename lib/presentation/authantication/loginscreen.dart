@@ -100,7 +100,8 @@ class _SecretPhraseLoginScreenState extends State<SecretPhraseLoginScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _loading ? null : _loginWithSecretPhrase,
+                onPressed:
+                 _loading ? null : _loginWithSecretPhrase,
                 icon: _loading
                     ? const SizedBox(
                         height: 16,

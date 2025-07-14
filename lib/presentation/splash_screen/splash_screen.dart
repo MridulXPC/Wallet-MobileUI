@@ -131,14 +131,15 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 400));
   }
 
-  void _navigateToNextScreen() {
-    // Add haptic feedback
-    HapticFeedback.lightImpact();
+void _navigateToNextScreen() {
+  HapticFeedback.lightImpact();
 
-    // Simulate navigation logic based on user status
-    // For demo purposes, navigate to main wallet dashboard
-    Navigator.pushReplacementNamed(context, '/secret-phrase-login');
-  }
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    debugPrint('✅ Navigating to welcome screen...');
+    Navigator.of(context).pushReplacementNamed(AppRoutes.welcomeScreen);
+  });
+}
+
 
   void _retryInitialization() {
     setState(() {
