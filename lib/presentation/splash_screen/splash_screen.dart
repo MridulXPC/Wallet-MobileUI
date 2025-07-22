@@ -131,15 +131,14 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 400));
   }
 
-void _navigateToNextScreen() {
-  HapticFeedback.lightImpact();
+  void _navigateToNextScreen() {
+    HapticFeedback.lightImpact();
 
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    debugPrint('✅ Navigating to welcome screen...');
-    Navigator.of(context).pushReplacementNamed(AppRoutes.welcomeScreen);
-  });
-}
-
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('✅ Navigating to welcome screen...');
+      Navigator.of(context).pushReplacementNamed(AppRoutes.welcomeScreen);
+    });
+  }
 
   void _retryInitialization() {
     setState(() {

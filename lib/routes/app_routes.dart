@@ -1,7 +1,8 @@
 import 'package:cryptowallet/presentation/authantication/create_wallet_screen.dart';
+import 'package:cryptowallet/presentation/authantication/welcome_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cryptowallet/presentation/splash_screen/splash_screen.dart';
-import 'package:cryptowallet/presentation/authantication/welcome_screen.dart';
+import 'package:cryptowallet/presentation/authantication/wallet_setup_screen.dart';
 import 'package:cryptowallet/presentation/authantication/loginscreen.dart';
 import 'package:cryptowallet/presentation/biometric_authentication/biometric_authentication.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/main_wallet_dashboard.dart';
@@ -17,7 +18,7 @@ class AppRoutes {
   // Route names
   static const String initial = '/';
   static const String splashScreen = '/splash-screen';
-  static const String welcomeScreen = '/welcome-screen';
+  static const String walletsetup = '/walletsetup-screen';
   static const String secretPhraseLogin = '/secret-phrase-login';
   static const String biometricAuthentication = '/biometric-authentication';
   static const String mainWalletDashboard = '/main-wallet-dashboard';
@@ -29,15 +30,17 @@ class AppRoutes {
   static const String profileScreen = '/profile-screen';
   static const String sessionInfoScreen = '/session-info-screen';
   static const String createwalletScreen = '/create-wallet';
+  static const String welcomeScreen = '/welcome-intro';
 
 
   // Routes map
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
+    welcomeScreen: (context) => const WelcomeCarouselScreen(),
     splashScreen: (context) => const SplashScreen(),
     createwalletScreen: (context) => const CreateWalletScreen(),
-    welcomeScreen: (context) => const WelcomeScreen(),
-    secretPhraseLogin: (context) => const SecretPhraseLoginScreen(),
+    walletsetup: (context) => const WalletSetupScreen(),
+    secretPhraseLogin: (context) => const WalletOnboardingFlow(),
     biometricAuthentication: (context) => const BiometricAuthentication(),
     mainWalletDashboard: (context) => const MainWalletDashboard(),
     receiveCryptocurrency: (context) => const ReceiveCryptocurrency(),
