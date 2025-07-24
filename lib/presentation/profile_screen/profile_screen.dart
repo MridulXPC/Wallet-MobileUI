@@ -1,4 +1,5 @@
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
+import 'package:cryptowallet/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:http/http.dart' as http;
@@ -13,71 +14,51 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Future<bool> _authorizeWebSession(String sessionId) async {
-    const String token =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkMWM2YzZhYmViZTYwZDAxNDBiZGYiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzUxOTQ3NTM2LCJleHAiOjE3NTI1NTIzMzZ9.6eb8xkFm5ELOl6wb7tFSOnFvPKOKIHa_H5ynDs7nuGs';
 
-    try {
-      final response = await http.post(
-        Uri.parse('https://test-backend-56yq.onrender.com/api/auth/confirm-session'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          "sessionId": sessionId,
-        }),
-      );
 
-      if (response.statusCode == 200) {
-        debugPrint('✅ Web session authorized: ${response.body}');
-        return true;
-      } else {
-        debugPrint('❌ Authorization failed: ${response.statusCode} - ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      debugPrint('❌ Exception: $e');
-      return false;
-    }
-  }
+Future<void> _openQRScanner() async {
+  final status = await Permission.camera.request();
 
-  Future<void> _openQRScanner() async {
-    final status = await Permission.camera.request();
+  if (status.isGranted) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QRScannerScreen(
+          onScan: (code) async {
+            debugPrint('📦 Scanned session ID: $code');
 
-    if (status.isGranted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => QRScannerScreen(
-            onScan: (code) async {
-              debugPrint('📦 Scanned session ID: $code');
-              final result = await _authorizeWebSession(code);
-              if (result) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SessionInfoScreen(sessionId: code),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('❌ Failed to authorize session')),
-                );
-                Navigator.pop(context);
-              }
-            },
-          ),
+            const String token = 'YOUR_JWT_TOKEN_HERE'; // Replace with actual secure token
+
+            final result = await AuthService.authorizeWebSession(
+              sessionId: code,
+              token: token,
+            );
+
+            if (result) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SessionInfoScreen(sessionId: code),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('❌ Failed to authorize session')),
+              );
+              Navigator.pop(context);
+            }
+          },
         ),
-      );
-    } else if (status.isPermanentlyDenied) {
-      openAppSettings();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Camera permission is required.')),
-      );
-    }
+      ),
+    );
+  } else if (status.isPermanentlyDenied) {
+    openAppSettings();
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Camera permission is required.')),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {

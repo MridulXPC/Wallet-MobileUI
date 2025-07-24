@@ -1,10 +1,13 @@
-import 'package:cryptowallet/presentation/authantication/create_wallet_screen.dart';
-import 'package:cryptowallet/presentation/authantication/welcome_screen.dart';
 import 'package:flutter/material.dart';
+
 import 'package:cryptowallet/presentation/splash_screen/splash_screen.dart';
+import 'package:cryptowallet/presentation/authantication/welcome_screen.dart';
 import 'package:cryptowallet/presentation/authantication/wallet_setup_screen.dart';
-import 'package:cryptowallet/presentation/authantication/loginscreen.dart';
+import 'package:cryptowallet/presentation/authantication/create_walllet_new.dart';
+import 'package:cryptowallet/presentation/authantication/applock_screen.dart';
+import 'package:cryptowallet/presentation/authantication/login_screen.dart';
 import 'package:cryptowallet/presentation/biometric_authentication/biometric_authentication.dart';
+
 import 'package:cryptowallet/presentation/main_wallet_dashboard/main_wallet_dashboard.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
@@ -18,40 +21,68 @@ class AppRoutes {
   // Route names
   static const String initial = '/';
   static const String splashScreen = '/splash-screen';
-  static const String walletsetup = '/walletsetup-screen';
-  static const String secretPhraseLogin = '/secret-phrase-login';
-  static const String biometricAuthentication = '/biometric-authentication';
-  static const String mainWalletDashboard = '/main-wallet-dashboard';
-  static const String receiveCryptocurrency = '/receive-cryptocurrency';
-  static const String sendCryptocurrency = '/send-cryptocurrency';
-  static const String transactionHistory = '/transaction-history';
-  static const String tokenDetailScreen = '/token-detail-screen';
-  static const String cryptoSwapScreen = '/crypto-swap-screen';
-  static const String profileScreen = '/profile-screen';
-  static const String sessionInfoScreen = '/session-info-screen';
-  static const String createwalletScreen = '/create-wallet';
   static const String welcomeScreen = '/welcome-intro';
+  static const String walletSetupScreen = '/wallet-setup';
+  static const String createWalletScreen = '/create-wallet';
+  static const String loginScreen = '/login';
+  static const String biometricAuthScreen = '/biometric-auth';
+  static const String appLockScreen = '/app-lock';
+  static const String dashboardScreen = '/main-dashboard';
 
+  // Wallet
+  static const String receiveCrypto = '/receive';
+  static const String sendCrypto = '/send';
+  static const String transactionHistory = '/transactions';
+  static const String tokenDetail = '/token-details';
+  static const String swapScreen = '/swap';
+
+  // Profile
+  static const String profileScreen = '/profile';
+  static const String sessionInfoScreen = '/session-info';
 
   // Routes map
-  static Map<String, WidgetBuilder> routes = {
+  static final Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
-    welcomeScreen: (context) => const WelcomeCarouselScreen(),
     splashScreen: (context) => const SplashScreen(),
-    createwalletScreen: (context) => const CreateWalletScreen(),
-    walletsetup: (context) => const WalletSetupScreen(),
-    secretPhraseLogin: (context) => const WalletOnboardingFlow(),
-    biometricAuthentication: (context) => const BiometricAuthentication(),
-    mainWalletDashboard: (context) => const MainWalletDashboard(),
-    receiveCryptocurrency: (context) => const ReceiveCryptocurrency(),
-    sendCryptocurrency: (context) => const SendCryptocurrency(),
+    welcomeScreen: (context) => const WelcomeCarouselScreen(),
+    walletSetupScreen: (context) => const WalletSetupScreen(),
+    createWalletScreen: (context) => const WalletOnboardingFlow(),
+    loginScreen: (context) => const LoginScreen(),
+    biometricAuthScreen: (context) => const BiometricAuthentication(),
+    appLockScreen: (context) => const AppLockScreen(),
+    dashboardScreen: (context) => const MainWalletDashboard(),
+
+    // Wallet Features
+    receiveCrypto: (context) => const ReceiveCryptocurrency(),
+    sendCrypto: (context) => const SendCryptocurrency(),
     transactionHistory: (context) => const TransactionHistory(),
-    tokenDetailScreen: (context) => const TokenDetailScreen(),
-    cryptoSwapScreen: (context) => const CryptoSwapScreen(),
+    tokenDetail: (context) => const TokenDetailScreen(),
+    swapScreen: (context) => const CryptoSwapScreen(),
+
+    // Profile
     profileScreen: (context) => const ProfileScreen(),
-    sessionInfoScreen: (context) {
-      final sessionId = ModalRoute.of(context)?.settings.arguments as String;
-      return SessionInfoScreen(sessionId: sessionId);
-    },
   };
+
+  // Handle routes needing arguments
+  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case sessionInfoScreen:
+        final args = settings.arguments;
+        if (args is String) {
+          return MaterialPageRoute(
+              builder: (_) => SessionInfoScreen(sessionId: args));
+        }
+        return _errorRoute();
+      default:
+        return null;
+    }
+  }
+
+  static Route<dynamic> _errorRoute() {
+    return MaterialPageRoute(
+      builder: (_) => const Scaffold(
+        body: Center(child: Text('404 - Page not found')),
+      ),
+    );
+  }
 }

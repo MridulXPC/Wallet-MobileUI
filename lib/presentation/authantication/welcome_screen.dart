@@ -119,7 +119,7 @@ class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.walletsetup);
+                    Navigator.pushNamed(context, AppRoutes.walletSetupScreen);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.tealAccent[700],

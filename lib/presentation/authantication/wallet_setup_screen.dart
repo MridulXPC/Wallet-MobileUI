@@ -1,4 +1,4 @@
-import 'package:cryptowallet/presentation/authantication/loginscreen.dart';
+import 'package:cryptowallet/presentation/authantication/create_walllet_new.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:cryptowallet/theme/app_theme.dart';
@@ -48,7 +48,7 @@ class WalletSetupScreen extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.secretPhraseLogin);
+                      Navigator.pushNamed(context, AppRoutes.loginScreen);
                     },
                     child: const Text('Access Existing Wallet'),
                     style: ElevatedButton.styleFrom(
@@ -69,7 +69,7 @@ class WalletSetupScreen extends StatelessWidget {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.secretPhraseLogin);
+                      Navigator.pushNamed(context, AppRoutes.createWalletScreen);
                     },
                     child: const Text('Create New Wallet'),
                     style: OutlinedButton.styleFrom(
