@@ -70,39 +70,52 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
 
   final Uuid uuid = const Uuid();
 
- void _handleContinue() async {
-  if (_password.text != _confirm.text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Passwords do not match.")),
-    );
-    return;
+  Future<void> _handleContinue() async {
+    final password = _password.text.trim();
+    final confirm = _confirm.text.trim();
+
+    if (password != confirm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match.")),
+      );
+      return;
+    }
+
+    if (!_checkbox) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please acknowledge the warning.")),
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final String sessionId = uuid.v4();
+
+    await prefs.setString('wallet_password', password);
+    await prefs.setBool('use_biometrics', _useBiometrics);
+    await prefs.setString('session_id', sessionId);
+
+    debugPrint("✅ Password: $password");
+    debugPrint("🧾 Session ID: $sessionId");
+    debugPrint(_useBiometrics
+        ? '🔓 Biometrics switch ON'
+        : '🔒 Biometrics switch OFF');
+
+    try {
+      await AuthService.registerSession(
+        password: password,
+        sessionId: sessionId,
+      );
+    } catch (e) {
+      debugPrint("❌ Error sending session to API: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to register session")),
+      );
+      return;
+    }
+
+    widget.onNext();
   }
-
-  if (!_checkbox) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please acknowledge the warning.")),
-    );
-    return;
-  }
-
-  final prefs = await SharedPreferences.getInstance();
-  final String sessionId = uuid.v4();
-
-  await prefs.setString('wallet_password', _password.text);
-  await prefs.setBool('use_biometrics', _useBiometrics);
-  await prefs.setString('session_id', sessionId);
-
-  print("✅ Password: ${_password.text}");
-  print("🧾 Session ID: $sessionId");
-  print(_useBiometrics ? '🔓 Biometrics switch ON' : '🔒 Biometrics switch OFF');
-
-  await AuthService.registerSession(
-    password: _password.text,
-    sessionId: sessionId,
-  );
-
-  widget.onNext();
-}
 
   @override
   Widget build(BuildContext context) {
@@ -134,14 +147,12 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                 decoration: InputDecoration(
                   hintText: 'Enter password',
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _showPassword ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _showPassword = !_showPassword;
-                      });
-                    },
+                    icon: Icon(_showPassword
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () => setState(() {
+                      _showPassword = !_showPassword;
+                    }),
                   ),
                 ),
               ),
@@ -154,14 +165,12 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                 decoration: InputDecoration(
                   hintText: 'Re-enter password',
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _showConfirm ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _showConfirm = !_showConfirm;
-                      });
-                    },
+                    icon: Icon(_showConfirm
+                        ? Icons.visibility_off
+                        : Icons.visibility),
+                    onPressed: () => setState(() {
+                      _showConfirm = !_showConfirm;
+                    }),
                   ),
                 ),
               ),
@@ -189,11 +198,9 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                   const Spacer(),
                   Switch(
                     value: _useBiometrics,
-                    onChanged: (val) {
-                      setState(() {
-                        _useBiometrics = val;
-                      });
-                    },
+                    onChanged: (val) => setState(() {
+                      _useBiometrics = val;
+                    }),
                   ),
                 ],
               ),
@@ -360,4 +367,3 @@ class _Step3RecoveryPhraseScreenState extends State<Step3RecoveryPhraseScreen> {
     );
   }
 }
-
