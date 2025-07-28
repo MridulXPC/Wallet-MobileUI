@@ -497,14 +497,6 @@ class TransactionDetailModalWidget extends StatelessWidget {
 
   void _shareTransaction() {
     // Implement share functionality
-    final String shareText = '''
-Transaction Details:
-Type: ${_getTransactionTypeText()}
-Amount: ${transaction['amount']} ${transaction['asset']}
-Value: ${transaction['fiatAmount']}
-Status: ${_getStatusText()}
-Hash: ${transaction['hash']}
-''';
 
     // Use share_plus package or platform-specific sharing
   }
@@ -515,21 +507,16 @@ Hash: ${transaction['hash']}
 
   void _openBlockExplorer() {
     // Open blockchain explorer in browser
-    final hash = transaction['hash'] as String;
     final asset = transaction['asset'] as String;
 
     // Different explorers for different assets
-    String explorerUrl;
     switch (asset) {
       case 'BTC':
-        explorerUrl = 'https://blockstream.info/tx/$hash';
         break;
       case 'ETH':
       case 'USDT':
-        explorerUrl = 'https://etherscan.io/tx/$hash';
         break;
       default:
-        explorerUrl = 'https://blockstream.info/tx/$hash';
     }
 
     // Use url_launcher package to open URL

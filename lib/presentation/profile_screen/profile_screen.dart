@@ -2,8 +2,6 @@ import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart'
 import 'package:cryptowallet/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 
 class ProfileScreen extends StatefulWidget {

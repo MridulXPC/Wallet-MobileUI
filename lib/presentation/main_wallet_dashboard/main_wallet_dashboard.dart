@@ -1,417 +1,384 @@
+import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
+import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:sizer/sizer.dart';
+import 'dart:math';
 
-import '../../core/app_export.dart';
-import './widgets/action_buttons_grid_widget.dart';
-import './widgets/balance_card_widget.dart';
-import './widgets/crypto_portfolio_widget.dart';
-import './widgets/promotional_banner_widget.dart';
-
-class MainWalletDashboard extends StatefulWidget {
-  const MainWalletDashboard({super.key});
+class WalletHomeScreen extends StatefulWidget {
+  const WalletHomeScreen({super.key});
 
   @override
-  State<MainWalletDashboard> createState() => _MainWalletDashboardState();
+  State<WalletHomeScreen> createState() => _WalletHomeScreenState();
 }
 
-class _MainWalletDashboardState extends State<MainWalletDashboard>
-    with TickerProviderStateMixin {
-  late TabController _tabController;
-  int _selectedBottomNavIndex = 0;
-  bool _showPromoBanner = true;
+class _WalletHomeScreenState extends State<WalletHomeScreen> {
+  int _selectedIndex = 0;
 
-  // Mock cryptocurrency portfolio data
-  final List<Map<String, dynamic>> cryptoPortfolio = [
-    {
-      "id": 1,
-      "symbol": "BTC",
-      "name": "Bitcoin",
-      "balance": "0.00234567",
-      "usdValue": "\$1,234.56",
-      "change24h": "+5.67%",
-      "isPositive": true,
-      "icon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
-    },
-    {
-      "id": 2,
-      "symbol": "ETH",
-      "name": "Ethereum",
-      "balance": "1.23456789",
-      "usdValue": "\$2,345.67",
-      "change24h": "-2.34%",
-      "isPositive": false,
-      "icon": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
-    },
-    {
-      "id": 3,
-      "symbol": "ADA",
-      "name": "Cardano",
-      "balance": "1,234.56",
-      "usdValue": "\$567.89",
-      "change24h": "+12.45%",
-      "isPositive": true,
-      "icon": "https://cryptologos.cc/logos/cardano-ada-logo.png",
-    },
-  ];
+  final String _vaultName = 'Main Vault';
+  final String _totalValue = '\$0.00';
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 1, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  void _dismissPromoBanner() {
+  void _onItemTapped(int index) {
     setState(() {
-      _showPromoBanner = false;
+      _selectedIndex = index;
     });
+  }
+
+  List<double> getFakeBtcMonthlyPrices() {
+    final now = DateTime.now();
+
+    final random = Random();
+    double base = 61000;
+    return List.generate(now.day, (index) {
+      double fluctuation = random.nextDouble() * 2000 - 1000; // ±1000
+      return (base + fluctuation);
+    });
+  }
+
+  List<FlSpot> generateMonthlySpots(List<double> prices) {
+    return List.generate(prices.length, (index) {
+      return FlSpot(index.toDouble(), prices[index]);
+    });
+  }
+
+  void _showWalletOptionsSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet),
+                title: const Text('My Vaults'),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Create New Wallet'),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Simulated data generation
+  List<double> monthlyData =
+      List.generate(30, (i) => 61000 + Random().nextDouble() * 2000 - 1000);
+  List<double> todayData =
+      List.generate(24, (i) => 61200 + Random().nextDouble() * 1000 - 500);
+  List<double> yearlyData =
+      List.generate(12, (i) => 59000 + Random().nextDouble() * 4000 - 2000);
+
+  List<FlSpot> generateSpots(List<double> prices) {
+    return List.generate(
+        prices.length, (index) => FlSpot(index.toDouble(), prices[index]));
+  }
+
+  double getMinY() {
+    return [...monthlyData, ...todayData, ...yearlyData].reduce(min) * 0.98;
+  }
+
+  double getMaxY() {
+    return [...monthlyData, ...todayData, ...yearlyData].reduce(max) * 1.02;
   }
 
   @override
   Widget build(BuildContext context) {
+    final btcPrices = getFakeBtcMonthlyPrices();
+    final spots = generateMonthlySpots(btcPrices);
+    final minY = btcPrices.reduce(min) * 0.98;
+    final maxY = btcPrices.reduce(max) * 1.02;
+
     return Scaffold(
-      backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
-      appBar: _buildAppBar(),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        color: AppTheme.primary,
-        backgroundColor: AppTheme.darkTheme.colorScheme.surface,
+      backgroundColor: Colors.white,
+      bottomNavigationBar: BottomNavigationBar(
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart), label: 'Markets'),
+          BottomNavigationBarItem(icon: Icon(Icons.swap_horiz), label: 'Trade'),
+          BottomNavigationBarItem(icon: Icon(Icons.article), label: 'News'),
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
+        ],
+      ),
+      body: SafeArea(
         child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              SizedBox(height: 2.h),
-              BalanceCardWidget(),
-              if (_showPromoBanner) ...[
-                SizedBox(height: 2.h),
-                PromotionalBannerWidget(
-                  onDismiss: _dismissPromoBanner,
+              VaultHeaderCard(
+                totalValue: _totalValue,
+                vaultName: _vaultName,
+                onTap: _showWalletOptionsSheet,
+              ),
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3B9BFF), Color(0xFF1A73E8)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ],
-              SizedBox(height: 3.h),
-              ActionButtonsGridWidget(),
-              SizedBox(height: 3.h),
-              _buildTabSection(),
-              SizedBox(height: 2.h),
-              _buildTabContent(),
-              SizedBox(height: 10.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('Bitcoin price',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 14)),
+                        Icon(Icons.qr_code_scanner, color: Colors.white),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('\$${btcPrices.last.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    const Text('▲74.99% (+\$51,176.67)',
+                        style: TextStyle(color: Colors.white, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 80,
+                      child: LineChart(
+                        LineChartData(
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: generateSpots(monthlyData),
+                              isCurved: true,
+                              color: Colors.orange,
+                              barWidth: 2,
+                              dotData: FlDotData(show: false),
+                              belowBarData: BarAreaData(show: false),
+                            ),
+                            LineChartBarData(
+                              spots: generateSpots(todayData),
+                              isCurved: true,
+                              color: Colors.green[400],
+                              barWidth: 2,
+                              dotData: FlDotData(show: false),
+                              belowBarData: BarAreaData(show: false),
+                            ),
+                            LineChartBarData(
+                              spots: generateSpots(yearlyData),
+                              isCurved: true,
+                              color: Colors.yellowAccent,
+                              barWidth: 2,
+                              dotData: FlDotData(show: false),
+                              belowBarData: BarAreaData(show: false),
+                            ),
+                          ],
+                          minY: getMinY(),
+                          maxY: getMaxY(),
+                          gridData: FlGridData(show: false),
+                          borderData: FlBorderData(show: false),
+                          titlesData: FlTitlesData(show: false),
+                          lineTouchData: LineTouchData(enabled: true),
+                        ),
+                      ),
+                    ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        LegendItem(color: Colors.orange, label: 'Monthly'),
+                        SizedBox(width: 12),
+                        LegendItem(color: Colors.green, label: 'Today'),
+                        SizedBox(width: 12),
+                        LegendItem(color: Colors.yellowAccent, label: 'Yearly'),
+                      ],
+                    ),
+                    const Text(
+                      'Start investing – buy your first Bitcoin now!',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        _AmountButton(amount: '\$100'),
+                        _AmountButton(amount: '\$200'),
+                        _AmountButton(amount: '\$500'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const ActionButtonsGridWidget(),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  height: 60.h,
+                  child: CryptoPortfolioWidget(
+                    portfolio: [
+                      {
+                        "symbol": "BCH",
+                        "name": "Bitcoin Cash",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "0.00%",
+                        "isPositive": true,
+                        "icon": "https://example.com/bch-icon.png",
+                      },
+                      {
+                        "symbol": "BTC",
+                        "name": "Bitcoin",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "-1.25%",
+                        "isPositive": false,
+                        "icon": "https://example.com/btc-icon.png",
+                      },
+                      {
+                        "symbol": "ETH",
+                        "name": "Ethereum",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "0.75%",
+                        "isPositive": true,
+                        "icon": "https://example.com/eth-icon.png",
+                      },
+                      {
+                        "symbol": "MATIC",
+                        "name": "Polygon",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "-0.50%",
+                        "isPositive": false,
+                        "icon": "https://example.com/matic-icon.png",
+                      },
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
-      floatingActionButton: _buildFloatingActionButton(),
     );
   }
-
-PreferredSizeWidget _buildAppBar() {
-  return AppBar(
-    backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
-    elevation: 0,
-    automaticallyImplyLeading: false,
-    title: Text(
-      'Main Wallet',
-      style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-        color: AppTheme.darkTheme.colorScheme.onSurface,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-    actions: [
-      // Transaction Icon Button
-      IconButton(
-        onPressed: () {
-          Navigator.of(context).pushNamed('/transaction-history');
-        },
-        icon: CustomIconWidget(
-          iconName: 'history',
-          color: AppTheme.darkTheme.colorScheme.onSurface,
-          size: 24,
-        ),
-        tooltip: 'Transactions',
-      ),
-
-      // Notification Icon Button with Badge
-      Stack(
-        children: [
-          IconButton(
-            onPressed: () {
-              // Navigate to notifications
-            },
-            icon: CustomIconWidget(
-              iconName: 'notifications_outlined',
-              color: AppTheme.darkTheme.colorScheme.onSurface,
-              size: 24,
-            ),
-            tooltip: 'Notifications',
-          ),
-          Positioned(
-            right: 8,
-            top: 8,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: AppTheme.error,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
-
-      // Profile Icon Button
-      IconButton(
-        onPressed: () {
-            Navigator.of(context).pushNamed('/profile-screen');
-        },
-        icon: CircleAvatar(
-          backgroundColor: AppTheme.primary.withOpacity(0.15),
-          child: Icon(
-            Icons.person,
-            color: AppTheme.primary,
-            size: 20,
-          ),
-        ),
-        tooltip: 'Profile',
-      ),
-
-      SizedBox(width: 2.w),
-    ],
-  );
 }
 
-  Widget _buildTabSection() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w),
-      child: TabBar(
-        controller: _tabController,
-        labelColor: AppTheme.primary,
-        unselectedLabelColor: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-        indicatorColor: AppTheme.primary,
-        indicatorWeight: 2,
-        indicatorSize: TabBarIndicatorSize.label,
-        labelStyle: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle:
-            AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w400,
-        ),
-        tabs: const [
-          Tab(text: 'Holdings'),
-        ],
-      ),
-    );
-  }
+class LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
 
-  Widget _buildTabContent() {
-    return SizedBox(
-      height: 50.h,
-      child: TabBarView(
-        controller: _tabController,
-        children: [
-          CryptoPortfolioWidget(portfolio: cryptoPortfolio),
-        ],
-      ),
-    );
-  }
+  const LegendItem({required this.color, required this.label});
 
-  // Widget _buildEmptyState({
-  //   required String title,
-  //   required String subtitle,
-  //   required String actionText,
-  // }) {
-  //   return Center(
-  //     child: Padding(
-  //       padding: EdgeInsets.symmetric(horizontal: 8.w),
-  //       child: Column(
-  //         mainAxisAlignment: MainAxisAlignment.center,
-  //         children: [
-  //           CustomIconWidget(
-  //             iconName: 'account_balance_wallet_outlined',
-  //             color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-  //             size: 64,
-  //           ),
-  //           SizedBox(height: 3.h),
-  //           Text(
-  //             title,
-  //             style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-  //               color: AppTheme.darkTheme.colorScheme.onSurface,
-  //               fontWeight: FontWeight.w600,
-  //             ),
-  //             textAlign: TextAlign.center,
-  //           ),
-  //           SizedBox(height: 1.h),
-  //           Text(
-  //             subtitle,
-  //             style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-  //               color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-  //             ),
-  //             textAlign: TextAlign.center,
-  //           ),
-  //           SizedBox(height: 4.h),
-  //           Row(
-  //             children: [
-  //               Expanded(
-  //                 child: ElevatedButton(
-  //                   onPressed: () {
-  //                     // Navigate to buy crypto
-  //                   },
-  //                   style: ElevatedButton.styleFrom(
-  //                     backgroundColor: AppTheme.primary,
-  //                     foregroundColor: AppTheme.onPrimary,
-  //                     padding: EdgeInsets.symmetric(vertical: 2.h),
-  //                     shape: RoundedRectangleBorder(
-  //                       borderRadius: BorderRadius.circular(12),
-  //                     ),
-  //                   ),
-  //                   child: Text(
-  //                     'Buy Crypto',
-  //                     style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-  //                       color: AppTheme.onPrimary,
-  //                       fontWeight: FontWeight.w600,
-  //                     ),
-  //                   ),
-  //                 ),
-  //               ),
-  //               SizedBox(width: 4.w),
-  //               Expanded(
-  //                 child: OutlinedButton(
-  //                   onPressed: () {
-  //                     // Navigate to deposit crypto
-  //                   },
-  //                   style: OutlinedButton.styleFrom(
-  //                     foregroundColor: AppTheme.primary,
-  //                     side: BorderSide(color: AppTheme.primary, width: 1.5),
-  //                     padding: EdgeInsets.symmetric(vertical: 2.h),
-  //                     shape: RoundedRectangleBorder(
-  //                       borderRadius: BorderRadius.circular(12),
-  //                     ),
-  //                   ),
-  //                   child: Text(
-  //                     'Deposit Crypto',
-  //                     style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-  //                       color: AppTheme.primary,
-  //                       fontWeight: FontWeight.w600,
-  //                     ),
-  //                   ),
-  //                 ),
-  //               ),
-  //             ],
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
-  Widget _buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      currentIndex: _selectedBottomNavIndex,
-      onTap: (index) {
-        setState(() {
-          _selectedBottomNavIndex = index;
-        });
-      },
-      type: BottomNavigationBarType.fixed,
-      backgroundColor: AppTheme.darkTheme.colorScheme.surface,
-      selectedItemColor: AppTheme.primary,
-      unselectedItemColor: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-      selectedLabelStyle: AppTheme.darkTheme.textTheme.labelMedium?.copyWith(
-        fontWeight: FontWeight.w500,
-      ),
-      unselectedLabelStyle: AppTheme.darkTheme.textTheme.labelMedium?.copyWith(
-        fontWeight: FontWeight.w400,
-      ),
-      items: [
-        BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'home_outlined',
-            color: _selectedBottomNavIndex == 0
-                ? AppTheme.primary
-                : AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-            size: 24,
-          ),
-          activeIcon: CustomIconWidget(
-            iconName: 'home',
-            color: AppTheme.primary,
-            size: 24,
-          ),
-          label: 'Home',
-        ),
-        BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'add_circle_outline',
-            color: _selectedBottomNavIndex == 1
-                ? AppTheme.primary
-                : AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-            size: 24,
-          ),
-          label: 'Create',
-        ),
-        BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'card_giftcard',
-            color: _selectedBottomNavIndex == 2
-                ? AppTheme.primary
-                : AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-            size: 24,
-          ),
-          label: 'Rewards',
-        ),
-        BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'account_balance_wallet_outlined',
-            color: _selectedBottomNavIndex == 3
-                ? AppTheme.primary
-                : AppTheme.darkTheme.colorScheme.onSurfaceVariant,
-            size: 24,
-          ),
-          activeIcon: CustomIconWidget(
-            iconName: 'account_balance_wallet',
-            color: AppTheme.primary,
-            size: 24,
-          ),
-          label: 'Holdings',
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(color: Colors.white)),
       ],
     );
   }
+}
 
-  Widget _buildFloatingActionButton() {
-    return FloatingActionButton.extended(
-      onPressed: () {
-        // Navigate to manage crypto
-      },
-      backgroundColor: AppTheme.primary,
-      foregroundColor: AppTheme.onPrimary,
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      label: Text(
-        'Manage Crypto',
-        style: AppTheme.darkTheme.textTheme.labelLarge?.copyWith(
-          color: AppTheme.onPrimary,
-          fontWeight: FontWeight.w600,
+class VaultHeaderCard extends StatelessWidget {
+  final String totalValue;
+  final String vaultName;
+  final VoidCallback onTap;
+
+  const VaultHeaderCard({
+    required this.totalValue,
+    required this.vaultName,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    "Total Portfolio Value",
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "\$0.00",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Text(
+                    vaultName,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.keyboard_arrow_down),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-      icon: CustomIconWidget(
-        iconName: 'settings',
-        color: AppTheme.onPrimary,
-        size: 20,
       ),
     );
   }
+}
 
-  Future<void> _refreshData() async {
-    // Simulate network call
-    await Future.delayed(const Duration(seconds: 1));
-    // Refresh portfolio data here
+class _AmountButton extends StatelessWidget {
+  final String amount;
+  const _AmountButton({required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Text(
+        amount,
+        style:
+            const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 }

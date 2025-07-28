@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  static const String _baseUrl = 'http://localhost:3000';
+  static const String _baseUrl = 'https://vault-backend-6zwa.onrender.com';
 
 static Future<bool> registerSession({
   required String password,

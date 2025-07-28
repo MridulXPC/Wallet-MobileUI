@@ -50,7 +50,7 @@ class AppRoutes {
     loginScreen: (context) => const LoginScreen(),
     biometricAuthScreen: (context) => const BiometricAuthentication(),
     appLockScreen: (context) => const AppLockScreen(),
-    dashboardScreen: (context) => const MainWalletDashboard(),
+    dashboardScreen: (context) => const WalletHomeScreen(),
 
     // Wallet Features
     receiveCrypto: (context) => const ReceiveCryptocurrency(),

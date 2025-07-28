@@ -1,3 +1,5 @@
+// Updated ActionButtonsGridWidget with full-width alignment to match container layout
+
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
@@ -8,101 +10,100 @@ class ActionButtonsGridWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> actionButtons = [
-      {
-        "title": "Send",
-        "icon": "send",
-        "route": "/send-cryptocurrency",
-        "color": AppTheme.primary,
-      },
-      {
-        "title": "Receive",
-        "icon": "call_received",
-        "route": "/receive-cryptocurrency",
-        "color": AppTheme.primary,
-      },
-      {
-        "title": "Swap",
-        "icon": "swap_horiz",
-        "route": "/crypto-swap-screen",
-        "color": AppTheme.primary,
-      },
+    final List<_ActionButton> actionButtons = [
+      _ActionButton(
+        title: "Send",
+        icon: Icons.send,
+        route: AppRoutes.sendCrypto,
+      ),
+      _ActionButton(
+        title: "Receive",
+        icon: Icons.call_received,
+        route: AppRoutes.receiveCrypto,
+      ),
+      _ActionButton(
+        title: "Swap",
+        icon: Icons.swap_horiz,
+        route: AppRoutes.swapScreen,
+      ),
+      _ActionButton(
+        title: "Bridge",
+        icon: Icons.compare_arrows,
+        route: "/bridge-cryptocurrency",
+      ),
     ];
 
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w),
-      child: GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 3,
-        crossAxisSpacing: 3.w,
-        mainAxisSpacing: 2.h,
-        childAspectRatio: 1.2,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: actionButtons.map((button) {
-          return _buildActionButton(
-            context,
-            title: button["title"] as String,
-            icon: button["icon"] as String,
-            route: button["route"] as String,
-            color: button["color"] as Color,
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _buildActionButton(
+                context,
+                title: button.title,
+                icon: button.icon,
+                route: button.route,
+              ),
+            ),
           );
         }).toList(),
       ),
     );
   }
-  
+
   Widget _buildActionButton(
     BuildContext context, {
     required String title,
-    required String icon,
+    required IconData icon,
     required String route,
-    required Color color,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(context, route);
-        },
-        borderRadius: BorderRadius.circular(8),
+        onTap: () => Navigator.pushNamed(context, route),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           decoration: BoxDecoration(
-            color: AppTheme.darkTheme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color:
-                  AppTheme.darkTheme.colorScheme.outline.withValues(alpha: 0.3),
-              width: 1,
-            ),
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Padding(
-            padding: EdgeInsets.all(3.w),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Center(
-                  child: CustomIconWidget(
-                    iconName: icon,
-                    color: color,
-                    size: 24,
-                  ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: Colors.white,
+                size: 24,
+              ),
+              SizedBox(height: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11.sp,
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  title,
-                  style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.darkTheme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class _ActionButton {
+  final String title;
+  final IconData icon;
+  final String route;
+
+  _ActionButton({required this.title, required this.icon, required this.route});
 }

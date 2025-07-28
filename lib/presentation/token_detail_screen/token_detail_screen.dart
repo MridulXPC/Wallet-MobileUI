@@ -9,6 +9,7 @@ import './widgets/balance_section_widget.dart';
 import './widgets/price_chart_widget.dart';
 import './widgets/time_period_selector_widget.dart';
 import './widgets/token_price_display_widget.dart';
+import '../main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 
 class TokenDetailScreen extends StatefulWidget {
   const TokenDetailScreen({super.key});
@@ -34,35 +35,33 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
-      tokenData = args;
+      setState(() {
+        tokenData = args;
+      });
     }
   }
 
   void _generateMockChartData() {
-    // Generate mock price data for chart
     chartData = List.generate(20, (index) {
-      return FlSpot(
-          index.toDouble(), 0.8 + (index * 0.02) + (index % 3 * 0.05));
+      return FlSpot(index.toDouble(), 0.8 + (index * 0.02) + (index % 3 * 0.05));
     });
   }
 
   void _onPeriodSelected(String period) {
     setState(() {
       selectedPeriod = period;
-      _generateMockChartData(); // In real app, fetch data for selected period
+      _generateMockChartData();
     });
   }
 
   void _shareToken() {
     if (tokenData != null) {
       HapticFeedback.lightImpact();
-      // Implement share functionality
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Sharing ${tokenData!["name"]}...'),
+          content: Text('Sharing ${tokenData!['name']}...'),
           backgroundColor: AppTheme.darkTheme.colorScheme.surface,
         ),
       );
@@ -74,17 +73,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
       isBookmarked = !isBookmarked;
     });
     HapticFeedback.lightImpact();
-  }
-
-  void _buyToken() {
-    // Implement buy functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content:
-            Text('Buy ${tokenData?["symbol"] ?? "Token"} feature coming soon!'),
-        backgroundColor: AppTheme.success,
-      ),
-    );
   }
 
   @override
@@ -104,13 +92,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(height: 2.h),
-
-            // Token Info Header
             _buildTokenHeader(),
-
             SizedBox(height: 3.h),
-
-            // Price Display
             TokenPriceDisplayWidget(
               currentPrice: '\$1.08',
               priceChange: '\$0.0414',
@@ -118,66 +101,26 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
               isPositive: true,
               period: 'Past day',
             ),
-
             SizedBox(height: 3.h),
-
-            // Time Period Selector
             TimePeriodSelectorWidget(
               periods: timePeriods,
               selectedPeriod: selectedPeriod,
               onPeriodSelected: _onPeriodSelected,
             ),
-
             SizedBox(height: 2.h),
-
-            // Price Chart
             PriceChartWidget(
               chartData: chartData,
               selectedPeriod: selectedPeriod,
             ),
-
             SizedBox(height: 3.h),
-
-            // Balance Section
-            BalanceSectionWidget(
-              tokenData: tokenData!,
-            ),
-
+            BalanceSectionWidget(tokenData: tokenData!),
             SizedBox(height: 3.h),
-
-            // About Section
-            AboutSectionWidget(
-              tokenData: tokenData!,
-            ),
-
+            AboutSectionWidget(tokenData: tokenData!),
             SizedBox(height: 3.h),
-
-            // Buy Button
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 4.w),
-              child: SizedBox(
-                width: double.infinity,
-                height: 6.h,
-                child: ElevatedButton(
-                  onPressed: _buyToken,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.success,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Buy',
-                    style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
+              child: ActionButtonsGridWidget(),
             ),
-
             SizedBox(height: 4.h),
           ],
         ),
@@ -198,7 +141,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
         ),
       ),
       title: Text(
-        tokenData?["name"] ?? "Token Details",
+        tokenData?['name'] ?? 'Token Details',
         style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w600,
         ),
@@ -209,9 +152,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
           onPressed: _toggleBookmark,
           icon: CustomIconWidget(
             iconName: isBookmarked ? 'star' : 'star_border',
-            color: isBookmarked
-                ? Colors.yellow
-                : AppTheme.darkTheme.colorScheme.onSurface,
+            color: isBookmarked ? Colors.yellow : AppTheme.darkTheme.colorScheme.onSurface,
             size: 24,
           ),
         ),
@@ -237,7 +178,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
             width: 16.w,
             height: 16.w,
             decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.2),
+              color: AppTheme.primary.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: ClipRRect(

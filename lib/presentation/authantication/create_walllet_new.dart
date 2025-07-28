@@ -5,8 +5,6 @@ import 'package:bip39/bip39.dart' as bip39;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class WalletOnboardingFlow extends StatefulWidget {
   static const String routeName = '/wallet-onboarding';

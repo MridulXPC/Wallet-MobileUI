@@ -18,7 +18,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      padding: EdgeInsets.symmetric(horizontal: 0.w),
       itemCount: portfolio.length,
       separatorBuilder: (context, index) => SizedBox(height: 2.h),
       itemBuilder: (context, index) {
@@ -33,7 +33,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
     final Color changeColor = isPositive ? AppTheme.success : AppTheme.error;
 
     return Card(
-      color: AppTheme.darkTheme.colorScheme.surface,
+      color: AppTheme.lightTheme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
@@ -41,7 +41,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
         onTap: () {
           Navigator.pushNamed(
             context,
-            '/token-detail-screen',
+            AppRoutes.tokenDetail,
             arguments: crypto,
           );
         },
@@ -76,9 +76,9 @@ class CryptoPortfolioWidget extends StatelessWidget {
                       children: [
                         Text(
                           crypto["symbol"] as String,
-                          style: AppTheme.darkTheme.textTheme.titleMedium
+                          style: AppTheme.lightTheme.textTheme.titleMedium
                               ?.copyWith(
-                            color: AppTheme.darkTheme.colorScheme.onSurface,
+                            color: AppTheme.lightTheme.colorScheme.onSurface,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -86,10 +86,10 @@ class CryptoPortfolioWidget extends StatelessWidget {
                         Expanded(
                           child: Text(
                             crypto["name"] as String,
-                            style: AppTheme.darkTheme.textTheme.bodyMedium
+                            style: AppTheme.lightTheme.textTheme.bodyMedium
                                 ?.copyWith(
                               color: AppTheme
-                                  .darkTheme.colorScheme.onSurfaceVariant,
+                                  .lightTheme.colorScheme.onSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -103,7 +103,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                       style: AppTheme.monoTextStyle(
                         isLight: false,
                         fontSize: 12.sp,
-                        color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -114,8 +114,8 @@ class CryptoPortfolioWidget extends StatelessWidget {
                 children: [
                   Text(
                     crypto["usdValue"] as String,
-                    style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                      color: AppTheme.darkTheme.colorScheme.onSurface,
+                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      color: AppTheme.lightTheme.colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -142,7 +142,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                         Text(
                           crypto["change24h"] as String,
                           style:
-                              AppTheme.darkTheme.textTheme.labelSmall?.copyWith(
+                              AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                             color: changeColor,
                             fontWeight: FontWeight.w600,
                           ),
@@ -168,14 +168,14 @@ class CryptoPortfolioWidget extends StatelessWidget {
           children: [
             CustomIconWidget(
               iconName: 'account_balance_wallet_outlined',
-              color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
               size: 64,
             ),
             SizedBox(height: 3.h),
             Text(
               'Get Started',
-              style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-                color: AppTheme.darkTheme.colorScheme.onSurface,
+              style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -183,8 +183,8 @@ class CryptoPortfolioWidget extends StatelessWidget {
             SizedBox(height: 1.h),
             Text(
               'Start building your crypto portfolio today',
-              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-                color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+              style: AppTheme.lightTheme.textTheme.bodyLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
@@ -206,7 +206,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                     ),
                     child: Text(
                       'Buy Crypto',
-                      style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                         color: AppTheme.onPrimary,
                         fontWeight: FontWeight.w600,
                       ),
@@ -229,7 +229,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                     ),
                     child: Text(
                       'Deposit Crypto',
-                      style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                         color: AppTheme.primary,
                         fontWeight: FontWeight.w600,
                       ),

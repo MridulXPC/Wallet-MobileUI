@@ -101,11 +101,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
   }
 
   void _shareAddress() {
-    final selectedAsset = supportedAssets[selectedAssetIndex];
-    final address = selectedAsset["address"] as String;
-    final assetName = selectedAsset["name"] as String;
 
-    String shareText = "My \$assetName wallet address:\n\$address";
 
     // Simulate native share
     Fluttertoast.showToast(
