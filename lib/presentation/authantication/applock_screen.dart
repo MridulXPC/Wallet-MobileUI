@@ -22,33 +22,39 @@ class _AppLockScreenState extends State<AppLockScreen> {
     _attemptBiometricOrFallback();
   }
 
-  Future<void> _attemptBiometricOrFallback() async {
-    final prefs = await SharedPreferences.getInstance();
-    final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-    final savedPassword = prefs.getString('wallet_password');
+Future<void> _attemptBiometricOrFallback() async {
+  final prefs = await SharedPreferences.getInstance();
+  final useBiometrics = prefs.getBool('use_biometrics') ?? false;
+  final savedPassword = prefs.getString('wallet_password');
 
-    if (savedPassword == null || savedPassword.isEmpty) {
-      // No password found, redirect to onboarding
-      Navigator.pushReplacementNamed(context, '/wallet-onboarding');
-      return;
-    }
+  if (savedPassword == null || savedPassword.isEmpty) {
+    Navigator.pushReplacementNamed(context, '/wallet-onboarding');
+    return;
+  }
 
-    _storedPassword = savedPassword;
+  _storedPassword = savedPassword;
 
-    if (useBiometrics) {
+  if (useBiometrics) {
+    final isAvailable = await BiometricHelper.isBiometricAvailable();
+    if (isAvailable) {
       final success = await BiometricHelper.authenticate();
       if (success) {
-        Navigator.pushReplacementNamed(context, '/main-wallet-dashboard');
+        Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
+        return;
       } else {
-        setState(() => _biometricTried = true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Biometric authentication failed')),
         );
       }
     } else {
-      setState(() => _biometricTried = true);
+      debugPrint('⚠️ Biometrics not available on this device');
     }
   }
+
+  // Either biometrics not enabled or unavailable
+  setState(() => _biometricTried = true);
+}
+
 
   void _verifyPassword() {
     if (_passwordController.text.trim() == _storedPassword) {

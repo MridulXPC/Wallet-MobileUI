@@ -25,7 +25,7 @@ Future<void> _openQRScanner() async {
           onScan: (code) async {
             debugPrint('📦 Scanned session ID: $code');
 
-            const String token = 'YOUR_JWT_TOKEN_HERE'; // Replace with actual secure token
+            const String token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkMWM2YzZhYmViZTYwZDAxNDBiZGYiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzUzNzAyNjI0fQ.Fb1nmbGxMxmE2NruJKkwmBb_253wh07Pghe5vVuqWjY'; // Replace with actual secure token
 
             final result = await AuthService.authorizeWebSession(
               sessionId: code,

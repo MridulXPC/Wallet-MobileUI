@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart';
+import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:sizer/sizer.dart';
@@ -19,27 +22,46 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   final String _totalValue = '\$0.00';
 
   void _onItemTapped(int index) {
+    if (index == 4) {
+      Navigator.pushNamed(context, AppRoutes.profileScreen);
+      return;
+    }
+
     setState(() {
       _selectedIndex = index;
     });
   }
 
-  List<double> getFakeBtcMonthlyPrices() {
-    final now = DateTime.now();
+  late final PageController _pageController;
+int _currentPage = 0;
+late final Timer _timer;
 
-    final random = Random();
-    double base = 61000;
-    return List.generate(now.day, (index) {
-      double fluctuation = random.nextDouble() * 2000 - 1000; // ±1000
-      return (base + fluctuation);
-    });
-  }
 
-  List<FlSpot> generateMonthlySpots(List<double> prices) {
-    return List.generate(prices.length, (index) {
-      return FlSpot(index.toDouble(), prices[index]);
-    });
-  }
+@override
+void initState() {
+  super.initState();
+  _pageController = PageController(viewportFraction: 0.92);
+
+  _timer = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
+    if (_pageController.hasClients) {
+      _currentPage++;
+      if (_currentPage >= 3) _currentPage = 0;
+
+      _pageController.animateToPage(
+        _currentPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+  });
+}
+
+@override
+void dispose() {
+  _pageController.dispose();
+  _timer.cancel();
+  super.dispose();
+}
 
   void _showWalletOptionsSheet() {
     showModalBottomSheet(
@@ -73,46 +95,56 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     );
   }
 
-  // Simulated data generation
-  List<double> monthlyData =
-      List.generate(30, (i) => 61000 + Random().nextDouble() * 2000 - 1000);
-  List<double> todayData =
-      List.generate(24, (i) => 61200 + Random().nextDouble() * 1000 - 500);
-  List<double> yearlyData =
-      List.generate(12, (i) => 59000 + Random().nextDouble() * 4000 - 2000);
-
   List<FlSpot> generateSpots(List<double> prices) {
     return List.generate(
         prices.length, (index) => FlSpot(index.toDouble(), prices[index]));
   }
 
-  double getMinY() {
-    return [...monthlyData, ...todayData, ...yearlyData].reduce(min) * 0.98;
+  double getMinY(List<List<double>> allData) {
+    return allData.expand((e) => e).reduce(min) * 0.98;
   }
 
-  double getMaxY() {
-    return [...monthlyData, ...todayData, ...yearlyData].reduce(max) * 1.02;
+  double getMaxY(List<List<double>> allData) {
+    return allData.expand((e) => e).reduce(max) * 1.02;
   }
+
+  List<Map<String, dynamic>> cryptoCards = [
+    {
+      'title': 'Bitcoin',
+      'price': 61547.81,
+      'monthly': List.generate(30, (i) => 61000 + Random().nextDouble() * 1000),
+      'today': List.generate(24, (i) => 61200 + Random().nextDouble() * 500),
+      'yearly': List.generate(12, (i) => 59000 + Random().nextDouble() * 2000),
+    },
+    {
+      'title': 'Ethereum',
+      'price': 3457.32,
+      'monthly': List.generate(30, (i) => 3400 + Random().nextDouble() * 100),
+      'today': List.generate(24, (i) => 3450 + Random().nextDouble() * 50),
+      'yearly': List.generate(12, (i) => 3200 + Random().nextDouble() * 200),
+    },
+    {
+      'title': 'Polygon',
+      'price': 0.98,
+      'monthly': List.generate(30, (i) => 0.9 + Random().nextDouble() * 0.1),
+      'today': List.generate(24, (i) => 0.95 + Random().nextDouble() * 0.05),
+      'yearly': List.generate(12, (i) => 0.8 + Random().nextDouble() * 0.2),
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final btcPrices = getFakeBtcMonthlyPrices();
-    final spots = generateMonthlySpots(btcPrices);
-    final minY = btcPrices.reduce(min) * 0.98;
-    final maxY = btcPrices.reduce(max) * 1.02;
-
     return Scaffold(
       backgroundColor: Colors.white,
       bottomNavigationBar: BottomNavigationBar(
         selectedItemColor: Colors.blue,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: const Color.fromARGB(255, 93, 93, 93),
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart), label: 'Markets'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Markets'),
           BottomNavigationBarItem(icon: Icon(Icons.swap_horiz), label: 'Trade'),
           BottomNavigationBarItem(icon: Icon(Icons.article), label: 'News'),
           BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
@@ -127,113 +159,27 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                 vaultName: _vaultName,
                 onTap: _showWalletOptionsSheet,
               ),
-              Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B9BFF), Color(0xFF1A73E8)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Bitcoin price',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 14)),
-                        Icon(Icons.qr_code_scanner, color: Colors.white),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text('\$${btcPrices.last.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    const Text('▲74.99% (+\$51,176.67)',
-                        style: TextStyle(color: Colors.white, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 80,
-                      child: LineChart(
-                        LineChartData(
-                          lineBarsData: [
-                            LineChartBarData(
-                              spots: generateSpots(monthlyData),
-                              isCurved: true,
-                              color: Colors.orange,
-                              barWidth: 2,
-                              dotData: FlDotData(show: false),
-                              belowBarData: BarAreaData(show: false),
-                            ),
-                            LineChartBarData(
-                              spots: generateSpots(todayData),
-                              isCurved: true,
-                              color: Colors.green[400],
-                              barWidth: 2,
-                              dotData: FlDotData(show: false),
-                              belowBarData: BarAreaData(show: false),
-                            ),
-                            LineChartBarData(
-                              spots: generateSpots(yearlyData),
-                              isCurved: true,
-                              color: Colors.yellowAccent,
-                              barWidth: 2,
-                              dotData: FlDotData(show: false),
-                              belowBarData: BarAreaData(show: false),
-                            ),
-                          ],
-                          minY: getMinY(),
-                          maxY: getMaxY(),
-                          gridData: FlGridData(show: false),
-                          borderData: FlBorderData(show: false),
-                          titlesData: FlTitlesData(show: false),
-                          lineTouchData: LineTouchData(enabled: true),
-                        ),
-                      ),
-                    ),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        LegendItem(color: Colors.orange, label: 'Monthly'),
-                        SizedBox(width: 12),
-                        LegendItem(color: Colors.green, label: 'Today'),
-                        SizedBox(width: 12),
-                        LegendItem(color: Colors.yellowAccent, label: 'Yearly'),
-                      ],
-                    ),
-                    const Text(
-                      'Start investing – buy your first Bitcoin now!',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        _AmountButton(amount: '\$100'),
-                        _AmountButton(amount: '\$200'),
-                        _AmountButton(amount: '\$500'),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const ActionButtonsGridWidget(),
-                  ],
+              SizedBox(
+                height: 56.h,
+                child: PageView.builder(
+                  controller: PageController(viewportFraction: 0.92),
+                  itemCount: cryptoCards.length,
+                  itemBuilder: (context, index) {
+                    final card = cryptoCards[index];
+                    return CryptoStatCard(
+                      title: card['title'],
+                      currentPrice: card['price'],
+                      monthlyData: card['monthly'],
+                      todayData: card['today'],
+                      yearlyData: card['yearly'],
+                    );
+                  },
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SizedBox(
-                  height: 60.h,
+             
                   child: CryptoPortfolioWidget(
                     portfolio: [
                       {
@@ -284,6 +230,138 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   }
 }
 
+class CryptoStatCard extends StatelessWidget {
+  final String title;
+  final double currentPrice;
+  final List<double> monthlyData;
+  final List<double> todayData;
+  final List<double> yearlyData;
+
+  const CryptoStatCard({
+    super.key,
+    required this.title,
+    required this.currentPrice,
+    required this.monthlyData,
+    required this.todayData,
+    required this.yearlyData,
+  });
+
+  List<FlSpot> generateSpots(List<double> prices) {
+    return List.generate(prices.length, (i) => FlSpot(i.toDouble(), prices[i]));
+  }
+
+  double getMinY() {
+    final all = [...monthlyData, ...todayData, ...yearlyData];
+    return all.reduce(min) * 0.98;
+  }
+
+  double getMaxY() {
+    final all = [...monthlyData, ...todayData, ...yearlyData];
+    return all.reduce(max) * 1.02;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$title price',
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+              const Icon(Icons.qr_code_scanner, color: Colors.white),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('\$${currentPrice.toStringAsFixed(2)}',
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          const Text('▲74.99% (+\$51,176.67)',
+              style: TextStyle(color: Colors.white, fontSize: 14)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 80,
+            child: LineChart(
+              LineChartData(
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: generateSpots(monthlyData),
+                    isCurved: true,
+                    color: Colors.orange,
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: generateSpots(todayData),
+                    isCurved: true,
+                    color: Colors.green,
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: generateSpots(yearlyData),
+                    isCurved: true,
+                    color: Colors.yellowAccent,
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+                minY: getMinY(),
+                maxY: getMaxY(),
+                gridData: FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(show: false),
+                lineTouchData: LineTouchData(enabled: false),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              LegendItem(color: Colors.orange, label: 'Monthly'),
+              SizedBox(width: 12),
+              LegendItem(color: Colors.green, label: 'Today'),
+              SizedBox(width: 12),
+              LegendItem(color: Colors.yellowAccent, label: 'Yearly'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start investing – buy your first $title now!',
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _AmountButton(amount: '\$100'),
+              _AmountButton(amount: '\$200'),
+              _AmountButton(amount: '\$500'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const ActionButtonsGridWidget(),
+        ],
+      ),
+    );
+  }
+}
+
 class LegendItem extends StatelessWidget {
   final Color color;
   final String label;
@@ -321,25 +399,26 @@ class VaultHeaderCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 2,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
+                children: [
+                  const Text(
                     "Total Portfolio Value",
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    "\$0.00",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    totalValue,
+                    style:
+                        const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),

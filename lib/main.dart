@@ -29,45 +29,43 @@ Future<String> _determineStartRoute() async {
   final hasPassword = prefs.getString('wallet_password') != null;
   final useBiometrics = prefs.getBool('use_biometrics') ?? false;
 
-  if (isFirstLaunch) {
-    return AppRoutes.welcomeScreen; // 👈 Go to welcome/onboarding
-  }
+  if (isFirstLaunch) return AppRoutes.welcomeScreen;
 
-  if (hasPassword) {
-    if (useBiometrics) {
-      try {
-        final auth = LocalAuthentication();
-        final isSupported = await auth.isDeviceSupported();
-        final canCheck = await auth.canCheckBiometrics;
+  if (!hasPassword) return AppRoutes.welcomeScreen;
 
-        if (isSupported && canCheck) {
-          final authenticated = await auth.authenticate(
-            localizedReason: 'Please authenticate to access your wallet',
-            options: const AuthenticationOptions(
-              biometricOnly: true,
-              stickyAuth: true,
-            ),
-          );
+  final auth = LocalAuthentication();
 
-          if (authenticated) {
-            return AppRoutes.dashboardScreen;
-          } else {
-            return AppRoutes.appLockScreen;
-          }
-        } else {
-          return AppRoutes.appLockScreen;
-        }
-      } catch (e) {
-        print('🔐 Biometric check failed: $e');
-        return AppRoutes.appLockScreen;
+  try {
+    final isSupported = await auth.isDeviceSupported();
+    final canCheck = await auth.canCheckBiometrics;
+
+    print('🔍 Biometric support: isSupported=$isSupported, canCheck=$canCheck');
+
+    if (useBiometrics && isSupported && canCheck) {
+      final authenticated = await auth.authenticate(
+        localizedReason: 'Please authenticate to access your wallet',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (authenticated) {
+        return AppRoutes.dashboardScreen;
+      } else {
+        print('❌ Biometric auth failed, fallback to PIN');
+        return AppRoutes.appLockScreen; // fallback screen with password
       }
     } else {
+      print('⚠️ Biometrics not available or not enabled, using PIN');
       return AppRoutes.appLockScreen;
     }
+  } catch (e) {
+    print('🔥 Biometric error: $e → fallback to PIN');
+    return AppRoutes.appLockScreen;
   }
-
-  return AppRoutes.welcomeScreen;
 }
+
 
 class MyApp extends StatelessWidget {
   final String initialRoute;

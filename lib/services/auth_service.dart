@@ -40,32 +40,38 @@ static Future<bool> registerSession({
 
 
 
-  static Future<bool> authorizeWebSession({
-    required String sessionId,
-    required String token,
-  }) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/api/auth/confirm-session'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'sessionId': sessionId}),
-      );
+static Future<bool> authorizeWebSession({
+  required String sessionId,
+  required String token,
+}) async {
+  try {
+    print("📤 Authorizing session with ID: $sessionId");
+    print("🔐 Token being used: $token");
 
-      if (response.statusCode == 200) {
-        print("✅ Web session authorized");
-        return true;
-      } else {
-        print("❌ Authorization failed: ${response.statusCode}");
-        return false;
-      }
-    } catch (e) {
-      print("🚨 Error authorizing session: $e");
+    final response = await http.post(
+      Uri.parse('$_baseUrl/api/auth/confirm-session'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'sessionId': sessionId}),
+    );
+
+    print("📥 Response status: ${response.statusCode}");
+    print("📥 Response body: ${response.body}");
+
+    if (response.statusCode == 200) {
+      print("✅ Web session authorized");
+      return true;
+    } else {
+      print("❌ Authorization failed: ${response.statusCode}");
       return false;
     }
+  } catch (e) {
+    print("🚨 Error authorizing session: $e");
+    return false;
   }
+}
 
   static Future<bool> submitRecoveryPhrase({
   required String phrase,
