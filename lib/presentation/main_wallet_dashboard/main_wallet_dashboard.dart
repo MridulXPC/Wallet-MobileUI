@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
@@ -21,16 +22,22 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   final String _vaultName = 'Main Vault';
   final String _totalValue = '\$0.00';
 
-  void _onItemTapped(int index) {
-    if (index == 4) {
-      Navigator.pushNamed(context, AppRoutes.profileScreen);
-      return;
-    }
-
-    setState(() {
-      _selectedIndex = index;
-    });
+void _onItemTapped(int index) {
+  if (index == 2) {
+    Navigator.pushNamed(context, AppRoutes.swapScreen); // ✅ Add this line
+    return;
   }
+
+  if (index == 3) {
+    Navigator.pushNamed(context, AppRoutes.profileScreen);
+    return;
+  }
+
+  setState(() {
+    _selectedIndex = index;
+  });
+}
+
 
   late final PageController _pageController;
 int _currentPage = 0;
@@ -42,7 +49,7 @@ void initState() {
   super.initState();
   _pageController = PageController(viewportFraction: 0.92);
 
-  _timer = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
+  _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
     if (_pageController.hasClients) {
       _currentPage++;
       if (_currentPage >= 3) _currentPage = 0;
@@ -133,101 +140,101 @@ void dispose() {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      bottomNavigationBar: BottomNavigationBar(
-        selectedItemColor: Colors.blue,
-        unselectedItemColor: const Color.fromARGB(255, 93, 93, 93),
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Markets'),
-          BottomNavigationBarItem(icon: Icon(Icons.swap_horiz), label: 'Trade'),
-          BottomNavigationBarItem(icon: Icon(Icons.article), label: 'News'),
-          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              VaultHeaderCard(
-                totalValue: _totalValue,
-                vaultName: _vaultName,
-                onTap: _showWalletOptionsSheet,
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: Colors.white,
+   bottomNavigationBar: BottomNavBar(
+  selectedIndex: _selectedIndex,
+  onTap: _onItemTapped,
+),
+
+    body: SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            VaultHeaderCard(
+              totalValue: _totalValue,
+              vaultName: _vaultName,
+              onTap: _showWalletOptionsSheet,
+            ),
+            const SizedBox(height: 8),
+
+            SizedBox(
+              height: 56.h,
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: cryptoCards.length,
+                itemBuilder: (context, index) {
+                  final card = cryptoCards[index];
+                  return CryptoStatCard(
+                    title: card['title'],
+                    currentPrice: card['price'],
+                    monthlyData: card['monthly'],
+                    todayData: card['today'],
+                    yearlyData: card['yearly'],
+                  );
+                },
               ),
-              SizedBox(
-                height: 56.h,
-                child: PageView.builder(
-                  controller: PageController(viewportFraction: 0.92),
-                  itemCount: cryptoCards.length,
-                  itemBuilder: (context, index) {
-                    final card = cryptoCards[index];
-                    return CryptoStatCard(
-                      title: card['title'],
-                      currentPrice: card['price'],
-                      monthlyData: card['monthly'],
-                      todayData: card['today'],
-                      yearlyData: card['yearly'],
-                    );
-                  },
+            ),
+            const SizedBox(height: 16),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                height: 300, // Or use 32.h if using Sizer
+                child: CryptoPortfolioWidget(
+                  portfolio: [
+                    {
+                      "symbol": "BCH",
+                      "name": "Bitcoin Cash",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "0.00%",
+                      "isPositive": true,
+                      "icon": "https://example.com/bch-icon.png",
+                    },
+                    {
+                      "symbol": "BTC",
+                      "name": "Bitcoin",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "-1.25%",
+                      "isPositive": false,
+                      "icon": "https://example.com/btc-icon.png",
+                    },
+                    {
+                      "symbol": "ETH",
+                      "name": "Ethereum",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "0.75%",
+                      "isPositive": true,
+                      "icon": "https://example.com/eth-icon.png",
+                    },
+                    {
+                      "symbol": "MATIC",
+                      "name": "Polygon",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "-0.50%",
+                      "isPositive": false,
+                      "icon": "https://example.com/matic-icon.png",
+                    },
+                  ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-             
-                  child: CryptoPortfolioWidget(
-                    portfolio: [
-                      {
-                        "symbol": "BCH",
-                        "name": "Bitcoin Cash",
-                        "balance": "0",
-                        "usdValue": "\$0.00",
-                        "change24h": "0.00%",
-                        "isPositive": true,
-                        "icon": "https://example.com/bch-icon.png",
-                      },
-                      {
-                        "symbol": "BTC",
-                        "name": "Bitcoin",
-                        "balance": "0",
-                        "usdValue": "\$0.00",
-                        "change24h": "-1.25%",
-                        "isPositive": false,
-                        "icon": "https://example.com/btc-icon.png",
-                      },
-                      {
-                        "symbol": "ETH",
-                        "name": "Ethereum",
-                        "balance": "0",
-                        "usdValue": "\$0.00",
-                        "change24h": "0.75%",
-                        "isPositive": true,
-                        "icon": "https://example.com/eth-icon.png",
-                      },
-                      {
-                        "symbol": "MATIC",
-                        "name": "Polygon",
-                        "balance": "0",
-                        "usdValue": "\$0.00",
-                        "change24h": "-0.50%",
-                        "isPositive": false,
-                        "icon": "https://example.com/matic-icon.png",
-                      },
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
 }
 
 class CryptoStatCard extends StatelessWidget {
@@ -361,6 +368,7 @@ class CryptoStatCard extends StatelessWidget {
     );
   }
 }
+
 
 class LegendItem extends StatelessWidget {
   final Color color;

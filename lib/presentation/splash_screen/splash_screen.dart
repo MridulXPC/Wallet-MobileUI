@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
@@ -23,8 +22,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   bool _showRetryOption = false;
   bool _isInitializing = true;
-
-  final LocalAuthentication _auth = LocalAuthentication();
 
   @override
   void initState() {
@@ -77,16 +74,8 @@ class _SplashScreenState extends State<SplashScreen>
       final token = prefs.getString('jwt_token');
 
       if (token != null && token.isNotEmpty) {
-        debugPrint("🔐 Token found. Attempting biometric auth...");
-        final bool isAuthenticated = await _authenticateUser();
-
-        if (isAuthenticated) {
-          debugPrint("✅ Biometric success → Dashboard");
-          _navigateToDashboard();
-        } else {
-          debugPrint("❌ Biometric failed → Welcome");
-          _navigateToWelcome();
-        }
+        debugPrint("✅ Token found → Dashboard");
+        _navigateToApplock();
       } else {
         debugPrint("🛑 No token found → Welcome");
         _navigateToWelcome();
@@ -100,28 +89,8 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<bool> _authenticateUser() async {
-    try {
-      final canCheck = await _auth.canCheckBiometrics;
-      final isSupported = await _auth.isDeviceSupported();
-
-      if (canCheck && isSupported) {
-        return await _auth.authenticate(
-          localizedReason: 'Authenticate to access your wallet',
-          options: const AuthenticationOptions(
-            biometricOnly: true,
-            stickyAuth: true,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint("🚨 Biometric error: $e");
-    }
-    return false;
-  }
-
-  void _navigateToDashboard() {
-    Navigator.of(context).pushReplacementNamed(AppRoutes.dashboardScreen);
+  void _navigateToApplock() {
+    Navigator.of(context).pushReplacementNamed(AppRoutes.appLockScreen);
   }
 
   void _navigateToWelcome() {

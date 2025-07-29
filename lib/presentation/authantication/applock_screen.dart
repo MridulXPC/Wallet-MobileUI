@@ -1,5 +1,4 @@
 import 'package:cryptowallet/routes/app_routes.dart';
-import 'package:cryptowallet/services/bio_matric_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,60 +12,38 @@ class AppLockScreen extends StatefulWidget {
 class _AppLockScreenState extends State<AppLockScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _showPassword = false;
-  bool _biometricTried = false;
   String? _storedPassword;
 
   @override
   void initState() {
     super.initState();
-    _attemptBiometricOrFallback();
+    _loadStoredPassword();
   }
 
-Future<void> _attemptBiometricOrFallback() async {
-  final prefs = await SharedPreferences.getInstance();
-  final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-  final savedPassword = prefs.getString('wallet_password');
+  Future<void> _loadStoredPassword() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPassword = prefs.getString('wallet_password');
 
-  if (savedPassword == null || savedPassword.isEmpty) {
-    Navigator.pushReplacementNamed(context, '/wallet-onboarding');
-    return;
-  }
-
-  _storedPassword = savedPassword;
-
-  if (useBiometrics) {
-    final isAvailable = await BiometricHelper.isBiometricAvailable();
-    if (isAvailable) {
-      final success = await BiometricHelper.authenticate();
-      if (success) {
-        Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
-        return;
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Biometric authentication failed')),
-        );
-      }
+    if (savedPassword == null || savedPassword.isEmpty) {
+      Navigator.pushReplacementNamed(context, AppRoutes.welcomeScreen);
     } else {
-      debugPrint('⚠️ Biometrics not available on this device');
+      setState(() {
+        _storedPassword = savedPassword;
+      });
     }
   }
 
-  // Either biometrics not enabled or unavailable
-  setState(() => _biometricTried = true);
-}
-
-
   void _verifyPassword() {
-    if (_passwordController.text.trim() == _storedPassword) {
-    Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Wallet unlocked successfully')),
-      );
-    } else if (_passwordController.text.trim().isEmpty) {
+    final input = _passwordController.text.trim();
+    if (input.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your password')),
       );
-
+    } else if (input == _storedPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Wallet unlocked successfully')),
+      );
+      Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Incorrect password')),
@@ -76,7 +53,7 @@ Future<void> _attemptBiometricOrFallback() async {
 
   @override
   Widget build(BuildContext context) {
-    if (!_biometricTried) {
+    if (_storedPassword == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -101,9 +78,8 @@ Future<void> _attemptBiometricOrFallback() async {
                 labelText: 'Password',
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
-                  icon: Icon(_showPassword
-                      ? Icons.visibility_off
-                      : Icons.visibility),
+                  icon: Icon(
+                      _showPassword ? Icons.visibility_off : Icons.visibility),
                   onPressed: () =>
                       setState(() => _showPassword = !_showPassword),
                 ),

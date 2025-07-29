@@ -1,4 +1,6 @@
+import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
+import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -58,19 +60,33 @@ Future<void> _openQRScanner() async {
   }
 }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: Center(
-        child: ElevatedButton.icon(
-          onPressed: _openQRScanner,
-          icon: const Icon(Icons.qr_code_scanner),
-          label: const Text("Link Web Session"),
-        ),
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(title: const Text('Profile')),
+    body: Center(
+      child: ElevatedButton.icon(
+        onPressed: _openQRScanner,
+        icon: const Icon(Icons.qr_code_scanner),
+        label: const Text("Link Web Session"),
       ),
-    );
-  }
+    ),
+    bottomNavigationBar: BottomNavBar(
+      selectedIndex: 3,
+      onTap: (index) {
+        if (index == 3) return; // Stay on profile
+        Navigator.pushReplacementNamed(
+          context,
+          index == 0
+              ? AppRoutes.dashboardScreen
+              : index == 1
+                  ? AppRoutes.dashboardScreen// Use Wallet route if separate
+                  : AppRoutes.swapScreen,
+        );
+      },
+    ),
+  );
+}
 }
 
 class QRScannerScreen extends StatefulWidget {
@@ -174,6 +190,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ),
         ],
       ),
+   
     );
   }
 }

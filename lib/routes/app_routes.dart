@@ -57,7 +57,7 @@ class AppRoutes {
     sendCrypto: (context) => const SendCryptocurrency(),
     transactionHistory: (context) => const TransactionHistory(),
     tokenDetail: (context) => const TokenDetailScreen(),
-    swapScreen: (context) => const CryptoSwapScreen(),
+    swapScreen: (context) => const SwapScreen(),
 
     // Profile
     profileScreen: (context) => const ProfileScreen(),

@@ -24,7 +24,7 @@ dependencies:
   http: ^1.4.0
   smooth_page_indicator: ^1.2.1
   bip39: ^1.0.6
-  local_auth: ^2.3.0
+
 dev_dependencies: 
   flutter_test: 
     sdk: flutter

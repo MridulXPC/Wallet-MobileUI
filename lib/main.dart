@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:local_auth/local_auth.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
@@ -27,44 +27,19 @@ Future<String> _determineStartRoute() async {
   final prefs = await SharedPreferences.getInstance();
   final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
   final hasPassword = prefs.getString('wallet_password') != null;
-  final useBiometrics = prefs.getBool('use_biometrics') ?? false;
 
-  if (isFirstLaunch) return AppRoutes.welcomeScreen;
+  if (isFirstLaunch) {
+    return AppRoutes.welcomeScreen;
+  }
 
-  if (!hasPassword) return AppRoutes.welcomeScreen;
-
-  final auth = LocalAuthentication();
-
-  try {
-    final isSupported = await auth.isDeviceSupported();
-    final canCheck = await auth.canCheckBiometrics;
-
-    print('🔍 Biometric support: isSupported=$isSupported, canCheck=$canCheck');
-
-    if (useBiometrics && isSupported && canCheck) {
-      final authenticated = await auth.authenticate(
-        localizedReason: 'Please authenticate to access your wallet',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
-      );
-
-      if (authenticated) {
-        return AppRoutes.dashboardScreen;
-      } else {
-        print('❌ Biometric auth failed, fallback to PIN');
-        return AppRoutes.appLockScreen; // fallback screen with password
-      }
-    } else {
-      print('⚠️ Biometrics not available or not enabled, using PIN');
-      return AppRoutes.appLockScreen;
-    }
-  } catch (e) {
-    print('🔥 Biometric error: $e → fallback to PIN');
+  if (hasPassword) {
     return AppRoutes.appLockScreen;
   }
+
+  return AppRoutes.welcomeScreen;
 }
+
+
 
 
 class MyApp extends StatelessWidget {
