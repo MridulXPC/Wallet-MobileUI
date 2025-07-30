@@ -50,20 +50,12 @@ class AssetSelectorWidget extends StatelessWidget {
               child: Row(
                 children: [
                   // Asset Icon
-                  Container(
-                    width: 10.w,
-                    height: 10.w,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: CustomImageWidget(
-                        imageUrl: selectedAsset["icon"] as String,
-                        width: 6.w,
-                        height: 6.w,
-                        fit: BoxFit.contain,
-                      ),
+                  Center(
+                    child: Image.asset(
+                      selectedAsset["icon"] as String,
+                      width: 6.w,
+                      height: 6.w,
+                      fit: BoxFit.contain,
                     ),
                   ),
                   SizedBox(width: 3.w),
@@ -105,7 +97,7 @@ class AssetSelectorWidget extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.darkTheme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Container(
@@ -146,7 +138,7 @@ class AssetSelectorWidget extends StatelessWidget {
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppTheme.primary.withValues(alpha: 0.1)
+                        ? AppTheme.primary.withOpacity(0.1)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
@@ -157,20 +149,12 @@ class AssetSelectorWidget extends StatelessWidget {
                   child: Row(
                     children: [
                       // Asset Icon
-                      Container(
-                        width: 10.w,
-                        height: 10.w,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: CustomImageWidget(
-                            imageUrl: asset["icon"] as String,
-                            width: 6.w,
-                            height: 6.w,
-                            fit: BoxFit.contain,
-                          ),
+                      Center(
+                        child: Image.asset(
+                          asset["icon"] as String,
+                          width: 6.w,
+                          height: 6.w,
+                          fit: BoxFit.contain,
                         ),
                       ),
                       SizedBox(width: 3.w),
@@ -193,7 +177,7 @@ class AssetSelectorWidget extends StatelessWidget {
                         ),
                       ),
 
-                      // Selection Indicator
+                      // Check Icon if selected
                       if (isSelected)
                         CustomIconWidget(
                           iconName: 'check_circle',

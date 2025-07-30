@@ -25,7 +25,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _selectedAssetSymbol = 'BTC';
   double _selectedAssetBalance = 0.5432;
   String _selectedAssetIcon =
-      'https://cryptologos.cc/logos/bitcoin-btc-logo.png';
+      'assets/currencyicons/bitcoin.png';
 
   bool _isAddressValid = false;
   bool _isAmountValid = false;
@@ -36,35 +36,31 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   // Mock cryptocurrency data
   final List<Map<String, dynamic>> _cryptoAssets = [
-    {
-      "name": "Bitcoin",
-      "symbol": "BTC",
-      "balance": 0.5432,
-      "icon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
-      "price": 43250.00,
-    },
-    {
-      "name": "Ethereum",
-      "symbol": "ETH",
-      "balance": 2.1567,
-      "icon": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
-      "price": 2650.00,
-    },
-    {
-      "name": "Cardano",
-      "symbol": "ADA",
-      "balance": 1250.75,
-      "icon": "https://cryptologos.cc/logos/cardano-ada-logo.png",
-      "price": 0.45,
-    },
-    {
-      "name": "Solana",
-      "symbol": "SOL",
-      "balance": 15.8934,
-      "icon": "https://cryptologos.cc/logos/solana-sol-logo.png",
-      "price": 98.50,
-    },
-  ];
+  {
+    "name": "Bitcoin",
+    "symbol": "BTC",
+    "balance": 0.5432,
+    "icon": "assets/currencyicons/bitcoin.png",
+    "price": 43250.00,
+  },
+  {
+    "name": "Ethereum",
+    "symbol": "ETH",
+    "balance": 2.1567,
+    "icon": "assets/currencyicons/ethereum.png",
+    "price": 2650.00,
+  },
+
+  {
+    "name": "Solana",
+    "symbol": "SOL",
+    "balance": 15.8934,
+    "icon": "assets/currencyicons/currency.png",
+    "price": 98.50,
+  },
+];
+
+
 
   @override
   void initState() {
@@ -114,6 +110,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     });
     _validateAmount();
   }
+
 
   void _onMaxPressed() {
     _amountController.text = _selectedAssetBalance.toString();
@@ -389,7 +386,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           centerTitle: true,
         ),
         body: SafeArea(
-          child: Column(
+          child: 
+          Column(
             children: [
               Expanded(
                 child: SingleChildScrollView(
@@ -397,19 +395,22 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(height: 2.h),
+                      SizedBox(height: 1.h),
 
                       // Asset Selector
-                      AssetSelectorWidget(
-                        selectedAsset: _selectedAsset,
-                        selectedAssetSymbol: _selectedAssetSymbol,
-                        selectedAssetBalance: _selectedAssetBalance,
-                        selectedAssetIcon: _selectedAssetIcon,
-                        cryptoAssets: _cryptoAssets,
-                        onAssetSelected: _onAssetSelected,
-                      ),
+                    AssetSelectorWidget(
+  selectedAsset: _selectedAsset,
+  selectedAssetSymbol: _selectedAssetSymbol,
+  selectedAssetBalance: _selectedAssetBalance,
+  selectedAssetIcon: _selectedAssetIcon,
+  cryptoAssets: _cryptoAssets,
+  onAssetSelected: (selected) {
+    _onAssetSelected(selected);
+  },
+),
 
-                      SizedBox(height: 3.h),
+
+                      SizedBox(height: 1.h),
 
                       // Recipient Address
                       RecipientAddressWidget(
@@ -418,7 +419,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         isValid: _isAddressValid,
                       ),
 
-                      SizedBox(height: 3.h),
+                      SizedBox(height: 1.h),
 
                       // Amount Input
                       AmountInputWidget(
@@ -431,7 +432,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onMaxPressed: _onMaxPressed,
                       ),
 
-                      SizedBox(height: 3.h),
+                      SizedBox(height: 1.h),
 
                       // Transaction Fee
                       TransactionFeeWidget(
@@ -441,7 +442,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onFeeTypeChanged: _onFeeTypeChanged,
                       ),
 
-                      SizedBox(height: 3.h),
+                      SizedBox(height: 1.h),
 
                       // Review Section
                       if (_isAddressValid && _isAmountValid) ...[
@@ -453,7 +454,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           networkFee: _networkFee,
                           fiatConversion: _fiatConversion,
                         ),
-                        SizedBox(height: 3.h),
+                        SizedBox(height: 1.h),
                       ],
                     ],
                   ),
@@ -504,6 +505,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ),
             ],
           ),
+      
+      
         ),
       ),
     );

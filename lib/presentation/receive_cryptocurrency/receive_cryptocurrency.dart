@@ -23,7 +23,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
       "id": "bitcoin",
       "name": "Bitcoin",
       "symbol": "BTC",
-      "icon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
+      "icon": "assets/currencyicons/bitcoin.png",
       "balance": "0.00234567",
       "address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
       "network": "Bitcoin",
@@ -33,22 +33,13 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
       "id": "ethereum",
       "name": "Ethereum",
       "symbol": "ETH",
-      "icon": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
+      "icon": "assets/currencyicons/ethereum.png",
       "balance": "1.23456789",
       "address": "0x742d35Cc6634C0532925a3b8D4C2E5e2c8b6c8e3",
       "network": "Ethereum",
       "warning": "Only send Ethereum and ERC-20 tokens to this address"
     },
-    {
-      "id": "binance",
-      "name": "Binance Coin",
-      "symbol": "BNB",
-      "icon": "https://cryptologos.cc/logos/bnb-bnb-logo.png",
-      "balance": "5.67890123",
-      "address": "bnb1grpf0955h0ykzq3ar5nmum7y6gdfl6lxfn46h2",
-      "network": "Binance Smart Chain",
-      "warning": "Only send BNB and BEP-20 tokens to this address"
-    },
+  
   ];
 
   final List<Map<String, dynamic>> recentAddresses = [
@@ -199,15 +190,16 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Asset Selector
-              AssetSelectorWidget(
-                assets: supportedAssets,
-                selectedIndex: selectedAssetIndex,
-                onAssetSelected: (index) {
-                  setState(() {
-                    selectedAssetIndex = index;
-                  });
-                },
-              ),
+             AssetSelectorWidget(
+  assets: supportedAssets,
+  selectedIndex: selectedAssetIndex,
+  onAssetSelected: (index) {
+    setState(() {
+      selectedAssetIndex = index;
+    });
+  },
+),
+
 
               SizedBox(height: 3.h),
 

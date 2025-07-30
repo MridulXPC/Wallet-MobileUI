@@ -47,17 +47,17 @@ late final Timer _timer;
 @override
 void initState() {
   super.initState();
-  _pageController = PageController(viewportFraction: 0.92);
+  _pageController = PageController(viewportFraction: 0.98);
 
-  _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
+  _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
     if (_pageController.hasClients) {
       _currentPage++;
-      if (_currentPage >= 3) _currentPage = 0;
+      if (_currentPage >= 4) _currentPage = 0;
 
       _pageController.animateToPage(
         _currentPage,
         duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
+        curve: Curves.bounceIn,
       );
     }
   });
@@ -131,7 +131,14 @@ void dispose() {
       'yearly': List.generate(12, (i) => 3200 + Random().nextDouble() * 200),
     },
     {
-      'title': 'Polygon',
+      'title': 'Matic',
+      'price': 0.98,
+      'monthly': List.generate(30, (i) => 0.9 + Random().nextDouble() * 0.1),
+      'today': List.generate(24, (i) => 0.95 + Random().nextDouble() * 0.05),
+      'yearly': List.generate(12, (i) => 0.8 + Random().nextDouble() * 0.2),
+    },
+       {
+      'title': 'Trx',
       'price': 0.98,
       'monthly': List.generate(30, (i) => 0.9 + Random().nextDouble() * 0.1),
       'today': List.generate(24, (i) => 0.95 + Random().nextDouble() * 0.05),
@@ -150,53 +157,45 @@ Widget build(BuildContext context) {
 ),
 
     body: SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            VaultHeaderCard(
-              totalValue: _totalValue,
-              vaultName: _vaultName,
-              onTap: _showWalletOptionsSheet,
-            ),
-            const SizedBox(height: 8),
-
-            SizedBox(
-              height: 56.h,
-              child: PageView.builder(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: cryptoCards.length,
-                itemBuilder: (context, index) {
-                  final card = cryptoCards[index];
-                  return CryptoStatCard(
-                    title: card['title'],
-                    currentPrice: card['price'],
-                    monthlyData: card['monthly'],
-                    todayData: card['today'],
-                    yearlyData: card['yearly'],
-                  );
-                },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              VaultHeaderCard(
+                totalValue: _totalValue,
+                vaultName: _vaultName,
+                onTap: _showWalletOptionsSheet,
               ),
-            ),
-            const SizedBox(height: 16),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                height: 300, // Or use 32.h if using Sizer
+          
+        
+              SizedBox(
+                height: 55.h,
+                child: PageView.builder(
+                  controller: _pageController,
+              
+                  itemCount: cryptoCards.length,
+                  itemBuilder: (context, index) {
+                    final card = cryptoCards[index];
+                    return CryptoStatCard(
+                      title: card['title'],
+                      currentPrice: card['price'],
+                      monthlyData: card['monthly'],
+                      todayData: card['today'],
+                      yearlyData: card['yearly'], iconPath: 'assets/currencyicons/${card['title'].toLowerCase()}.png',
+                    );
+                  },
+                ),
+              ),
+          
+        
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: CryptoPortfolioWidget(
                   portfolio: [
-                    {
-                      "symbol": "BCH",
-                      "name": "Bitcoin Cash",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "0.00%",
-                      "isPositive": true,
-                      "icon": "https://example.com/bch-icon.png",
-                    },
+                  
                     {
                       "symbol": "BTC",
                       "name": "Bitcoin",
@@ -204,7 +203,7 @@ Widget build(BuildContext context) {
                       "usdValue": "\$0.00",
                       "change24h": "-1.25%",
                       "isPositive": false,
-                      "icon": "https://example.com/btc-icon.png",
+                      "icon": "assets/currencyicons/bitcoin.png",
                     },
                     {
                       "symbol": "ETH",
@@ -213,7 +212,7 @@ Widget build(BuildContext context) {
                       "usdValue": "\$0.00",
                       "change24h": "0.75%",
                       "isPositive": true,
-                      "icon": "https://example.com/eth-icon.png",
+                      "icon": "assets/currencyicons/ethereum.png",
                     },
                     {
                       "symbol": "MATIC",
@@ -222,13 +221,36 @@ Widget build(BuildContext context) {
                       "usdValue": "\$0.00",
                       "change24h": "-0.50%",
                       "isPositive": false,
-                      "icon": "https://example.com/matic-icon.png",
+                      "icon": "assets/currencyicons/matic.png",
                     },
+                      {
+                      "symbol": "BCH",
+                      "name": "Bitcoin Cash",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "0.00%",
+                      "isPositive": true,
+                      "icon": "assets/currencyicons/bitcoin-cash.png",
+                    },
+                    {
+                      "symbol": "TRX",
+                      "name": "Tron",
+                      "balance": "0",
+                      "usdValue": "\$0.00",
+                      "change24h": "-0.25%",
+                      "isPositive": false,
+                      "icon": "assets/currencyicons/trx.png",
+                    },
+
                   ],
                 ),
+             
+             
               ),
-            ),
-          ],
+           
+           
+            ],
+          ),
         ),
       ),
     ),
@@ -237,12 +259,15 @@ Widget build(BuildContext context) {
 
 }
 
+
+
 class CryptoStatCard extends StatelessWidget {
   final String title;
   final double currentPrice;
   final List<double> monthlyData;
   final List<double> todayData;
   final List<double> yearlyData;
+  final String iconPath; // ✅ New: path to the icon asset
 
   const CryptoStatCard({
     super.key,
@@ -251,6 +276,7 @@ class CryptoStatCard extends StatelessWidget {
     required this.monthlyData,
     required this.todayData,
     required this.yearlyData,
+    required this.iconPath,
   });
 
   List<FlSpot> generateSpots(List<double> prices) {
@@ -283,6 +309,7 @@ class CryptoStatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -292,16 +319,39 @@ class CryptoStatCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text('\$${currentPrice.toStringAsFixed(2)}',
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          
+          // Price + Icon
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                iconPath,
+                width: 32,
+                height: 32,
+                errorBuilder: (_, __, ___) => const Icon(Icons.currency_bitcoin, color: Colors.white),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '\$${currentPrice.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 4),
           const Text('▲74.99% (+\$51,176.67)',
               style: TextStyle(color: Colors.white, fontSize: 14)),
           const SizedBox(height: 8),
+
+          // Chart
           SizedBox(
             height: 80,
-            child: LineChart(
+            child:
+             LineChart(
               LineChartData(
                 lineBarsData: [
                   LineChartBarData(
@@ -334,8 +384,14 @@ class CryptoStatCard extends StatelessWidget {
                 lineTouchData: LineTouchData(enabled: false),
               ),
             ),
+       
+       
           ),
+       
+       
           const SizedBox(height: 8),
+
+          // Legend
           const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -346,6 +402,7 @@ class CryptoStatCard extends StatelessWidget {
               LegendItem(color: Colors.yellowAccent, label: 'Yearly'),
             ],
           ),
+
           const SizedBox(height: 8),
           Text(
             'Start investing – buy your first $title now!',
@@ -353,6 +410,8 @@ class CryptoStatCard extends StatelessWidget {
                 color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
+
+          // Amount Buttons
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -362,13 +421,14 @@ class CryptoStatCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
+
+          // Actions
           const ActionButtonsGridWidget(),
         ],
       ),
     );
   }
 }
-
 
 class LegendItem extends StatelessWidget {
   final Color color;

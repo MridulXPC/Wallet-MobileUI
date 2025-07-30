@@ -24,6 +24,8 @@ dependencies:
   http: ^1.4.0
   smooth_page_indicator: ^1.2.1
   bip39: ^1.0.6
+  syncfusion_flutter_charts: ^29.1.38
+  graphic: ^2.6.0
 
 dev_dependencies: 
   flutter_test: 
@@ -33,4 +35,5 @@ flutter:
   uses-material-design: true
   assets: 
     - assets/
-    - assets/images/
+
+    - assets/currencyicons/

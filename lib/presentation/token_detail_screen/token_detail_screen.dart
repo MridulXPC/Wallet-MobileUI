@@ -174,22 +174,16 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
       padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: Row(
         children: [
-          Container(
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+            tokenData!["icon"] ?? 'assets/icons/placeholder.png',
             width: 16.w,
             height: 16.w,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CustomImageWidget(
-                imageUrl: tokenData!["icon"] as String,
-                width: 16.w,
-                height: 16.w,
-                fit: BoxFit.cover,
-              ),
-            ),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.error, color: Colors.white),
+          ),
+          
           ),
           SizedBox(width: 4.w),
           Expanded(
@@ -216,4 +210,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen> {
       ),
     );
   }
+
+
+
 }

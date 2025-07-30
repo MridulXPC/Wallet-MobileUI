@@ -25,7 +25,7 @@ class AssetSelectorWidget extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Container(
@@ -33,14 +33,6 @@ class AssetSelectorWidget extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 12.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: AppTheme.dividerDark,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
             SizedBox(height: 2.h),
             Text(
               'Select Asset',
@@ -50,37 +42,35 @@ class AssetSelectorWidget extends StatelessWidget {
               ),
             ),
             SizedBox(height: 2.h),
-            Container(
-              decoration: BoxDecoration(
-                color: AppTheme.background,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextField(
-                style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.textHighEmphasis,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Search assets...',
-                  hintStyle: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textDisabled,
-                  ),
-                  prefixIcon: CustomIconWidget(
-                    iconName: 'search',
-                    color: AppTheme.textMediumEmphasis,
-                    size: 20,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                ),
-              ),
-            ),
+          TextField(
+  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+    color: Colors.white, // White text input
+  ),
+  decoration: InputDecoration(
+    hintText: 'Search assets...',
+    hintStyle: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+      color: Colors.white70, // White hint text with opacity
+    ),
+    prefixIcon: CustomIconWidget(
+      iconName: 'search',
+      color: Colors.white70, // White icon with opacity
+      size: 20,
+    ),
+    border: InputBorder.none,
+    fillColor: Colors.transparent, // Transparent background
+    filled: true, // Enable fill to apply transparent color
+    contentPadding: EdgeInsets.symmetric(
+      horizontal: 4.w,
+      vertical: 2.h,
+    ),
+  ),
+),
             SizedBox(height: 2.h),
             Flexible(
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: cryptoAssets.length,
-                separatorBuilder: (context, index) => Divider(
+                separatorBuilder: (_, __) => Divider(
                   color: AppTheme.dividerDark,
                   height: 1,
                 ),
@@ -90,23 +80,14 @@ class AssetSelectorWidget extends StatelessWidget {
                       (asset["symbol"] as String) == selectedAssetSymbol;
 
                   return ListTile(
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
-                    leading: Container(
-                      width: 10.w,
-                      height: 10.w,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppTheme.background,
-                      ),
-                      child: ClipOval(
-                        child: CustomImageWidget(
-                          imageUrl: asset["icon"] as String,
-                          width: 10.w,
-                          height: 10.w,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 2.w,
+                      vertical: 1.h,
+                    ),
+                    leading: CircleAvatar(
+                      radius: 5.w,
+                      backgroundColor: Colors.transparent,
+                      backgroundImage: AssetImage(asset["icon"] as String),
                     ),
                     title: Text(
                       asset["name"] as String,
@@ -127,23 +108,23 @@ class AssetSelectorWidget extends StatelessWidget {
                       children: [
                         Text(
                           (asset["balance"] as double).toStringAsFixed(4),
-                          style:
-                              AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
+                          style: AppTheme.darkTheme.textTheme.titleSmall
+                              ?.copyWith(
                             color: AppTheme.textHighEmphasis,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         Text(
                           '\$${((asset["balance"] as double) * (asset["price"] as double)).toStringAsFixed(2)}',
-                          style:
-                              AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
+                          style: AppTheme.darkTheme.textTheme.bodySmall
+                              ?.copyWith(
                             color: AppTheme.textMediumEmphasis,
                           ),
                         ),
                       ],
                     ),
                     selected: isSelected,
-                    selectedTileColor: AppTheme.primary.withValues(alpha: 0.1),
+                    selectedTileColor: AppTheme.primary.withOpacity(0.1),
                     onTap: () {
                       onAssetSelected(asset);
                       Navigator.of(context).pop();
@@ -187,21 +168,10 @@ class AssetSelectorWidget extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 12.w,
-                  height: 12.w,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppTheme.background,
-                  ),
-                  child: ClipOval(
-                    child: CustomImageWidget(
-                      imageUrl: selectedAssetIcon,
-                      width: 12.w,
-                      height: 12.w,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+                CircleAvatar(
+                  radius: 6.w,
+                  backgroundImage: AssetImage(selectedAssetIcon),
+                  backgroundColor: Colors.transparent,
                 ),
                 SizedBox(width: 3.w),
                 Expanded(
