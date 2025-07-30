@@ -24,8 +24,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _selectedAsset = 'Bitcoin';
   String _selectedAssetSymbol = 'BTC';
   double _selectedAssetBalance = 0.5432;
-  String _selectedAssetIcon =
-      'assets/currencyicons/bitcoin.png';
+  String _selectedAssetIcon = 'assets/currencyicons/bitcoin.png';
 
   bool _isAddressValid = false;
   bool _isAmountValid = false;
@@ -36,31 +35,28 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   // Mock cryptocurrency data
   final List<Map<String, dynamic>> _cryptoAssets = [
-  {
-    "name": "Bitcoin",
-    "symbol": "BTC",
-    "balance": 0.5432,
-    "icon": "assets/currencyicons/bitcoin.png",
-    "price": 43250.00,
-  },
-  {
-    "name": "Ethereum",
-    "symbol": "ETH",
-    "balance": 2.1567,
-    "icon": "assets/currencyicons/ethereum.png",
-    "price": 2650.00,
-  },
-
-  {
-    "name": "Solana",
-    "symbol": "SOL",
-    "balance": 15.8934,
-    "icon": "assets/currencyicons/currency.png",
-    "price": 98.50,
-  },
-];
-
-
+    {
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "balance": 0.5432,
+      "icon": "assets/currencyicons/bitcoin.png",
+      "price": 43250.00,
+    },
+    {
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "balance": 2.1567,
+      "icon": "assets/currencyicons/ethereum.png",
+      "price": 2650.00,
+    },
+    {
+      "name": "Solana",
+      "symbol": "SOL",
+      "balance": 15.8934,
+      "icon": "assets/currencyicons/currency.png",
+      "price": 98.50,
+    },
+  ];
 
   @override
   void initState() {
@@ -110,7 +106,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     });
     _validateAmount();
   }
-
 
   void _onMaxPressed() {
     _amountController.text = _selectedAssetBalance.toString();
@@ -386,8 +381,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           centerTitle: true,
         ),
         body: SafeArea(
-          child: 
-          Column(
+          child: Column(
             children: [
               Expanded(
                 child: SingleChildScrollView(
@@ -398,17 +392,16 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                       SizedBox(height: 1.h),
 
                       // Asset Selector
-                    AssetSelectorWidget(
-  selectedAsset: _selectedAsset,
-  selectedAssetSymbol: _selectedAssetSymbol,
-  selectedAssetBalance: _selectedAssetBalance,
-  selectedAssetIcon: _selectedAssetIcon,
-  cryptoAssets: _cryptoAssets,
-  onAssetSelected: (selected) {
-    _onAssetSelected(selected);
-  },
-),
-
+                      AssetSelectorWidget(
+                        selectedAsset: _selectedAsset,
+                        selectedAssetSymbol: _selectedAssetSymbol,
+                        selectedAssetBalance: _selectedAssetBalance,
+                        selectedAssetIcon: _selectedAssetIcon,
+                        cryptoAssets: _cryptoAssets,
+                        onAssetSelected: (selected) {
+                          _onAssetSelected(selected);
+                        },
+                      ),
 
                       SizedBox(height: 1.h),
 
@@ -505,8 +498,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ),
             ],
           ),
-      
-      
         ),
       ),
     );
