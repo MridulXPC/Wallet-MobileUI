@@ -4,7 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 
-class AmountInputWidget extends StatelessWidget {
+class AmountInputWidget extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final String selectedAssetSymbol;
@@ -25,9 +25,73 @@ class AmountInputWidget extends StatelessWidget {
   });
 
   @override
+  State<AmountInputWidget> createState() => _AmountInputWidgetState();
+}
+
+class _AmountInputWidgetState extends State<AmountInputWidget> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen to text changes to rebuild the widget
+    widget.controller.addListener(_onTextChanged);
+    widget.focusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    widget.focusNode.removeListener(_onFocusChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    setState(() {
+      // This will trigger a rebuild when text changes
+    });
+  }
+
+  void _onFocusChanged() {
+    setState(() {
+      // This will trigger a rebuild when focus changes
+    });
+  }
+
+  Color _getBorderColor() {
+    final amount = double.tryParse(widget.controller.text) ?? 0.0;
+    final hasInsufficientBalance = amount > widget.selectedAssetBalance;
+    final hasFocus = widget.focusNode.hasFocus;
+
+    print('controller.text: "${widget.controller.text}"');
+    print('hasInsufficientBalance: $hasInsufficientBalance');
+    print('isValid: ${widget.isValid}');
+    print('hasFocus: $hasFocus');
+
+    if (widget.controller.text.isNotEmpty) {
+      if (hasInsufficientBalance) {
+        print('Using error color');
+        return AppTheme.error;
+      } else if (widget.isValid) {
+        print('Using info color');
+        return AppTheme.info;
+      } else {
+        print('Using dividerDark color');
+        return AppTheme.dividerDark;
+      }
+    } else {
+      if (hasFocus) {
+        print('Using info color (focused)');
+        return AppTheme.info;
+      } else {
+        print('Using dividerDark color (empty text)');
+        return AppTheme.dividerDark;
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final amount = double.tryParse(controller.text) ?? 0.0;
-    final hasInsufficientBalance = amount > selectedAssetBalance;
+    final amount = double.tryParse(widget.controller.text) ?? 0.0;
+    final hasInsufficientBalance = amount > widget.selectedAssetBalance;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -35,98 +99,94 @@ class AmountInputWidget extends StatelessWidget {
         Text(
           'Amount',
           style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.textHighEmphasis,
+            color: AppTheme.background,
             fontWeight: FontWeight.w500,
           ),
         ),
         SizedBox(height: 1.h),
         Container(
           decoration: BoxDecoration(
-            color: AppTheme.surface,
+                  boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+            color: AppTheme.onSurface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: controller.text.isNotEmpty
-                  ? (hasInsufficientBalance
-                      ? AppTheme.error
-                      : isValid
-                          ? AppTheme.success
-                          : AppTheme.dividerDark)
-                  : AppTheme.dividerDark,
+              color: _getBorderColor(),
               width: 1,
             ),
           ),
           child: Column(
             children: [
               TextField(
-                controller: controller,
-                focusNode: focusNode,
+                controller: widget.controller,
+                focusNode: widget.focusNode,
                 style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-                  color: AppTheme.textHighEmphasis,
+                  color: AppTheme.background,
                   fontWeight: FontWeight.w600,
                 ),
-           decoration: InputDecoration(
-  hintText: '0.00',
-  hintStyle: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-    color: AppTheme.textDisabled,
-    fontWeight: FontWeight.w600,
-  ),
-  border: InputBorder.none,
-  filled: true,
-  fillColor: Colors.transparent, // ✅ Transparent background
-  contentPadding: EdgeInsets.fromLTRB(4.w, 3.h, 4.w, 1.h),
-  suffixIcon: Padding(
-    padding: EdgeInsets.only(right: 4.w, top: 2.h),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          selectedAssetSymbol,
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.textMediumEmphasis,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        SizedBox(height: 1.h),
-        GestureDetector(
-          onTap: onMaxPressed,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withAlpha(51), // ~20% opacity
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'MAX',
-              style: AppTheme.darkTheme.textTheme.labelSmall?.copyWith(
-                color: AppTheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  ),
-),
-
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  hintText: '0.00',
+                  hintStyle: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
+                    color: AppTheme.background,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  border: InputBorder.none,
+                  filled: true,
+                  fillColor: Colors.transparent,
+                  contentPadding: EdgeInsets.fromLTRB(4.w, 3.h, 4.w, 1.h),
+                  suffixIcon: Padding(
+                    padding: EdgeInsets.only(right: 4.w, top: 2.h),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.selectedAssetSymbol,
+                          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                            color: AppTheme.background,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 1.h),
+                        GestureDetector(
+                          onTap: widget.onMaxPressed,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                            decoration: BoxDecoration(
+                              color: AppTheme.info,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'MAX',
+                              style: AppTheme.darkTheme.textTheme.labelSmall?.copyWith(
+                                color: AppTheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                 ],
                 textInputAction: TextInputAction.done,
               ),
-         
-         
-         
-              if (fiatConversion > 0) ...[
+              if (widget.fiatConversion > 0) ...[
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.fromLTRB(4.w, 0, 4.w, 2.h),
                   child: Text(
-                    '≈ \$${fiatConversion.toStringAsFixed(2)} USD',
+                    '≈ \$${widget.fiatConversion.toStringAsFixed(2)} USD',
                     style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textMediumEmphasis,
+                      color: AppTheme.background,
                     ),
                   ),
                 ),
@@ -159,9 +219,9 @@ class AmountInputWidget extends StatelessWidget {
               SizedBox.shrink(),
             ],
             Text(
-              'Available: ${selectedAssetBalance.toStringAsFixed(4)} $selectedAssetSymbol',
+              'Available: ${widget.selectedAssetBalance.toStringAsFixed(4)} ${widget.selectedAssetSymbol}',
               style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.textMediumEmphasis,
+                color: AppTheme.background,
               ),
             ),
           ],

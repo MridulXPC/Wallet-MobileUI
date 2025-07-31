@@ -18,9 +18,16 @@ class AddressDisplayWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       decoration: BoxDecoration(
-        color: AppTheme.darkTheme.colorScheme.surface,
+                    boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+        color: AppTheme.onSurface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -31,20 +38,20 @@ class AddressDisplayWidget extends StatelessWidget {
             children: [
               Text(
                 'Wallet Address',
-                style: AppTheme.darkTheme.textTheme.titleMedium,
+                style: AppTheme.lightTheme.textTheme.titleMedium,
               ),
               IconButton(
                 onPressed: onRefresh,
                 icon: CustomIconWidget(
                   iconName: 'refresh',
-                  color: AppTheme.primary,
+                  color: AppTheme.info,
                   size: 20,
                 ),
                 tooltip: 'Generate new address',
               ),
             ],
           ),
-          SizedBox(height: 2.h),
+       
 
           // Address Container
           Container(
@@ -53,7 +60,7 @@ class AddressDisplayWidget extends StatelessWidget {
               color: AppTheme.darkTheme.scaffoldBackgroundColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppTheme.darkTheme.colorScheme.outline,
+                color: AppTheme.lightTheme.colorScheme.outline,
                 width: 1,
               ),
             ),
@@ -79,16 +86,16 @@ class AddressDisplayWidget extends StatelessWidget {
                     onPressed: onCopy,
                     icon: CustomIconWidget(
                       iconName: 'content_copy',
-                      color: AppTheme.primary,
+                      color: AppTheme.info,
                       size: 18,
                     ),
                     label: Text(
                       'Copy Address',
-                      style: AppTheme.darkTheme.textTheme.labelLarge?.copyWith(
-                        color: AppTheme.primary,
+                      style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                        color: AppTheme.info,
                       ),
                     ),
-                    style: AppTheme.darkTheme.outlinedButtonTheme.style,
+                 
                   ),
                 ),
               ],
@@ -102,14 +109,14 @@ class AddressDisplayWidget extends StatelessWidget {
             children: [
               CustomIconWidget(
                 iconName: 'info_outline',
-                color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+                color: AppTheme.info,
                 size: 16,
               ),
               SizedBox(width: 2.w),
               Expanded(
                 child: Text(
                   'This address can be used multiple times. Tap refresh for a new address.',
-                  style: AppTheme.darkTheme.textTheme.bodySmall,
+                  style: AppTheme.lightTheme.textTheme.bodySmall,
                 ),
               ),
             ],

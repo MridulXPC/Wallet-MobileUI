@@ -20,6 +20,7 @@ class AppTheme {
   static const Color error = Color(0xFFFF5252); // Error indication
   static const Color warning = Color(0xFFFFC107); // Warning states
   static const Color success = Color(0xFF4CAF50); // Success confirmation
+  static const Color info = Color(0xFF2196F3); // Informational messages
 
   // Additional colors for crypto app functionality
   static const Color cardDark = Color(0xFF2A2A2A);

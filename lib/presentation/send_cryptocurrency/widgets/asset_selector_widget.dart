@@ -148,7 +148,7 @@ class AssetSelectorWidget extends StatelessWidget {
         Text(
           'Asset',
           style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.textHighEmphasis,
+            color: AppTheme.background,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -157,9 +157,16 @@ class AssetSelectorWidget extends StatelessWidget {
           onTap: () => _showAssetSelector(context),
           child: Container(
             width: double.infinity,
-            padding: EdgeInsets.all(4.w),
+            padding: EdgeInsets.all(2.w),
             decoration: BoxDecoration(
-              color: AppTheme.surface,
+                    boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+              color: AppTheme.onSurface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: AppTheme.dividerDark,
@@ -182,14 +189,14 @@ class AssetSelectorWidget extends StatelessWidget {
                         selectedAsset,
                         style:
                             AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                          color: AppTheme.textHighEmphasis,
+                          color: AppTheme.background,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       Text(
                         'Balance: ${selectedAssetBalance.toStringAsFixed(4)} $selectedAssetSymbol',
                         style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textMediumEmphasis,
+                          color: AppTheme.background,
                         ),
                       ),
                     ],
@@ -197,7 +204,7 @@ class AssetSelectorWidget extends StatelessWidget {
                 ),
                 CustomIconWidget(
                   iconName: 'keyboard_arrow_down',
-                  color: AppTheme.textMediumEmphasis,
+                  color: AppTheme.background,
                   size: 24,
                 ),
               ],

@@ -19,77 +19,70 @@ class AssetSelectorWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final selectedAsset = assets[selectedIndex];
 
-    return Container(
-      padding: EdgeInsets.all(4.w),
-      decoration: BoxDecoration(
-        color: AppTheme.darkTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Select Asset',
-            style: AppTheme.darkTheme.textTheme.titleMedium,
-          ),
-          SizedBox(height: 2.h),
-
-          // Selected Asset Display
-          GestureDetector(
-            onTap: () => _showAssetSelector(context),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-              decoration: BoxDecoration(
-                color: AppTheme.darkTheme.scaffoldBackgroundColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.darkTheme.colorScheme.outline,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Asset Icon
-                  Center(
-                    child: Image.asset(
-                      selectedAsset["icon"] as String,
-                      width: 6.w,
-                      height: 6.w,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  SizedBox(width: 3.w),
-
-                  // Asset Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          selectedAsset["name"] as String,
-                          style: AppTheme.darkTheme.textTheme.titleMedium,
-                        ),
-                        SizedBox(height: 0.5.h),
-                        Text(
-                          'Balance: ${selectedAsset["balance"]} ${selectedAsset["symbol"]}',
-                          style: AppTheme.darkTheme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Dropdown Arrow
-                  CustomIconWidget(
-                    iconName: 'keyboard_arrow_down',
-                    color: AppTheme.darkTheme.colorScheme.onSurface,
-                    size: 24,
-                  ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Select Asset',
+          style: AppTheme.darkTheme.textTheme.titleMedium,
+        ),
+     
+    
+        // Selected Asset Display
+        GestureDetector(
+          onTap: () => _showAssetSelector(context),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+            decoration: BoxDecoration(
+              color: AppTheme.darkTheme.scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.darkTheme.colorScheme.outline,
+                width: 1,
               ),
             ),
+            child: Row(
+              children: [
+                // Asset Icon
+                Center(
+                  child: Image.asset(
+                    selectedAsset["icon"] as String,
+                    width: 8.w,
+                    height: 8.w,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                SizedBox(width: 3.w),
+    
+                // Asset Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedAsset["name"] as String,
+                        style: AppTheme.darkTheme.textTheme.titleMedium,
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Balance: ${selectedAsset["balance"]} ${selectedAsset["symbol"]}',
+                        style: AppTheme.darkTheme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+    
+                // Dropdown Arrow
+                CustomIconWidget(
+                  iconName: 'keyboard_arrow_down',
+                  color: AppTheme.darkTheme.colorScheme.onSurface,
+                  size: 24,
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

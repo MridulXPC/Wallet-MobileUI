@@ -354,9 +354,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: AppTheme.background,
+        backgroundColor: AppTheme.onSurface,
         appBar: AppBar(
-          backgroundColor: AppTheme.background,
+          backgroundColor: AppTheme.onSurface,
           elevation: 0,
           leading: IconButton(
             onPressed: () async {
@@ -367,14 +367,14 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             },
             icon: CustomIconWidget(
               iconName: 'close',
-              color: AppTheme.textHighEmphasis,
+              color: AppTheme.background,
               size: 24,
             ),
           ),
           title: Text(
             'Send',
             style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-              color: AppTheme.textHighEmphasis,
+              color: AppTheme.background,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -389,7 +389,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(height: 1.h),
+         
 
                       // Asset Selector
                       AssetSelectorWidget(
@@ -403,7 +403,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         },
                       ),
 
-                      SizedBox(height: 1.h),
+               SizedBox(height: 1.h),
 
                       // Recipient Address
                       RecipientAddressWidget(
@@ -412,7 +412,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         isValid: _isAddressValid,
                       ),
 
-                      SizedBox(height: 1.h),
+                  SizedBox(height: 1.h),
 
                       // Amount Input
                       AmountInputWidget(
@@ -425,8 +425,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onMaxPressed: _onMaxPressed,
                       ),
 
-                      SizedBox(height: 1.h),
 
+  SizedBox(height: 1.h),
                       // Transaction Fee
                       TransactionFeeWidget(
                         selectedFeeType: _feeType,
@@ -435,7 +435,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onFeeTypeChanged: _onFeeTypeChanged,
                       ),
 
-                      SizedBox(height: 1.h),
+          
 
                       // Review Section
                       if (_isAddressValid && _isAmountValid) ...[
@@ -455,47 +455,60 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ),
 
               // Send Button
-              Container(
-                padding: EdgeInsets.all(4.w),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 6.h,
-                  child: ElevatedButton(
-                    onPressed: _isFormValid() ? _onSendPressed : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          _isFormValid() ? AppTheme.primary : AppTheme.surface,
-                      foregroundColor: _isFormValid()
-                          ? AppTheme.onPrimary
-                          : AppTheme.textDisabled,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  AppTheme.onPrimary),
-                            ),
-                          )
-                        : Text(
-                            'Send',
-                            style: AppTheme.darkTheme.textTheme.titleMedium
-                                ?.copyWith(
-                              color: _isFormValid()
-                                  ? AppTheme.onPrimary
-                                  : AppTheme.textDisabled,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
+       Container(
+  padding: EdgeInsets.all(4.w),
+  child: SizedBox(
+    width: double.infinity,
+    height: 6.h,
+    child: Container(
+      decoration: BoxDecoration(
+              boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+        gradient: LinearGradient(
+          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ElevatedButton(
+        onPressed: _onSendPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: AppTheme.onPrimary,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: _isLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.onPrimary),
+                ),
+              )
+            : Text(
+                'Send',
+                style: AppTheme.darkTheme.textTheme.titleMedium
+                    ?.copyWith(
+                  color: AppTheme.onSurface,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+      ),
+    ),
+  ),
+),
             ],
           ),
         ),

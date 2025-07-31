@@ -27,25 +27,50 @@ Future<void> _openQRScanner() async {
           onScan: (code) async {
             debugPrint('📦 Scanned session ID: $code');
 
-            const String token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODVkMWM2YzZhYmViZTYwZDAxNDBiZGYiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzUzNzAyNjI0fQ.Fb1nmbGxMxmE2NruJKkwmBb_253wh07Pghe5vVuqWjY'; // Replace with actual secure token
+            try {
+              // Get token from storage instead of hardcoding
+              final token = await AuthService.getStoredToken();
+              
+              if (token == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ Authentication required. Please login first.'),
+                  ),
+                );
+                Navigator.pop(context);
+                return;
+              }
 
-            final result = await AuthService.authorizeWebSession(
-              sessionId: code,
-              token: token,
-            );
+              final result = await AuthService.authorizeWebSession(
+                sessionId: code,
+                token: token,
+              );
 
-            if (result) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SessionInfoScreen(sessionId: code),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('❌ Failed to authorize session')),
-              );
-              Navigator.pop(context);
+              if (result.success && mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SessionInfoScreen(sessionId: code),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result.message ?? '❌ Failed to authorize session'),
+                  ),
+                );
+                Navigator.pop(context);
+              }
+            } catch (e) {
+              debugPrint('❌ Authorization error: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ An error occurred during authorization'),
+                  ),
+                );
+                Navigator.pop(context);
+              }
             }
           },
         ),
@@ -59,7 +84,6 @@ Future<void> _openQRScanner() async {
     );
   }
 }
-
 @override
 Widget build(BuildContext context) {
   return Scaffold(

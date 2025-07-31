@@ -23,7 +23,7 @@ class QRCodeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(1.w),
       decoration: BoxDecoration(
         color: AppTheme.darkTheme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -34,14 +34,14 @@ class QRCodeWidget extends StatelessWidget {
             'QR Code',
             style: AppTheme.darkTheme.textTheme.titleMedium,
           ),
-          SizedBox(height: 2.h),
+          SizedBox(height: 1.h),
 
           // QR Code Container
           GestureDetector(
             onLongPress: _showSaveOptions,
             child: Container(
-              width: 60.w,
-              height: 60.w,
+              width: 40.w,
+              height: 40.w,
               padding: EdgeInsets.all(4.w),
               decoration: BoxDecoration(
                 color: isHighContrast ? Colors.black : Colors.white,

@@ -267,7 +267,7 @@ class CryptoStatCard extends StatelessWidget {
   final List<double> monthlyData;
   final List<double> todayData;
   final List<double> yearlyData;
-  final String iconPath; // ✅ New: path to the icon asset
+  final String iconPath;
 
   const CryptoStatCard({
     super.key,
@@ -295,157 +295,288 @@ class CryptoStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = screenWidth > 600;
+    final isLargeScreen = screenWidth > 900;
+    
+    // Responsive dimensions
+    final cardPadding = isLargeScreen ? 24.0 : isTablet ? 20.0 : 16.0;
+    final borderRadius = isLargeScreen ? 24.0 : isTablet ? 22.0 : 20.0;
+    final iconSize = isLargeScreen ? 40.0 : isTablet ? 36.0 : 32.0;
+    final priceTextSize = isLargeScreen ? 32.0 : isTablet ? 30.0 : 28.0;
+    final chartHeight = isLargeScreen ? 100.0 : isTablet ? 90.0 : 80.0;
+    
+    // Responsive margins
+    final horizontalMargin = screenWidth * 0.02; // 2% of screen width
+    final verticalMargin = screenHeight * 0.015; // 1.5% of screen height
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.symmetric(
+        horizontal: horizontalMargin.clamp(8.0, 20.0),
+        vertical: verticalMargin.clamp(8.0, 16.0),
+      ),
+      padding: EdgeInsets.all(cardPadding),
       decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: const Color.fromARGB(31, 0, 0, 0),
+            blurRadius: isLargeScreen ? 8 : 6,
+            offset: Offset(isLargeScreen ? 10 : 8, isLargeScreen ? 10 : 8),
+          )
+        ],
         gradient: const LinearGradient(
           colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(borderRadius),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Top Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('$title price',
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
-              const Icon(Icons.qr_code_scanner, color: Colors.white),
-            ],
-          ),
-          const SizedBox(height: 8),
-          
-          // Price + Icon
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Image.asset(
-                iconPath,
-                width: 32,
-                height: 32,
-                errorBuilder: (_, __, ___) => const Icon(Icons.currency_bitcoin, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '\$${currentPrice.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 4),
-          const Text('▲74.99% (+\$51,176.67)',
-              style: TextStyle(color: Colors.white, fontSize: 14)),
-          const SizedBox(height: 8),
-
-          // Chart
-          SizedBox(
-            height: 80,
-            child:
-             LineChart(
-              LineChartData(
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: generateSpots(monthlyData),
-                    isCurved: true,
-                    color: Colors.orange,
-                    barWidth: 2,
-                    dotData: FlDotData(show: false),
+              // Top Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      '$title price',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isLargeScreen ? 16 : isTablet ? 15 : 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                  LineChartBarData(
-                    spots: generateSpots(todayData),
-                    isCurved: true,
-                    color: Colors.green,
-                    barWidth: 2,
-                    dotData: FlDotData(show: false),
-                  ),
-                  LineChartBarData(
-                    spots: generateSpots(yearlyData),
-                    isCurved: true,
-                    color: Colors.yellowAccent,
-                    barWidth: 2,
-                    dotData: FlDotData(show: false),
+                  Icon(
+                    Icons.qr_code_scanner,
+                    color: Colors.white,
+                    size: isLargeScreen ? 24 : isTablet ? 22 : 20,
                   ),
                 ],
-                minY: getMinY(),
-                maxY: getMaxY(),
-                gridData: FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(show: false),
-                lineTouchData: LineTouchData(enabled: false),
               ),
-            ),
-       
-       
-          ),
-       
-       
-          const SizedBox(height: 8),
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+              
+              // Price + Icon Row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    iconPath,
+                    width: iconSize,
+                    height: iconSize,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.currency_bitcoin,
+                      color: Colors.white,
+                      size: iconSize,
+                    ),
+                  ),
+                  SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '\$${currentPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: priceTextSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
 
-          // Legend
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              LegendItem(color: Colors.orange, label: 'Monthly'),
-              SizedBox(width: 12),
-              LegendItem(color: Colors.green, label: 'Today'),
-              SizedBox(width: 12),
-              LegendItem(color: Colors.yellowAccent, label: 'Yearly'),
+              SizedBox(height: isLargeScreen ? 8 : isTablet ? 6 : 4),
+              
+              // Percentage Change
+              Text(
+                '▲74.99% (+\$51,176.67)',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isLargeScreen ? 16 : isTablet ? 15 : 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+
+              // Chart
+              SizedBox(
+                height: chartHeight,
+                child: LineChart(
+                  LineChartData(
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: generateSpots(monthlyData),
+                        isCurved: true,
+                        color: Colors.orange,
+                        barWidth: isLargeScreen ? 3 : 2,
+                        dotData: const FlDotData(show: false),
+                      ),
+                      LineChartBarData(
+                        spots: generateSpots(todayData),
+                        isCurved: true,
+                        color: Colors.green,
+                        barWidth: isLargeScreen ? 3 : 2,
+                        dotData: const FlDotData(show: false),
+                      ),
+                      LineChartBarData(
+                        spots: generateSpots(yearlyData),
+                        isCurved: true,
+                        color: Colors.yellowAccent,
+                        barWidth: isLargeScreen ? 3 : 2,
+                        dotData: const FlDotData(show: false),
+                      ),
+                    ],
+                    minY: getMinY(),
+                    maxY: getMaxY(),
+                    gridData: const FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    titlesData: const FlTitlesData(show: false),
+                    lineTouchData: const LineTouchData(enabled: false),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+
+              // Legend - Responsive layout
+              if (isTablet)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    LegendItem(
+                      color: Colors.orange,
+                      label: 'Monthly',
+                      fontSize: isLargeScreen ? 14 : 13,
+                    ),
+                    LegendItem(
+                      color: Colors.green,
+                      label: 'Today',
+                      fontSize: isLargeScreen ? 14 : 13,
+                    ),
+                    LegendItem(
+                      color: Colors.yellowAccent,
+                      label: 'Yearly',
+                      fontSize: isLargeScreen ? 14 : 13,
+                    ),
+                  ],
+                )
+              else
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  children: [
+                    LegendItem(
+                      color: Colors.orange,
+                      label: 'Monthly',
+                      fontSize: 12,
+                    ),
+                    LegendItem(
+                      color: Colors.green,
+                      label: 'Today',
+                      fontSize: 12,
+                    ),
+                    LegendItem(
+                      color: Colors.yellowAccent,
+                      label: 'Yearly',
+                      fontSize: 12,
+                    ),
+                  ],
+                ),
+
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+              
+              // Investment text
+              Text(
+                'Start investing – buy your first $title now!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: isLargeScreen ? 18 : isTablet ? 17 : 16,
+                ),
+              ),
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+
+              // Amount Buttons - Single row for all devices
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: _AmountButton(
+                      amount: '\$100',
+                      isLarge: isLargeScreen,
+                    ),
+                  ),
+                  SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  Expanded(
+                    child: _AmountButton(
+                      amount: '\$200',
+                      isLarge: isLargeScreen,
+                    ),
+                  ),
+                  SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  Expanded(
+                    child: _AmountButton(
+                      amount: '\$500',
+                      isLarge: isLargeScreen,
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+
+              // Actions
+              ActionButtonsGridWidget(isLarge: isLargeScreen, isTablet: isTablet),
             ],
-          ),
-
-          const SizedBox(height: 8),
-          Text(
-            'Start investing – buy your first $title now!',
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-
-          // Amount Buttons
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _AmountButton(amount: '\$100'),
-              _AmountButton(amount: '\$200'),
-              _AmountButton(amount: '\$500'),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Actions
-          const ActionButtonsGridWidget(),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
+// Responsive Legend Item
 class LegendItem extends StatelessWidget {
   final Color color;
   final String label;
+  final double? fontSize;
 
-  const LegendItem({required this.color, required this.label});
+  const LegendItem({
+    super.key,
+    required this.color,
+    required this.label,
+    this.fontSize,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(color: Colors.white)),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize ?? 12,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
       ],
     );
   }
@@ -467,6 +598,7 @@ class VaultHeaderCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Card(
+        shadowColor: Colors.black,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 2,
@@ -509,22 +641,40 @@ class VaultHeaderCard extends StatelessWidget {
   }
 }
 
+// Responsive Amount Button
 class _AmountButton extends StatelessWidget {
   final String amount;
-  const _AmountButton({required this.amount});
+  final bool isLarge;
+
+  const _AmountButton({
+    required this.amount,
+    this.isLarge = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        vertical: isLarge ? 6 : 6,
+        horizontal: isLarge ? 6 : 8,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isLarge ? 12 : 10),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1,
+        ),
       ),
-      child: Text(
-        amount,
-        style:
-            const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+      child: Center(
+        child: Text(
+          amount,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: isLarge ? 16 : 14,
+          ),
+        ),
       ),
     );
   }

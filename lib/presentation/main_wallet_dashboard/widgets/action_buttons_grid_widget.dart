@@ -6,7 +6,15 @@ import 'package:sizer/sizer.dart';
 import '../../../core/app_export.dart';
 
 class ActionButtonsGridWidget extends StatelessWidget {
-  const ActionButtonsGridWidget({super.key});
+  
+  final bool isLarge;
+  final bool isTablet;
+
+  const ActionButtonsGridWidget({
+    super.key,
+    this.isLarge = false,
+    this.isTablet = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +107,8 @@ class ActionButtonsGridWidget extends StatelessWidget {
     );
   }
 }
+
+
 
 class _ActionButton {
   final String title;
