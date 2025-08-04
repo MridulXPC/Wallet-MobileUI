@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart';
@@ -150,7 +151,7 @@ void dispose() {
 @override
 Widget build(BuildContext context) {
   return Scaffold(
-    backgroundColor: Colors.white,
+    backgroundColor: AppTheme.onSurface,
    bottomNavigationBar: BottomNavBar(
   selectedIndex: _selectedIndex,
   onTap: _onItemTapped,

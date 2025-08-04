@@ -191,7 +191,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                       // Navigate to buy crypto
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: AppTheme.info,
                       foregroundColor: AppTheme.onPrimary,
                       padding: EdgeInsets.symmetric(vertical: 2.h),
                       shape: RoundedRectangleBorder(
@@ -214,8 +214,8 @@ class CryptoPortfolioWidget extends StatelessWidget {
                       // Navigate to deposit crypto
                     },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primary,
-                      side: BorderSide(color: AppTheme.primary, width: 1.5),
+                      foregroundColor: AppTheme.info,
+                      side: BorderSide(color: AppTheme.info, width: 1.5),
                       padding: EdgeInsets.symmetric(vertical: 2.h),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -224,7 +224,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                     child: Text(
                       'Deposit Crypto',
                       style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                        color: AppTheme.primary,
+                        color: AppTheme.info,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

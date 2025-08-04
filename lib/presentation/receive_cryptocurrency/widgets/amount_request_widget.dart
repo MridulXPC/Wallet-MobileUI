@@ -49,7 +49,7 @@ class AmountRequestWidget extends StatelessWidget {
               hintText: 'Enter amount',
               suffixText: symbol,
               suffixStyle: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                color: AppTheme.primary,
+                color: AppTheme.info,
                 fontWeight: FontWeight.w600,
               ),
               prefixIcon: Padding(
@@ -61,7 +61,7 @@ class AmountRequestWidget extends StatelessWidget {
                 ),
               ),
             ),
-            style: AppTheme.darkTheme.textTheme.bodyLarge,
+    
           ),
 
           SizedBox(height: 2.h),
@@ -71,7 +71,10 @@ class AmountRequestWidget extends StatelessWidget {
             padding: EdgeInsets.all(3.w),
             decoration: BoxDecoration(
               color: AppTheme.darkTheme.scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12), border: Border.all(
+          color: AppTheme.onPrimary,
+          width: 1,
+        ),
             ),
             child: Row(
               children: [
@@ -95,7 +98,7 @@ class AmountRequestWidget extends StatelessWidget {
                 Switch(
                   value: includeInQR,
                   onChanged: amount.isNotEmpty ? onToggleInclude : null,
-                  activeColor: AppTheme.primary,
+                  activeColor: AppTheme.info,
                 ),
               ],
             ),
@@ -106,10 +109,10 @@ class AmountRequestWidget extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(3.w),
               decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.1),
+                color: AppTheme.info.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.primary.withValues(alpha: 0.3),
+                  color: AppTheme.info.withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),
@@ -117,7 +120,7 @@ class AmountRequestWidget extends StatelessWidget {
                 children: [
                   CustomIconWidget(
                     iconName: 'check_circle_outline',
-                    color: AppTheme.primary,
+                    color: AppTheme.info,
                     size: 20,
                   ),
                   SizedBox(width: 3.w),
@@ -125,7 +128,7 @@ class AmountRequestWidget extends StatelessWidget {
                     child: Text(
                       'QR code will request \$amount \$symbol',
                       style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                        color: AppTheme.primary,
+                        color: AppTheme.info,
                       ),
                     ),
                   ),
@@ -153,12 +156,12 @@ class AmountRequestWidget extends StatelessWidget {
                   padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
                   decoration: BoxDecoration(
                     color: amount == quickAmount
-                        ? AppTheme.primary.withValues(alpha: 0.2)
+                        ? AppTheme.info.withValues(alpha: 0.2)
                         : AppTheme.darkTheme.scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: amount == quickAmount
-                          ? AppTheme.primary
+                          ? AppTheme.info
                           : AppTheme.darkTheme.colorScheme.outline,
                       width: 1,
                     ),
@@ -167,7 +170,7 @@ class AmountRequestWidget extends StatelessWidget {
                     '\$quickAmount \$symbol',
                     style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
                       color: amount == quickAmount
-                          ? AppTheme.primary
+                          ? AppTheme.info
                           : AppTheme.darkTheme.colorScheme.onSurface,
                     ),
                   ),

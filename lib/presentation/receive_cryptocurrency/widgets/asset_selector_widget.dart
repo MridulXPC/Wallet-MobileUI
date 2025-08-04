@@ -22,22 +22,29 @@ class AssetSelectorWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Select Asset',
-          style: AppTheme.darkTheme.textTheme.titleMedium,
-        ),
+       Text(
+                'Select Asset',
+                style: AppTheme.lightTheme.textTheme.titleMedium,
+              ),
      
-    
+        SizedBox(height: 1.h),
         // Selected Asset Display
         GestureDetector(
           onTap: () => _showAssetSelector(context),
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
             decoration: BoxDecoration(
-              color: AppTheme.darkTheme.scaffoldBackgroundColor,
+                 boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+              color: AppTheme.onSurface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppTheme.darkTheme.colorScheme.outline,
+                color: AppTheme.onPrimary,
                 width: 1,
               ),
             ),
@@ -61,12 +68,14 @@ class AssetSelectorWidget extends StatelessWidget {
                     children: [
                       Text(
                         selectedAsset["name"] as String,
-                        style: AppTheme.darkTheme.textTheme.titleMedium,
+                        style: TextStyle(color: AppTheme.info),
                       ),
                       SizedBox(height: 0.5.h),
                       Text(
                         'Balance: ${selectedAsset["balance"]} ${selectedAsset["symbol"]}',
-                        style: AppTheme.darkTheme.textTheme.bodySmall,
+                        style: TextStyle(
+                          color: AppTheme.info,
+                        ),
                       ),
                     ],
                   ),
@@ -75,7 +84,7 @@ class AssetSelectorWidget extends StatelessWidget {
                 // Dropdown Arrow
                 CustomIconWidget(
                   iconName: 'keyboard_arrow_down',
-                  color: AppTheme.darkTheme.colorScheme.onSurface,
+                  color: AppTheme.info,
                   size: 24,
                 ),
               ],
@@ -103,7 +112,7 @@ class AssetSelectorWidget extends StatelessWidget {
               width: 12.w,
               height: 0.5.h,
               decoration: BoxDecoration(
-                color: AppTheme.darkTheme.colorScheme.outline,
+                color: AppTheme.onSurface,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -131,11 +140,11 @@ class AssetSelectorWidget extends StatelessWidget {
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppTheme.primary.withOpacity(0.1)
+                        ? AppTheme.info.withOpacity(0.1)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isSelected ? AppTheme.primary : Colors.transparent,
+                      color: isSelected ? AppTheme.info : Colors.transparent,
                       width: 1,
                     ),
                   ),
@@ -159,7 +168,11 @@ class AssetSelectorWidget extends StatelessWidget {
                           children: [
                             Text(
                               asset["name"] as String,
-                              style: AppTheme.darkTheme.textTheme.titleMedium,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? AppTheme.info
+                                    : AppTheme.darkTheme.colorScheme.onSurface,
+                              ),
                             ),
                             SizedBox(height: 0.5.h),
                             Text(
@@ -174,7 +187,7 @@ class AssetSelectorWidget extends StatelessWidget {
                       if (isSelected)
                         CustomIconWidget(
                           iconName: 'check_circle',
-                          color: AppTheme.primary,
+                          color: AppTheme.info,
                           size: 24,
                         ),
                     ],

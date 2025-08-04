@@ -219,7 +219,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
       _isHighContrast = !_isHighContrast;
     });
   }
-           
+
   CryptocurrencyAsset get _selectedAsset => _supportedAssets[_selectedAssetIndex];
 
   @override
@@ -227,11 +227,11 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     final theme = Theme.of(context);
     
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: AppTheme.onSurface,
       appBar: _buildAppBar(theme),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.h),
+          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.8.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -255,7 +255,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
 
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
     return AppBar(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor:AppTheme.onSurface,
       elevation: 0,
       leading: IconButton(
         onPressed: () => Navigator.pop(context),
@@ -317,36 +317,57 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     );
   }
 
-  Widget _buildShareButton(ThemeData theme) {
-    return SizedBox(
+Widget _buildShareButton(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.info, AppTheme.info.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 6,
+            offset: Offset(0, 10),
+          )
+        ],
+      ),
       width: double.infinity,
       height: 6.h,
       child: ElevatedButton.icon(
         onPressed: _shareAddress,
         icon: CustomIconWidget(
           iconName: 'share',
-          color: theme.colorScheme.onPrimary,
+          color: AppTheme.onSurface,
           size: 20,
         ),
         label: Text(
           'Share Address',
           style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.onPrimary,
+            color: AppTheme.onSurface,
           ),
         ),
-        style: theme.elevatedButtonTheme.style,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }
-
   Widget _buildNetworkWarning(ThemeData theme) {
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        
+        color: AppTheme.onSurface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppTheme.warning.withValues(alpha: 0.3),
+          color: AppTheme.onPrimary,
           width: 1,
         ),
       ),
@@ -354,7 +375,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
         children: [
           CustomIconWidget(
             iconName: 'warning',
-            color: AppTheme.warning,
+            color: AppTheme.info,
             size: 20,
           ),
           SizedBox(width: 3.w),
@@ -362,7 +383,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
             child: Text(
               _selectedAsset.warning,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.warning,
+                color: AppTheme.info,
               ),
             ),
           ),

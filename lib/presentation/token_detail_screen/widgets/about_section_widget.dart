@@ -75,7 +75,7 @@ class _AboutSectionWidgetState extends State<AboutSectionWidget> {
               child: Text(
                 isExpanded ? 'Show less' : 'Read more',
                 style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.primary,
+                  color: AppTheme.info,
                   fontWeight: FontWeight.w600,
                 ),
               ),

@@ -16,11 +16,11 @@ class PromotionalBannerWidget extends StatelessWidget {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       child: Card(
-        color: AppTheme.primary.withValues(alpha: 0.1),
+        color: AppTheme.info.withValues(alpha: 0.1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: AppTheme.primary.withValues(alpha: 0.3),
+            color: AppTheme.info.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -32,13 +32,13 @@ class PromotionalBannerWidget extends StatelessWidget {
                 width: 12.w,
                 height: 12.w,
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.2),
+                  color: AppTheme.info.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: CustomIconWidget(
                     iconName: 'local_offer',
-                    color: AppTheme.primary,
+                    color: AppTheme.info,
                     size: 24,
                   ),
                 ),
@@ -73,7 +73,7 @@ class PromotionalBannerWidget extends StatelessWidget {
                   // Navigate to Binance integration
                 },
                 style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.primary,
+                  foregroundColor: AppTheme.info,
                   padding: EdgeInsets.symmetric(
                     horizontal: 3.w,
                     vertical: 1.h,
@@ -85,7 +85,7 @@ class PromotionalBannerWidget extends StatelessWidget {
                 child: Text(
                   'Connect',
                   style: AppTheme.darkTheme.textTheme.labelLarge?.copyWith(
-                    color: AppTheme.primary,
+                    color: AppTheme.info,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

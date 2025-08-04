@@ -78,7 +78,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                   child: Text(
                     'Clear All',
                     style: TextStyle(
-                      color: AppTheme.primary,
+                      color: AppTheme.info,
                       fontSize: 14.sp,
                       fontWeight: FontWeight.w500,
                     ),
@@ -143,12 +143,12 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
                       padding: EdgeInsets.symmetric(vertical: 2.h),
-                      side: BorderSide(color: AppTheme.primary),
+                      side: BorderSide(color: AppTheme.info),
                     ),
                     child: Text(
                       'Cancel',
                       style: TextStyle(
-                        color: AppTheme.primary,
+                        color: AppTheme.info,
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
                       ),
@@ -160,7 +160,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                   child: ElevatedButton(
                     onPressed: _applyFilters,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: AppTheme.info,
                       padding: EdgeInsets.symmetric(vertical: 2.h),
                     ),
                     child: Text(
@@ -217,11 +217,11 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
             });
           },
           backgroundColor: AppTheme.darkTheme.colorScheme.surface,
-          selectedColor: AppTheme.primary,
+          selectedColor: AppTheme.info,
           checkmarkColor: AppTheme.onPrimary,
           side: BorderSide(
             color: isSelected
-                ? AppTheme.primary
+                ? AppTheme.info
                 : AppTheme.darkTheme.colorScheme.onSurface
                     .withValues(alpha: 0.3),
           ),
@@ -259,7 +259,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
             ),
             CustomIconWidget(
               iconName: 'calendar_today',
-              color: AppTheme.primary,
+              color: AppTheme.info,
               size: 20,
             ),
           ],
@@ -296,11 +296,11 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
             });
           },
           backgroundColor: AppTheme.darkTheme.colorScheme.surface,
-          selectedColor: AppTheme.primary,
+          selectedColor: AppTheme.info,
           checkmarkColor: AppTheme.onPrimary,
           side: BorderSide(
             color: isSelected
-                ? AppTheme.primary
+                ? AppTheme.info
                 : AppTheme.darkTheme.colorScheme.onSurface
                     .withValues(alpha: 0.3),
           ),
@@ -317,8 +317,8 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
           min: 0,
           max: 10000,
           divisions: 100,
-          activeColor: AppTheme.primary,
-          inactiveColor: AppTheme.primary.withValues(alpha: 0.3),
+          activeColor: AppTheme.info,
+          inactiveColor: AppTheme.info.withValues(alpha: 0.3),
           onChanged: (values) {
             setState(() {
               _amountRange = values;
@@ -353,7 +353,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.dark(
-              primary: AppTheme.primary,
+              primary: AppTheme.info,
               onPrimary: AppTheme.onPrimary,
               surface: AppTheme.darkTheme.colorScheme.surface,
               onSurface: AppTheme.darkTheme.colorScheme.onSurface,

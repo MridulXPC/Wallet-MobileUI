@@ -54,9 +54,8 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'CryptoWallet',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.light,
+      
+
           builder: (context, child) {
             return MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.0)),

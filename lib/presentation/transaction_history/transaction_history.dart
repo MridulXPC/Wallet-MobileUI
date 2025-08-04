@@ -353,7 +353,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
                     child: Container(
                       padding: EdgeInsets.all(1.w),
                       decoration: BoxDecoration(
-                        color: AppTheme.primary,
+                        color: AppTheme.info,
                         shape: BoxShape.circle,
                       ),
                       constraints: BoxConstraints(
@@ -440,7 +440,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
                           fontSize: 12.sp,
                         ),
                       ),
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: AppTheme.info,
                       deleteIcon: CustomIconWidget(
                         iconName: 'close',
                         color: AppTheme.onPrimary,
@@ -459,7 +459,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
                 ? _buildEmptyState()
                 : RefreshIndicator(
                     onRefresh: _refreshTransactions,
-                    color: AppTheme.primary,
+                    color: AppTheme.info,
                     backgroundColor: AppTheme.darkTheme.colorScheme.surface,
                     child: ListView.builder(
                       controller: _scrollController,
@@ -525,7 +525,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
             onPressed: () =>
                 Navigator.pushNamed(context, '/main-wallet-dashboard'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
+              backgroundColor: AppTheme.info,
               foregroundColor: AppTheme.onPrimary,
               padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
             ),
@@ -561,7 +561,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
       padding: EdgeInsets.all(4.w),
       child: Center(
         child: CircularProgressIndicator(
-          color: AppTheme.primary,
+          color: AppTheme.info,
           strokeWidth: 2,
         ),
       ),

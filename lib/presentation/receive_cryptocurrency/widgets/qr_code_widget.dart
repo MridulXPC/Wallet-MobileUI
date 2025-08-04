@@ -25,14 +25,24 @@ class QRCodeWidget extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(1.w),
       decoration: BoxDecoration(
-        color: AppTheme.darkTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+  BoxShadow(
+    color: Color.fromARGB(31, 0, 0, 0),
+    blurRadius: 6,
+    offset: Offset(0, 10),
+  )
+],
+        color: AppTheme.onSurface,
+        borderRadius: BorderRadius.circular(16), border: Border.all(
+          color: AppTheme.onPrimary,
+          width: 1,
+        ),
       ),
       child: Column(
         children: [
           Text(
             'QR Code',
-            style: AppTheme.darkTheme.textTheme.titleMedium,
+            style:TextStyle(color: AppTheme.info),
           ),
           SizedBox(height: 1.h),
 
@@ -67,13 +77,13 @@ class QRCodeWidget extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
               decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.1),
+                color: AppTheme.info.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 'Amount: \$amount \$symbol',
                 style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                  color: AppTheme.primary,
+                  color: AppTheme.info,
                 ),
               ),
             ),

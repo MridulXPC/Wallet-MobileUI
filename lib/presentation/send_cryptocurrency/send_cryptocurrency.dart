@@ -195,7 +195,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
+                  backgroundColor: AppTheme.info,
                   foregroundColor: AppTheme.onPrimary,
                 ),
                 child: const Text('Authenticate'),
@@ -284,7 +284,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             },
             child: Text(
               'View in Explorer',
-              style: TextStyle(color: AppTheme.primary),
+              style: TextStyle(color: AppTheme.info),
             ),
           ),
           ElevatedButton(
@@ -293,7 +293,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               Navigator.of(context).pop();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
+              backgroundColor: AppTheme.info,
               foregroundColor: AppTheme.onPrimary,
             ),
             child: const Text('Done'),

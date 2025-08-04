@@ -20,6 +20,7 @@ class AddressDisplayWidget extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(2.w),
       decoration: BoxDecoration(
+        
                     boxShadow: const [
           BoxShadow(
             color: Color.fromARGB(31, 0, 0, 0),
@@ -27,8 +28,13 @@ class AddressDisplayWidget extends StatelessWidget {
             offset: Offset(0, 10),
           )
         ],
+        
         color: AppTheme.onSurface,
         borderRadius: BorderRadius.circular(16),
+         border: Border.all(
+          color: AppTheme.onPrimary,
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

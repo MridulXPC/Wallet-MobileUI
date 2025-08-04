@@ -247,12 +247,12 @@ class _BiometricAuthenticationState extends State<BiometricAuthentication>
           border: Border.all(
             color: _isCooldownActive
                 ? AppTheme.textDisabled
-                : AppTheme.primary.withValues(alpha: 0.3),
+                : AppTheme.info.withValues(alpha: 0.3),
             width: 2,
           ),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.1),
+              color: AppTheme.info.withValues(alpha: 0.1),
               blurRadius: 20,
               spreadRadius: 5,
             ),
@@ -273,7 +273,7 @@ class _BiometricAuthenticationState extends State<BiometricAuthentication>
             child: CustomIconWidget(
               iconName: 'fingerprint',
               color:
-                  _isCooldownActive ? AppTheme.textDisabled : AppTheme.primary,
+                  _isCooldownActive ? AppTheme.textDisabled : AppTheme.info,
               size: 15.w,
             ),
           ),
@@ -291,7 +291,7 @@ class _BiometricAuthenticationState extends State<BiometricAuthentication>
           child: Center(
             child: CustomIconWidget(
               iconName: 'lock',
-              color: AppTheme.primary,
+              color: AppTheme.info,
               size: 15.w,
             ),
           ),
@@ -349,7 +349,7 @@ class _BiometricAuthenticationState extends State<BiometricAuthentication>
             'Use Passcode',
             style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
               color:
-                  _isCooldownActive ? AppTheme.textDisabled : AppTheme.primary,
+                  _isCooldownActive ? AppTheme.textDisabled : AppTheme.info,
               fontWeight: FontWeight.w500,
             ),
           ),

@@ -168,11 +168,11 @@ class _SplashScreenState extends State<SplashScreen>
       width: 25.w,
       height: 25.w,
       decoration: BoxDecoration(
-        color: AppTheme.primary,
+        color: AppTheme.info,
         borderRadius: BorderRadius.circular(6.w),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primary.withOpacity(0.3),
+            color: AppTheme.info.withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -212,8 +212,8 @@ class _SplashScreenState extends State<SplashScreen>
           height: 6.w,
           child: CircularProgressIndicator(
             strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
-            backgroundColor: AppTheme.primary.withOpacity(0.2),
+            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.info),
+            backgroundColor: AppTheme.info.withOpacity(0.2),
           ),
         ),
         SizedBox(height: 3.h),
@@ -275,7 +275,7 @@ class _SplashScreenState extends State<SplashScreen>
         ElevatedButton(
           onPressed: _retryInitialization,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primary,
+            backgroundColor: AppTheme.info,
             foregroundColor: AppTheme.onPrimary,
             padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
             shape: RoundedRectangleBorder(

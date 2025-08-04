@@ -20,10 +20,20 @@ class RecentAddressesWidget extends StatelessWidget {
     }
 
     return Container(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       decoration: BoxDecoration(
-        color: AppTheme.darkTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.darkTheme.colorScheme.shadow,
+                    blurRadius: 8,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+        color: AppTheme.onSurface,
+        borderRadius: BorderRadius.circular(16), border: Border.all(
+          color: AppTheme.onPrimary,
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -33,7 +43,7 @@ class RecentAddressesWidget extends StatelessWidget {
             children: [
               Text(
                 'Recent Addresses',
-                style: AppTheme.darkTheme.textTheme.titleMedium,
+      style: AppTheme.lightTheme.textTheme.titleMedium,
               ),
               TextButton(
                 onPressed: () {
@@ -41,14 +51,12 @@ class RecentAddressesWidget extends StatelessWidget {
                 },
                 child: Text(
                   'View All',
-                  style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                    color: AppTheme.primary,
-                  ),
+                  style: AppTheme.lightTheme.textTheme.titleMedium,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 2.h),
+
 
           // Address List
           ...addresses.take(3).map((addressData) {
@@ -64,7 +72,7 @@ class RecentAddressesWidget extends StatelessWidget {
                 color: AppTheme.darkTheme.scaffoldBackgroundColor,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.darkTheme.colorScheme.outline,
+                  color: AppTheme.info,
                   width: 1,
                 ),
               ),
@@ -78,14 +86,14 @@ class RecentAddressesWidget extends StatelessWidget {
                         padding: EdgeInsets.symmetric(
                             horizontal: 2.w, vertical: 0.5.h),
                         decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.1),
+                          color: AppTheme.info.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           asset,
                           style:
                               AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                            color: AppTheme.primary,
+                            color: AppTheme.info,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -98,7 +106,7 @@ class RecentAddressesWidget extends StatelessWidget {
                           color: isUsed
                               ? AppTheme.darkTheme.colorScheme.outline
                                   .withValues(alpha: 0.2)
-                              : AppTheme.success.withValues(alpha: 0.1),
+                              : AppTheme.info.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -108,7 +116,7 @@ class RecentAddressesWidget extends StatelessWidget {
                             color: isUsed
                                 ? AppTheme
                                     .darkTheme.colorScheme.onSurfaceVariant
-                                : AppTheme.success,
+                                : AppTheme.info,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -140,14 +148,14 @@ class RecentAddressesWidget extends StatelessWidget {
                         onPressed: () => onCopy(address),
                         icon: CustomIconWidget(
                           iconName: 'content_copy',
-                          color: AppTheme.primary,
+                          color: AppTheme.info,
                           size: 16,
                         ),
                         label: Text(
                           'Copy',
                           style:
                               AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                            color: AppTheme.primary,
+                            color: AppTheme.info,
                           ),
                         ),
                         style: TextButton.styleFrom(
@@ -174,7 +182,7 @@ class RecentAddressesWidget extends StatelessWidget {
                 child: Text(
                   'Show ${addresses.length - 3} more addresses',
                   style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.primary,
+                    color: AppTheme.info,
                   ),
                 ),
               ),

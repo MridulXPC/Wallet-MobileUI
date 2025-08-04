@@ -124,7 +124,7 @@ class AssetSelectorWidget extends StatelessWidget {
                       ],
                     ),
                     selected: isSelected,
-                    selectedTileColor: AppTheme.primary.withOpacity(0.1),
+                    selectedTileColor: AppTheme.info.withOpacity(0.1),
                     onTap: () {
                       onAssetSelected(asset);
                       Navigator.of(context).pop();

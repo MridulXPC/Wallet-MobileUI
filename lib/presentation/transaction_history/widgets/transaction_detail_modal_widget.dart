@@ -146,20 +146,20 @@ class TransactionDetailModalWidget extends StatelessWidget {
                         onPressed: _shareTransaction,
                         icon: CustomIconWidget(
                           iconName: 'share',
-                          color: AppTheme.primary,
+                          color: AppTheme.info,
                           size: 20,
                         ),
                         label: Text(
                           'Share',
                           style: TextStyle(
-                            color: AppTheme.primary,
+                            color: AppTheme.info,
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 2.h),
-                          side: BorderSide(color: AppTheme.primary),
+                          side: BorderSide(color: AppTheme.info),
                         ),
                       ),
                     ),
@@ -181,7 +181,7 @@ class TransactionDetailModalWidget extends StatelessWidget {
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
+                          backgroundColor: AppTheme.info,
                           padding: EdgeInsets.symmetric(vertical: 2.h),
                         ),
                       ),
@@ -197,13 +197,13 @@ class TransactionDetailModalWidget extends StatelessWidget {
                         onPressed: _openBlockExplorer,
                         icon: CustomIconWidget(
                           iconName: 'open_in_new',
-                          color: AppTheme.primary,
+                          color: AppTheme.info,
                           size: 20,
                         ),
                         label: Text(
                           'View on Block Explorer',
                           style: TextStyle(
-                            color: AppTheme.primary,
+                            color: AppTheme.info,
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w500,
                           ),
@@ -367,7 +367,7 @@ class TransactionDetailModalWidget extends StatelessWidget {
                     value,
                     style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
                       color: isLink
-                          ? AppTheme.primary
+                          ? AppTheme.info
                           : AppTheme.darkTheme.colorScheme.onSurface,
                       fontWeight: isLink ? FontWeight.w500 : FontWeight.w400,
                     ),
@@ -380,7 +380,7 @@ class TransactionDetailModalWidget extends StatelessWidget {
                     onPressed: () => _copyToClipboard(value),
                     icon: CustomIconWidget(
                       iconName: 'copy',
-                      color: AppTheme.primary,
+                      color: AppTheme.info,
                       size: 16,
                     ),
                     constraints: BoxConstraints(

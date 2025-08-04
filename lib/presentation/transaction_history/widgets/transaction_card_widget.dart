@@ -184,7 +184,7 @@ class TransactionCardWidget extends StatelessWidget {
     return Container(
       margin: EdgeInsets.only(bottom: 2.h),
       decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.2),
+        color: AppTheme.info.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Align(
@@ -196,14 +196,14 @@ class TransactionCardWidget extends StatelessWidget {
             children: [
               CustomIconWidget(
                 iconName: 'more_horiz',
-                color: AppTheme.primary,
+                color: AppTheme.info,
                 size: 24,
               ),
               SizedBox(width: 2.w),
               Text(
                 'Actions',
                 style: TextStyle(
-                  color: AppTheme.primary,
+                  color: AppTheme.info,
                   fontWeight: FontWeight.w600,
                   fontSize: 14.sp,
                 ),
@@ -240,7 +240,7 @@ class TransactionCardWidget extends StatelessWidget {
             ListTile(
               leading: CustomIconWidget(
                 iconName: 'visibility',
-                color: AppTheme.primary,
+                color: AppTheme.info,
                 size: 24,
               ),
               title: Text(
@@ -255,7 +255,7 @@ class TransactionCardWidget extends StatelessWidget {
             ListTile(
               leading: CustomIconWidget(
                 iconName: 'share',
-                color: AppTheme.primary,
+                color: AppTheme.info,
                 size: 24,
               ),
               title: Text(
@@ -270,7 +270,7 @@ class TransactionCardWidget extends StatelessWidget {
             ListTile(
               leading: CustomIconWidget(
                 iconName: 'note_add',
-                color: AppTheme.primary,
+                color: AppTheme.info,
                 size: 24,
               ),
               title: Text(
@@ -345,7 +345,7 @@ class TransactionCardWidget extends StatelessWidget {
       case 'receive':
         return AppTheme.success;
       case 'buy':
-        return AppTheme.primary;
+        return AppTheme.info;
       case 'sell':
         return AppTheme.warning;
       default:

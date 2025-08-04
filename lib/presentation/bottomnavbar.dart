@@ -1,5 +1,5 @@
+import 'package:cryptowallet/core/app_export.dart';
 import 'package:flutter/material.dart';
-import 'package:cryptowallet/routes/app_routes.dart';
 
 class BottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -13,7 +13,7 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
+    return BottomNavigationBar(backgroundColor: AppTheme.onSurface,
       currentIndex: selectedIndex,
       onTap: (index) {
         if (index == 2) {
