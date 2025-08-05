@@ -1,7 +1,9 @@
+import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // for FilteringTextInputFormatter
+import 'package:flutter/services.dart';
+
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});
 
@@ -31,7 +33,7 @@ class _SwapScreenState extends State<SwapScreen> {
     {
       'symbol': 'BTC',
       'name': 'Bitcoin',
-      'icon': 'https://cryptologos.cc/logos/bitcoin-btc-logo.png',
+      'icon': 'assets/currencyicons/bitcoin.png',
       'chain': 'BTC',
     },
     {
@@ -63,7 +65,7 @@ class _SwapScreenState extends State<SwapScreen> {
   void _selectCoin(bool isFrom) {
     showModalBottomSheet(
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF1A1D29),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -82,19 +84,19 @@ class _SwapScreenState extends State<SwapScreen> {
                   children: [
                     const SizedBox(height: 6),
                     const Text('Select Crypto',
-                        style: TextStyle(color: Colors.black, fontSize: 18)),
+                        style: TextStyle(color: Colors.white, fontSize: 18)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
-                            style: const TextStyle(color: Colors.black),
+                            style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               hintText: 'Type to search chain',
-                              hintStyle: const TextStyle(color: Colors.black45),
-                              prefixIcon: const Icon(Icons.search, color: Colors.black45),
+                              hintStyle: const TextStyle(color: Colors.white54),
+                              prefixIcon: const Icon(Icons.search, color: Colors.white54),
                               filled: true,
-                              fillColor: Colors.grey[100],
+                              fillColor: const Color(0xFF2A2D3A),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide.none,
@@ -117,11 +119,11 @@ class _SwapScreenState extends State<SwapScreen> {
                               selected: isSelected,
                               onSelected: (_) =>
                                   setModalState(() => selectedFilter = filter),
-                              selectedColor: Colors.black,
+                              selectedColor: Colors.blue,
                               labelStyle: TextStyle(
-                                color: isSelected ? Colors.white : Colors.black,
+                                color: isSelected ? Colors.white : Colors.white70,
                               ),
-                              backgroundColor: Colors.grey[300],
+                              backgroundColor: const Color(0xFF2A2D3A),
                             ),
                           );
                         }).toList(),
@@ -135,12 +137,12 @@ class _SwapScreenState extends State<SwapScreen> {
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundImage: NetworkImage(coin['icon'] ?? ''),
-                              backgroundColor: Colors.grey[200],
+                              backgroundColor: const Color(0xFF2A2D3A),
                             ),
                             title: Text(coin['symbol'] ?? '',
-                                style: const TextStyle(color: Colors.black)),
+                                style: const TextStyle(color: Colors.white)),
                             subtitle: Text(coin['name'] ?? '',
-                                style: const TextStyle(color: Colors.black54)),
+                                style: const TextStyle(color: Colors.white70)),
                             onTap: () {
                               Navigator.pop(context);
                               setState(() {
@@ -172,43 +174,73 @@ class _SwapScreenState extends State<SwapScreen> {
     required double value,
   }) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF2A2D3A),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          )
-        ],
-        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
-          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (isFrom)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3D4A),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '0.00',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
           Row(
             children: [
               GestureDetector(
                 onTap: () => _selectCoin(isFrom),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.grey[200],
+                    color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircleAvatar(radius: 8, backgroundColor: Colors.teal),
-                      const SizedBox(width: 6),
-                      Text(coin, style: const TextStyle(color: Colors.black)),
-                      const Icon(Icons.keyboard_arrow_down,
-                          color: Colors.black),
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: coin == 'USDT' ? Colors.green : Colors.purple,
+                        child: Text(
+                          coin[0],
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        coin,
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
                     ],
                   ),
                 ),
@@ -216,129 +248,191 @@ class _SwapScreenState extends State<SwapScreen> {
               const Spacer(),
               if (isFrom)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text('MAX',
-                      style: TextStyle(color: Colors.black)),
+                  child: const Text(
+                    'MAX',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 100,
-         child: TextField(
-  controller: isFrom ? _fromController : null,
-  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-  inputFormatters: [
-    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,8}')),
-  ],
-  textAlign: TextAlign.end,
-  decoration: InputDecoration(
-    filled: true,
-    fillColor: Colors.transparent,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    hintText: '0',
-    hintStyle: const TextStyle(color: Colors.black38),
-    border: InputBorder.none,
-    enabledBorder: InputBorder.none,
-    focusedBorder: InputBorder.none,
-  ),
-  onChanged: (val) {
-    setState(() {
-      fromAmount = double.tryParse(val) ?? 0.0;
-    });
-  },
-),
-
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: isFrom ? _fromController : null,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,8}')),
+                  ],
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: '0',
+                    hintStyle: TextStyle(
+                      color: Colors.white30,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (val) {
+                    setState(() {
+                      fromAmount = double.tryParse(val) ?? 0.0;
+                    });
+                  },
+                  enabled: isFrom,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text('≈ \$${(value * 1).toStringAsFixed(2)}',
-              style: const TextStyle(color: Colors.black54)),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '≈ \$${(value * 1).toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+          ),
         ],
       ),
     );
   }
 
   @override
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0.5,
-      leading: const BackButton(color: Colors.black),
-      title: const Text('Swap', style: TextStyle(color: Colors.black)),
-      centerTitle: false,
-      actions: const [
-        Icon(Icons.tune, color: Colors.black),
-        SizedBox(width: 8),
-        Icon(Icons.history, color: Colors.black),
-        SizedBox(width: 12),
-      ],
-    ),
-    body: Column(
-      children: [
-        const SizedBox(height: 12),
-        _buildSwapCard(
-          label: 'From',
-          coin: fromCoin,
-          isFrom: true,
-          value: fromAmount,
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1D29),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1A1D29),
+        elevation: 0,
+        leading: const BackButton(color: Colors.white),
+        title: const Text(
+          'Swap',
+          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
         ),
-        GestureDetector(
-          onTap: _swapCoins,
-          child: const CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.black12,
-            child: Icon(Icons.swap_vert, color: Colors.black),
-          ),
-        ),
-        _buildSwapCard(
-          label: 'To',
-          coin: toCoin,
-          isFrom: false,
-          value: fromAmount * 0.95,
-        ),
-        const Spacer(),
-        Container(
-          margin: const EdgeInsets.all(16),
-          width: double.infinity,
-          height: 50,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+        centerTitle: false,
+        actions: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2D3A),
+              borderRadius: BorderRadius.circular(12),
             ),
-            borderRadius: BorderRadius.circular(20),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.tune, color: Colors.white70, size: 16),
+                SizedBox(width: 4),
+                Text('Auto', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
           ),
-          child: const Center(
-            child: Text('Next',
-                style: TextStyle(color: Colors.white, fontSize: 16)),
+          const SizedBox(width: 8),
+          const Icon(Icons.refresh, color: Colors.white70),
+          const SizedBox(width: 8),
+          const Icon(Icons.history, color: Colors.white70),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Column(
+            children: [
+     
+              _buildSwapCard(
+                label: 'From',
+                coin: fromCoin,
+                isFrom: true,
+                value: fromAmount,
+              ),
+            
+              _buildSwapCard(
+                label: 'To',
+                coin: toCoin,
+                isFrom: false,
+                value: fromAmount * 0.95,
+              ),
+              const Spacer(),
+              Container(
+                margin: const EdgeInsets.all(16),
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Handle swap action
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4A5568),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Swap Now',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        )
-      ],
-    ),
-    bottomNavigationBar: BottomNavBar(
-      selectedIndex: 2,
-      onTap: (index) {
-        if (index == 2) return;
-        Navigator.pushReplacementNamed(
-          context,
-          index == 0
-              ? AppRoutes.dashboardScreen
-              : index == 1
-                  ? AppRoutes.dashboardScreen
-                  : AppRoutes.profileScreen,
-        );
-      },
-    ),
-  );
-}
-
+          // Positioned swap button between containers
+          Positioned(
+            top: 125, // Position between the two containers
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: _swapCoins,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1D29),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF2A2D3A),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.swap_vert,
+                    color: Colors.white70,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavBar(
+        selectedIndex: 2,
+        onTap: (index) {
+          if (index == 2) return;
+          Navigator.pushReplacementNamed(
+            context,
+            index == 0
+                ? AppRoutes.dashboardScreen
+                : index == 1
+                    ? AppRoutes.dashboardScreen
+                    : AppRoutes.profileScreen,
+          );
+        },
+      ),
+    );
+  }
 }

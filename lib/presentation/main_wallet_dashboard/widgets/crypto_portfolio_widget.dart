@@ -79,7 +79,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                       Text(
                         crypto["symbol"] ?? '',
                         style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                          color: AppTheme.lightTheme.colorScheme.onSurface,
+                          color: AppTheme.onSurface,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -102,7 +102,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                     style: AppTheme.monoTextStyle(
                       isLight: false,
                       fontSize: 12.sp,
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      color: AppTheme.onSurface,
                     ),
                   ),
                 ],
@@ -114,7 +114,7 @@ class CryptoPortfolioWidget extends StatelessWidget {
                 Text(
                   crypto["usdValue"] ?? '\$0.00',
                   style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.onSurface,
+                    color: AppTheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

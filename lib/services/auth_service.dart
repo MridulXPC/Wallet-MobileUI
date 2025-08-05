@@ -38,8 +38,10 @@ class AuthResponse {
   }
 }
 
+// https://test-backend-56yq.onrender.com
+
 class AuthService {
-  static const String _baseUrl = 'https://vault-backend-6zwa.onrender.com';
+  static const String _baseUrl = 'https://vault-backend-cmjd.onrender.com';
   static const Duration _timeout = Duration(seconds: 30);
 
   // Private HTTP client with timeout

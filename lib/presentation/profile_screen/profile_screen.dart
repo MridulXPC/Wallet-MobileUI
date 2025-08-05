@@ -29,7 +29,9 @@ Future<void> _openQRScanner() async {
 
             try {
               // Get token from storage instead of hardcoding
-              final token = await AuthService.getStoredToken();
+              // final token = await AuthService.getStoredToken();
+              final token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
+
               
               if (token == null) {
                 ScaffoldMessenger.of(context).showSnackBar(

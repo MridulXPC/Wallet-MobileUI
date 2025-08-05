@@ -48,7 +48,7 @@ late final Timer _timer;
 @override
 void initState() {
   super.initState();
-  _pageController = PageController(viewportFraction: 0.98);
+  _pageController = PageController(viewportFraction: 1.0);
 
   _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
     if (_pageController.hasClients) {
@@ -151,7 +151,7 @@ void dispose() {
 @override
 Widget build(BuildContext context) {
   return Scaffold(
-    backgroundColor: AppTheme.onSurface,
+    backgroundColor: const Color(0xFF1A1D29),
    bottomNavigationBar: BottomNavBar(
   selectedIndex: _selectedIndex,
   onTap: _onItemTapped,

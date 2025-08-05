@@ -13,7 +13,7 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(backgroundColor: AppTheme.onSurface,
+    return BottomNavigationBar( backgroundColor: const Color(0xFF1A1D29),
       currentIndex: selectedIndex,
       onTap: (index) {
         if (index == 2) {
@@ -24,7 +24,7 @@ class BottomNavBar extends StatelessWidget {
           onTap(index); // Call parent callback to update index
         }
       },
-      selectedItemColor: Colors.blue,
+      selectedItemColor: Colors.white,
       unselectedItemColor: const Color.fromARGB(255, 93, 93, 93),
       type: BottomNavigationBarType.fixed,
       items: const [
