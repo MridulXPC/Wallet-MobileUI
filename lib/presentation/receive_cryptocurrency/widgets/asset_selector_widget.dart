@@ -22,10 +22,7 @@ class AssetSelectorWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-       Text(
-                'Select Asset',
-                style: AppTheme.lightTheme.textTheme.titleMedium,
-              ),
+ 
      
         SizedBox(height: 1.h),
         // Selected Asset Display
@@ -41,10 +38,10 @@ class AssetSelectorWidget extends StatelessWidget {
             offset: Offset(0, 10),
           )
         ],
-              color: AppTheme.onSurface,
+              color:Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppTheme.onPrimary,
+                color: AppTheme.dividerDark,
                 width: 1,
               ),
             ),

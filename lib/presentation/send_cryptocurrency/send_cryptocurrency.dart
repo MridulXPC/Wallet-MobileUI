@@ -354,9 +354,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: AppTheme.onSurface,
+        backgroundColor: const Color(0xFF1A1D29),
         appBar: AppBar(
-          backgroundColor: AppTheme.onSurface,
+          backgroundColor: const Color(0xFF1A1D29),
           elevation: 0,
           leading: IconButton(
             onPressed: () async {
@@ -367,16 +367,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             },
             icon: CustomIconWidget(
               iconName: 'close',
-              color: AppTheme.background,
+              color:  Colors.white,
               size: 24,
             ),
           ),
           title: Text(
             'Send',
-            style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-              color: AppTheme.background,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(   color:  Colors.white,),
           ),
           centerTitle: true,
         ),
@@ -389,9 +386,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-         
-
-                      // Asset Selector
+// Asset Selector
                       AssetSelectorWidget(
                         selectedAsset: _selectedAsset,
                         selectedAssetSymbol: _selectedAssetSymbol,
@@ -403,7 +398,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         },
                       ),
 
-               SizedBox(height: 1.h),
+                      SizedBox(height: 1.h),
 
                       // Recipient Address
                       RecipientAddressWidget(
@@ -412,7 +407,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         isValid: _isAddressValid,
                       ),
 
-                  SizedBox(height: 1.h),
+                      SizedBox(height: 1.h),
 
                       // Amount Input
                       AmountInputWidget(
@@ -425,8 +420,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onMaxPressed: _onMaxPressed,
                       ),
 
-
-  SizedBox(height: 1.h),
+                      SizedBox(height: 1.h),
                       // Transaction Fee
                       TransactionFeeWidget(
                         selectedFeeType: _feeType,
@@ -434,8 +428,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         selectedAssetSymbol: _selectedAssetSymbol,
                         onFeeTypeChanged: _onFeeTypeChanged,
                       ),
-
-          
 
                       // Review Section
                       if (_isAddressValid && _isAmountValid) ...[
@@ -455,60 +447,63 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ),
 
               // Send Button
-       Container(
-  padding: EdgeInsets.all(4.w),
-  child: SizedBox(
-    width: double.infinity,
-    height: 6.h,
-    child: Container(
-      decoration: BoxDecoration(
-              boxShadow: const [
-          BoxShadow(
-            color: Color.fromARGB(31, 0, 0, 0),
-            blurRadius: 6,
-            offset: Offset(0, 10),
-          )
-        ],
-        gradient: LinearGradient(
-          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ElevatedButton(
-        onPressed: _onSendPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: AppTheme.onPrimary,
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: _isLoading
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.onPrimary),
-                ),
-              )
-            : Text(
-                'Send',
-                style: AppTheme.darkTheme.textTheme.titleMedium
-                    ?.copyWith(
-                  color: AppTheme.onSurface,
-                  fontWeight: FontWeight.w600,
+              Container(
+                padding: EdgeInsets.all(4.w),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 6.h,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color.fromARGB(31, 0, 0, 0),
+                          blurRadius: 6,
+                          offset: Offset(0, 10),
+                        )
+                      ],
+                      gradient: LinearGradient(
+                        colors: [
+                          Color.fromARGB(255, 100, 162, 228),
+                          Color(0xFF1A73E8)
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ElevatedButton(
+                      onPressed: _onSendPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppTheme.onPrimary,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppTheme.onPrimary),
+                              ),
+                            )
+                          : Text(
+                              'Send',
+                              style: AppTheme.darkTheme.textTheme.titleMedium
+                                  ?.copyWith(
+                                color: AppTheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
                 ),
               ),
-      ),
-    ),
-  ),
-),
             ],
           ),
         ),

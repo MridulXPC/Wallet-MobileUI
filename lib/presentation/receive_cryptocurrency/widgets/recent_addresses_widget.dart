@@ -19,22 +19,8 @@ class RecentAddressesWidget extends StatelessWidget {
       return SizedBox.shrink();
     }
 
-    return Container(
-      padding: EdgeInsets.all(2.w),
-      decoration: BoxDecoration(
-          boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.darkTheme.colorScheme.shadow,
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-        color: AppTheme.onSurface,
-        borderRadius: BorderRadius.circular(16), border: Border.all(
-          color: AppTheme.onPrimary,
-          width: 1,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -56,15 +42,15 @@ class RecentAddressesWidget extends StatelessWidget {
               ),
             ],
           ),
-
-
+      
+      
           // Address List
           ...addresses.take(3).map((addressData) {
             final address = addressData["address"] as String;
             final timestamp = addressData["timestamp"] as String;
             final asset = addressData["asset"] as String;
             final isUsed = addressData["used"] as bool;
-
+      
             return Container(
               margin: EdgeInsets.only(bottom: 2.h),
               padding: EdgeInsets.all(3.w),
@@ -124,7 +110,7 @@ class RecentAddressesWidget extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: 1.h),
-
+      
                   // Address Text
                   Text(
                     '${address.substring(0, 12)}...${address.substring(address.length - 8)}',
@@ -134,7 +120,7 @@ class RecentAddressesWidget extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: 1.h),
-
+      
                   // Timestamp and Actions
                   Row(
                     children: [
@@ -171,7 +157,7 @@ class RecentAddressesWidget extends StatelessWidget {
               ),
             );
           }),
-
+      
           if (addresses.length > 3) ...[
             SizedBox(height: 1.h),
             Center(

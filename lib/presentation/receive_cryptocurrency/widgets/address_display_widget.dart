@@ -110,23 +110,7 @@ class AddressDisplayWidget extends StatelessWidget {
 
           SizedBox(height: 1.h),
 
-          // Address Info
-          Row(
-            children: [
-              CustomIconWidget(
-                iconName: 'info_outline',
-                color: AppTheme.info,
-                size: 16,
-              ),
-              SizedBox(width: 2.w),
-              Expanded(
-                child: Text(
-                  'This address can be used multiple times. Tap refresh for a new address.',
-                  style: AppTheme.lightTheme.textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
+    
         ],
       ),
     );

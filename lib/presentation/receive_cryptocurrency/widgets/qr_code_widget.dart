@@ -32,10 +32,10 @@ class QRCodeWidget extends StatelessWidget {
     offset: Offset(0, 10),
   )
 ],
-        color: AppTheme.onSurface,
+        color: Colors.white70,
         borderRadius: BorderRadius.circular(16), border: Border.all(
           color: AppTheme.onPrimary,
-          width: 1,
+          width: 0,
         ),
       ),
       child: Column(
@@ -54,7 +54,7 @@ class QRCodeWidget extends StatelessWidget {
               height: 40.w,
               padding: EdgeInsets.all(4.w),
               decoration: BoxDecoration(
-                color: isHighContrast ? Colors.black : Colors.white,
+                color: isHighContrast ? Colors.black : Colors.white70,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
@@ -137,7 +137,7 @@ class QRCodePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = isHighContrast ? Colors.white : Colors.black
+      ..color = isHighContrast ? Colors.white70 : Colors.black
       ..style = PaintingStyle.fill;
 
     final cellSize = size.width / 25; // 25x25 grid for simplicity

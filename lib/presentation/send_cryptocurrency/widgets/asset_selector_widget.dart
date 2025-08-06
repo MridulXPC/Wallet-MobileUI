@@ -37,15 +37,13 @@ class AssetSelectorWidget extends StatelessWidget {
             Text(
               'Select Asset',
               style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-                color: AppTheme.textHighEmphasis,
+                color: const Color.fromARGB(255, 93, 93, 93),
                 fontWeight: FontWeight.w600,
               ),
             ),
             SizedBox(height: 2.h),
           TextField(
-  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-    color: Colors.white, // White text input
-  ),
+  style: TextStyle(color: const Color.fromARGB(255, 93, 93, 93),),
   decoration: InputDecoration(
     hintText: 'Search assets...',
     hintStyle: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
@@ -147,8 +145,9 @@ class AssetSelectorWidget extends StatelessWidget {
       children: [
         Text(
           'Asset',
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.background,
+          style: TextStyle(
+            color: const Color.fromARGB(255, 93, 93, 93),
+            fontSize: 12.sp,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -166,7 +165,7 @@ class AssetSelectorWidget extends StatelessWidget {
             offset: Offset(0, 10),
           )
         ],
-              color: AppTheme.onSurface,
+              color:  Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: AppTheme.dividerDark,
@@ -176,7 +175,7 @@ class AssetSelectorWidget extends StatelessWidget {
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 6.w,
+                  radius: 4.w,
                   backgroundImage: AssetImage(selectedAssetIcon),
                   backgroundColor: Colors.transparent,
                 ),
@@ -189,14 +188,14 @@ class AssetSelectorWidget extends StatelessWidget {
                         selectedAsset,
                         style:
                             AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                          color: AppTheme.background,
+                       color: Colors.white70,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       Text(
                         'Balance: ${selectedAssetBalance.toStringAsFixed(4)} $selectedAssetSymbol',
                         style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                          color: AppTheme.background,
+                        color: Colors.white70,
                         ),
                       ),
                     ],
@@ -204,7 +203,7 @@ class AssetSelectorWidget extends StatelessWidget {
                 ),
                 CustomIconWidget(
                   iconName: 'keyboard_arrow_down',
-                  color: AppTheme.background,
+              color: Colors.white70,
                   size: 24,
                 ),
               ],

@@ -220,6 +220,49 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     });
   }
 
+  void _showRecentAddressesBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1D29),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            
+              Expanded(
+                child: RecentAddressesWidget(
+                  addresses: _recentAddresses.map((addr) => {
+                    "address": addr.address,
+                    "timestamp": addr.timestamp,
+                    "asset": addr.asset,
+                    "used": addr.used,
+                  }).toList(),
+                  onCopy: _copyToClipboard,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   CryptocurrencyAsset get _selectedAsset => _supportedAssets[_selectedAssetIndex];
 
   @override
@@ -227,25 +270,21 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     final theme = Theme.of(context);
     
     return Scaffold(
-      backgroundColor: AppTheme.onSurface,
+      backgroundColor: const Color(0xFF1A1D29),
       appBar: _buildAppBar(theme),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.8.h),
+          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.0.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildAssetSelector(),
-              SizedBox(height: 1.h),
-              _buildQRCodeSection(),
-              SizedBox(height: 1.h),
-              _buildAddressDisplay(),
-              SizedBox(height: 1.h),
+              SizedBox(height: 2.h),
+              _buildMergedQRAndAddressSection(),
+              SizedBox(height: 2.h),
               _buildShareButton(theme),
               SizedBox(height: 1.h),
               _buildNetworkWarning(theme),
-              SizedBox(height: 1.h),
-              _buildRecentAddresses(),
             ],
           ),
         ),
@@ -255,30 +294,36 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
 
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
     return AppBar(
-      backgroundColor:AppTheme.onSurface,
+      backgroundColor: const Color(0xFF1A1D29),
       elevation: 0,
       leading: IconButton(
         onPressed: () => Navigator.pop(context),
-        icon: CustomIconWidget(
-          iconName: 'close',
-          color: theme.colorScheme.onSurface,
-          size: 24,
+        icon: const Icon(
+          Icons.arrow_back_ios,
+          color: Colors.white,
+          size: 20,
         ),
       ),
-      title: Text(
+      title: const Text(
         'Receive',
-        style: theme.textTheme.titleLarge,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       centerTitle: true,
       actions: [
         IconButton(
-          onPressed: _toggleHighContrast,
-          icon: CustomIconWidget(
-            iconName: 'contrast',
-            color: theme.colorScheme.onSurface,
+          onPressed: _showRecentAddressesBottomSheet,
+          icon: const Icon(
+            Icons.history,
+            color: Colors.white70,
             size: 24,
           ),
+          tooltip: 'Recent Addresses',
         ),
+       
       ],
     );
   }
@@ -300,107 +345,177 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     );
   }
 
-  Widget _buildQRCodeSection() {
-    return QRCodeWidget(
-      address: _selectedAsset.address,
-      amount: "",
-      symbol: _selectedAsset.symbol,
-      isHighContrast: _isHighContrast,
-    );
-  }
-
-  Widget _buildAddressDisplay() {
-    return AddressDisplayWidget(
-      address: _selectedAsset.address,
-      onCopy: () => _copyToClipboard(_selectedAsset.address),
-      onRefresh: _generateNewAddress,
-    );
-  }
-
-Widget _buildShareButton(ThemeData theme) {
+  Widget _buildMergedQRAndAddressSection() {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.info, AppTheme.info.withOpacity(0.8)],
+        color: const Color(0xFF2A2D3A),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white70,
+          width: 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          // QR Code Section
+          QRCodeWidget(
+            address: _selectedAsset.address,
+            amount: "",
+            symbol: _selectedAsset.symbol,
+            isHighContrast: _isHighContrast,
+          ),
+          const SizedBox(height: 24),
+          
+          // Address Display Section
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Wallet Address',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Address container
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D4A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white70,
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      _selectedAsset.address,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _copyToClipboard(_selectedAsset.address),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4A4D5A),
+                              foregroundColor: Colors.white70,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                  
+                     
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShareButton(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
           BoxShadow(
-            color: Color.fromARGB(31, 0, 0, 0),
-            blurRadius: 6,
-            offset: Offset(0, 10),
-          )
+            color: const Color(0xFF4F46E5).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       width: double.infinity,
-      height: 6.h,
+      height: 56,
       child: ElevatedButton.icon(
         onPressed: _shareAddress,
-        icon: CustomIconWidget(
-          iconName: 'share',
-          color: AppTheme.onSurface,
+        icon: const Icon(
+          Icons.share,
+          color: Colors.white,
           size: 20,
         ),
-        label: Text(
+        label: const Text(
           'Share Address',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: AppTheme.onSurface,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
       ),
     );
   }
+
   Widget _buildNetworkWarning(ThemeData theme) {
     return Container(
-      padding: EdgeInsets.all(3.w),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        
-        color: AppTheme.onSurface,
+        color: const Color(0xFF2A2D3A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppTheme.onPrimary,
+          color: const Color(0xFFFB923C).withOpacity(0.3),
           width: 1,
         ),
       ),
       child: Row(
         children: [
-          CustomIconWidget(
-            iconName: 'warning',
-            color: AppTheme.info,
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFFB923C),
             size: 20,
           ),
-          SizedBox(width: 3.w),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               _selectedAsset.warning,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.info,
+              style: const TextStyle(
+                color: Color(0xFFFB923C),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildRecentAddresses() {
-    return RecentAddressesWidget(
-      addresses: _recentAddresses.map((addr) => {
-        "address": addr.address,
-        "timestamp": addr.timestamp,
-        "asset": addr.asset,
-        "used": addr.used,
-      }).toList(),
-      onCopy: _copyToClipboard,
     );
   }
 }

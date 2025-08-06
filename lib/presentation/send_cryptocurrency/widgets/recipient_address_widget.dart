@@ -120,12 +120,6 @@ class RecipientAddressWidget extends StatelessWidget {
     return isValid ? AppTheme.success : AppTheme.error;
   }
 
-  Color _getContainerColor(bool isFocused) {
-    if (isFocused) {
-      return AppTheme.onSurface; // Background color when focused/selected
-    }
-    return AppTheme.onSurface; // Default background color
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,8 +128,9 @@ class RecipientAddressWidget extends StatelessWidget {
       children: [
         Text(
           'Recipient Address',
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.background,
+          style:   TextStyle(
+            color: const Color.fromARGB(255, 93, 93, 93),
+            fontSize: 12.sp,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -154,7 +149,8 @@ class RecipientAddressWidget extends StatelessWidget {
             offset: Offset(0, 10),
           )
         ],
-                color: _getContainerColor(isFocused),
+                color: const Color(0xFF3A3D4A)// Background color when focused/selected
+,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: _getBorderColor(isFocused),
@@ -172,7 +168,7 @@ class RecipientAddressWidget extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Enter wallet address or scan QR code',
                   hintStyle: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.background,
+                  color: Colors.white70,
                   ),
                   border: InputBorder.none,
                   filled: true,
@@ -194,7 +190,7 @@ class RecipientAddressWidget extends StatelessWidget {
                         onPressed: _pasteFromClipboard,
                         icon: CustomIconWidget(
                           iconName: 'content_paste',
-                          color: AppTheme.background,
+                         color: Colors.white70,
                           size: 20,
                         ),
                         tooltip: 'Paste from clipboard',

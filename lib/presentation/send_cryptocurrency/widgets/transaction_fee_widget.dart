@@ -24,8 +24,9 @@ class TransactionFeeWidget extends StatelessWidget {
       children: [
         Text(
           'Network Fee',
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.background,
+        style: TextStyle(
+            color: const Color.fromARGB(255, 93, 93, 93),
+            fontSize: 12.sp,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -39,10 +40,10 @@ class TransactionFeeWidget extends StatelessWidget {
             offset: Offset(0, 10),
           )
         ],
-            color: AppTheme.onSurface,
+      color: const Color(0xFF3A3D4A),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: AppTheme.dividerDark,
+               color: const Color(0xFF3A3D4A),
               width: 1,
             ),
           ),
@@ -55,24 +56,14 @@ class TransactionFeeWidget extends StatelessWidget {
                 selectedFeeType == 'Fast',
                 isFirst: true,
               ),
-              Divider(
-                color: AppTheme.onSurface,
-                height: 1,
-                indent: 4.w,
-                endIndent: 4.w,
-              ),
+           
               _buildFeeOption(
                 'Standard',
                 '~10-15 minutes',
                 0.0001,
                 selectedFeeType == 'Standard',
               ),
-              Divider(
-                color: AppTheme.onSurface,
-                height: 1,
-                indent: 4.w,
-                endIndent: 4.w,
-              ),
+           
               _buildFeeOption(
                 'Slow',
                 '~30-60 minutes',
@@ -107,7 +98,7 @@ class TransactionFeeWidget extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.all(4.w),
           decoration: BoxDecoration(
-            color: AppTheme.onSurface,
+          color: const Color(0xFF3A3D4A),
             borderRadius: BorderRadius.vertical(
               top: isFirst ? Radius.circular(12) : Radius.zero,
               bottom: isLast ? Radius.circular(12) : Radius.zero,
@@ -121,7 +112,7 @@ class TransactionFeeWidget extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? AppTheme.info : AppTheme.dividerDark,
+                    color: isSelected ? AppTheme.info :  Colors.white70,
                     width: 2,
                   ),
                   color: isSelected ? AppTheme.info : Colors.transparent,
@@ -150,14 +141,14 @@ class TransactionFeeWidget extends StatelessWidget {
                         Text(
                           type,
                           style: AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
-                            color: isSelected ? AppTheme.info : AppTheme.background,
+                            color: isSelected ? AppTheme.info : Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         Text(
                           '${fee.toStringAsFixed(5)} $selectedAssetSymbol',
                           style: AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
-                            color: isSelected ? AppTheme.info : AppTheme.background,
+                            color: isSelected ? AppTheme.info : Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -167,7 +158,7 @@ class TransactionFeeWidget extends StatelessWidget {
                     Text(
                       time,
                       style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                        color: isSelected ? AppTheme.info : AppTheme.background,
+                        color: isSelected ? AppTheme.info :  Colors.white70,
                       ),
                     ),
                   ],

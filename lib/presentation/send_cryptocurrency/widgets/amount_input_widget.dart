@@ -98,8 +98,9 @@ class _AmountInputWidgetState extends State<AmountInputWidget> {
       children: [
         Text(
           'Amount',
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.background,
+          style: TextStyle(
+            color: const Color.fromARGB(255, 93, 93, 93),
+            fontSize: 12.sp,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -113,7 +114,8 @@ class _AmountInputWidgetState extends State<AmountInputWidget> {
             offset: Offset(0, 10),
           )
         ],
-            color: AppTheme.onSurface,
+    color: const Color(0xFF3A3D4A)// Background color when focused/selected
+,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _getBorderColor(),
@@ -132,13 +134,13 @@ class _AmountInputWidgetState extends State<AmountInputWidget> {
                 decoration: InputDecoration(
                   hintText: '0.00',
                   hintStyle: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
-                    color: AppTheme.background,
+                 color: Colors.white70,
                     fontWeight: FontWeight.w600,
                   ),
                   border: InputBorder.none,
                   filled: true,
                   fillColor: Colors.transparent,
-                  contentPadding: EdgeInsets.fromLTRB(4.w, 3.h, 4.w, 1.h),
+                  contentPadding: EdgeInsets.fromLTRB(4.w, 3.h, 4.w, 0.h),
                   suffixIcon: Padding(
                     padding: EdgeInsets.only(right: 4.w, top: 2.h),
                     child: Column(
@@ -147,7 +149,7 @@ class _AmountInputWidgetState extends State<AmountInputWidget> {
                         Text(
                           widget.selectedAssetSymbol,
                           style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                            color: AppTheme.background,
+                           color: Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -220,9 +222,11 @@ class _AmountInputWidgetState extends State<AmountInputWidget> {
             ],
             Text(
               'Available: ${widget.selectedAssetBalance.toStringAsFixed(4)} ${widget.selectedAssetSymbol}',
-              style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.background,
-              ),
+             style: TextStyle(
+            color: const Color.fromARGB(255, 93, 93, 93),
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w500,
+          ),
             ),
           ],
         ),
