@@ -18,7 +18,10 @@ class BottomNavBar extends StatelessWidget {
       onTap: (index) {
         if (index == 2) {
           Navigator.pushNamed(context, AppRoutes.swapScreen);
-        } else if (index == 3) {
+        }else if (index == 1) {
+          Navigator.pushNamed(context, AppRoutes.walletInfoScreen);
+        } 
+         else if (index == 3) {
           Navigator.pushNamed(context, AppRoutes.profileScreen);
         } else {
           onTap(index); // Call parent callback to update index

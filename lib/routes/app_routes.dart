@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/walletscreen/wallet_screen.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cryptowallet/presentation/splash_screen/splash_screen.dart';
@@ -35,6 +36,7 @@ class AppRoutes {
   static const String transactionHistory = '/transactions';
   static const String tokenDetail = '/token-details';
   static const String swapScreen = '/swap';
+  static const String walletInfoScreen = '/wallet-info';
 
   // Profile
   static const String profileScreen = '/profile';
@@ -58,6 +60,8 @@ class AppRoutes {
     transactionHistory: (context) => const TransactionHistory(),
     tokenDetail: (context) => const TokenDetailScreen(),
     swapScreen: (context) => const SwapScreen(),
+    walletInfoScreen: (context) =>  WalletInfoScreen(),
+    
 
     // Profile
     profileScreen: (context) => const ProfileScreen(),

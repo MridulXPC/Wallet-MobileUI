@@ -24,6 +24,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   final String _totalValue = '\$0.00';
 
 void _onItemTapped(int index) {
+    if (index == 1) {
+    Navigator.pushNamed(context, AppRoutes.walletInfoScreen); // ✅ Add this line
+    return;
+  }
   if (index == 2) {
     Navigator.pushNamed(context, AppRoutes.swapScreen); // ✅ Add this line
     return;
@@ -159,7 +163,7 @@ Widget build(BuildContext context) {
 
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 3),
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 24),
           child: Column(
@@ -173,7 +177,7 @@ Widget build(BuildContext context) {
           
         
               SizedBox(
-                height: 55.h,
+                height: 54.h,
                 child: PageView.builder(
                   controller: _pageController,
               

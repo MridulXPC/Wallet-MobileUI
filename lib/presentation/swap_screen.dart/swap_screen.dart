@@ -12,45 +12,87 @@ class SwapScreen extends StatefulWidget {
 }
 
 class _SwapScreenState extends State<SwapScreen> {
-  String fromCoin = 'USDT';
-  String toCoin = 'KLV';
+  String fromCoin = 'BTC';
+  String toCoin = 'ETH';
+
   double fromAmount = 0.0;
   final TextEditingController _fromController = TextEditingController();
 
   final List<Map<String, String>> allCoins = [
     {
-      'symbol': 'USDT',
-      'name': 'Tether',
-      'icon': 'https://cryptologos.cc/logos/tether-usdt-logo.png',
-      'chain': 'TRC20',
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "-1.25%",
+      "icon": "assets/currencyicons/bitcoin.png",
     },
     {
-      'symbol': 'KLV',
-      'name': 'Klever',
-      'icon': 'https://cryptologos.cc/logos/klever-klv-logo.png',
-      'chain': 'KLV',
+      "symbol": "ETH",
+      "name": "Ethereum",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "0.75%",
+      "icon": "assets/currencyicons/ethereum.png",
     },
     {
-      'symbol': 'BTC',
-      'name': 'Bitcoin',
-      'icon': 'assets/currencyicons/bitcoin.png',
-      'chain': 'BTC',
+      "symbol": "MATIC",
+      "name": "Polygon",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "-0.50%",
+      "icon": "assets/currencyicons/matic.png",
     },
     {
-      'symbol': 'ETH',
-      'name': 'Ethereum',
-      'icon': 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
-      'chain': 'ETH',
+      "symbol": "BCH",
+      "name": "Bitcoin Cash",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "0.00%",
+      "icon": "assets/currencyicons/bitcoin-cash.png",
     },
     {
-      'symbol': 'ADA',
-      'name': 'Cardano',
-      'icon': 'https://cryptologos.cc/logos/cardano-ada-logo.png',
-      'chain': 'ADA',
+      "symbol": "TRX",
+      "name": "Tron",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "-0.25%",
+      "icon": "assets/currencyicons/trx.png",
+    },
+    {
+      "symbol": "USDT",
+      "name": "Tether",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "0.00%",
+      "icon": "assets/currencyicons/usdt.png",
+    },
+    {
+      "symbol": "KLV",
+      "name": "Klever",
+      "balance": "0",
+      "usdValue": "\$0.00",
+      "change24h": "2.15%",
+      "icon": "assets/currencyicons/klv.png",
     },
   ];
 
   String selectedFilter = 'ALL';
+
+  // Helper method to get coin data by symbol
+  Map<String, String>? getCoinData(String symbol) {
+    try {
+      return allCoins.firstWhere((coin) => coin['symbol'] == symbol);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Helper method to get coin icon path
+  String getCoinIcon(String symbol) {
+    final coinData = getCoinData(symbol);
+    return coinData?['icon'] ?? 'assets/currencyicons/default.png';
+  }
 
   void _swapCoins() {
     setState(() {
@@ -75,7 +117,8 @@ class _SwapScreenState extends State<SwapScreen> {
           builder: (context, setModalState) {
             List<Map<String, String>> filteredCoins = selectedFilter == 'ALL'
                 ? allCoins
-                : allCoins.where((c) => c['chain'] == selectedFilter).toList();
+                : allCoins.where((c) => c['symbol'] == selectedFilter).toList();
+            
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -110,7 +153,7 @@ class _SwapScreenState extends State<SwapScreen> {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: ['ALL', 'BTC', 'ETH', 'KLV', 'ADA'].map((filter) {
+                        children: ['ALL', 'BTC', 'ETH', 'MATIC', 'TRX', 'USDT'].map((filter) {
                           final isSelected = selectedFilter == filter;
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -135,14 +178,48 @@ class _SwapScreenState extends State<SwapScreen> {
                       child: ListView(
                         children: filteredCoins.map((coin) {
                           return ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: NetworkImage(coin['icon'] ?? ''),
-                              backgroundColor: const Color(0xFF2A2D3A),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFF2A2D3A),
+                              ),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  coin['icon'] ?? '',
+                                  width: 40,
+                                  height: 40,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return CircleAvatar(
+                                      backgroundColor: const Color(0xFF2A2D3A),
+                                      child: Text(
+                                        coin['symbol']?[0] ?? '?',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
                             ),
                             title: Text(coin['symbol'] ?? '',
                                 style: const TextStyle(color: Colors.white)),
                             subtitle: Text(coin['name'] ?? '',
                                 style: const TextStyle(color: Colors.white70)),
+                            trailing: Text(
+                              coin['change24h'] ?? '',
+                              style: TextStyle(
+                                color: coin['change24h']?.startsWith('-') == true 
+                                    ? Colors.red 
+                                    : Colors.green,
+                                fontSize: 12,
+                              ),
+                            ),
                             onTap: () {
                               Navigator.pop(context);
                               setState(() {
@@ -173,6 +250,9 @@ class _SwapScreenState extends State<SwapScreen> {
     required bool isFrom,
     required double value,
   }) {
+    final coinData = getCoinData(coin);
+    final coinIcon = getCoinIcon(coin);
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.all(10),
@@ -201,9 +281,9 @@ class _SwapScreenState extends State<SwapScreen> {
                     color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    '0.00',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  child: Text(
+                    'Balance: ${coinData?['balance'] ?? '0.00'}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
             ],
@@ -222,12 +302,30 @@ class _SwapScreenState extends State<SwapScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircleAvatar(
-                        radius: 12,
-                        backgroundColor: coin == 'USDT' ? Colors.green : Colors.purple,
-                        child: Text(
-                          coin[0],
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF2A2D3A),
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            coinIcon,
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return CircleAvatar(
+                                radius: 12,
+                                backgroundColor: coin == 'USDT' ? Colors.green : Colors.purple,
+                                child: Text(
+                                  coin[0],
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -327,9 +425,9 @@ class _SwapScreenState extends State<SwapScreen> {
               color: const Color(0xFF2A2D3A),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Icon(Icons.tune, color: Colors.white70, size: 16),
                 SizedBox(width: 4),
                 Text('Auto', style: TextStyle(color: Colors.white70, fontSize: 12)),
@@ -347,14 +445,12 @@ class _SwapScreenState extends State<SwapScreen> {
         children: [
           Column(
             children: [
-     
               _buildSwapCard(
                 label: 'From',
                 coin: fromCoin,
                 isFrom: true,
                 value: fromAmount,
               ),
-            
               _buildSwapCard(
                 label: 'To',
                 coin: toCoin,
