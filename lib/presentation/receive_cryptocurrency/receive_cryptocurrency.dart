@@ -3,9 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../core/app_export.dart';
-import './widgets/address_display_widget.dart';
-import './widgets/asset_selector_widget.dart';
 import './widgets/qr_code_widget.dart';
 import './widgets/recent_addresses_widget.dart';
 
@@ -55,17 +52,8 @@ class ReceiveCryptocurrency extends StatefulWidget {
 
 class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
   // Constants for better maintainability
-  static const String _btcAddressPrefix = 'bc1q';
-  static const String _ethAddressPrefix = '0x';
-  static const String _bnbAddressPrefix = 'bnb1';
-  static const String _addressChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   
   // Address lengths for different cryptocurrencies
-  static const Map<String, int> _addressLengths = {
-    'BTC': 39,
-    'ETH': 40,
-    'BNB': 38,
-  };
 
   // Cached data - using models for type safety
   List<CryptocurrencyAsset> _supportedAssets = [];
@@ -157,43 +145,8 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     _showToast("Share sheet opened");
   }
 
-  void _generateNewAddress() {
-    final newAddress = _generateRandomAddress();
-    setState(() {
-      _supportedAssets[_selectedAssetIndex].address = newAddress;
-    });
-    _showToast("New address generated");
-  }
 
-  String _generateRandomAddress() {
-    final selectedAsset = _supportedAssets[_selectedAssetIndex];
-    final symbol = selectedAsset.symbol;
-    final length = _addressLengths[symbol] ?? 42;
 
-    switch (symbol) {
-      case "BTC":
-        return "$_btcAddressPrefix${_generateRandomString(length)}";
-      case "ETH":
-        return "$_ethAddressPrefix${_generateRandomString(length)}";
-      case "BNB":
-        return "$_bnbAddressPrefix${_generateRandomString(length)}";
-      default:
-        return _generateRandomString(length);
-    }
-  }
-
-  String _generateRandomString(int length) {
-    // More random generation using system time and hash
-    final random = DateTime.now().microsecondsSinceEpoch;
-    return String.fromCharCodes(
-      Iterable.generate(
-        length,
-        (index) => _addressChars.codeUnitAt(
-          (random + index) % _addressChars.length,
-        ),
-      ),
-    );
-  }
 
   void _showToast(String message) {
     final theme = Theme.of(context);
@@ -206,19 +159,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     );
   }
 
-  void _onAssetSelected(int index) {
-    if (_selectedAssetIndex != index) {
-      setState(() {
-        _selectedAssetIndex = index;
-      });
-    }
-  }
 
-  void _toggleHighContrast() {
-    setState(() {
-      _isHighContrast = !_isHighContrast;
-    });
-  }
 
   void _showRecentAddressesBottomSheet() {
     showModalBottomSheet(
@@ -278,13 +219,11 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildAssetSelector(),
-              SizedBox(height: 2.h),
+             
               _buildMergedQRAndAddressSection(),
               SizedBox(height: 2.h),
               _buildShareButton(theme),
-              SizedBox(height: 1.h),
-              _buildNetworkWarning(theme),
+       
             ],
           ),
         ),
@@ -328,34 +267,11 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     );
   }
 
-  Widget _buildAssetSelector() {
-    return AssetSelectorWidget(
-      assets: _supportedAssets.map((asset) => {
-        "id": asset.id,
-        "name": asset.name,
-        "symbol": asset.symbol,
-        "icon": asset.icon,
-        "balance": asset.balance,
-        "address": asset.address,
-        "network": asset.network,
-        "warning": asset.warning,
-      }).toList(),
-      selectedIndex: _selectedAssetIndex,
-      onAssetSelected: _onAssetSelected,
-    );
-  }
 
   Widget _buildMergedQRAndAddressSection() {
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2D3A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white70,
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.all(24),
+    
+      padding: const EdgeInsets.all(8),
       child: Column(
         children: [
           // QR Code Section
@@ -383,15 +299,7 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
               
               // Address container
               Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3A3D4A),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white70,
-                    width: 1,
-                  ),
-                ),
+          
                 child: Column(
                   children: [
                     Text(
@@ -485,37 +393,4 @@ class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
     );
   }
 
-  Widget _buildNetworkWarning(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2D3A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFB923C).withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.warning_amber_rounded,
-            color: Color(0xFFFB923C),
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _selectedAsset.warning,
-              style: const TextStyle(
-                color: Color(0xFFFB923C),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

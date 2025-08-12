@@ -24,20 +24,7 @@ class QRCodeWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(1.w),
-      decoration: BoxDecoration(
-        boxShadow: const [
-  BoxShadow(
-    color: Color.fromARGB(31, 0, 0, 0),
-    blurRadius: 6,
-    offset: Offset(0, 10),
-  )
-],
-        color: Colors.white70,
-        borderRadius: BorderRadius.circular(16), border: Border.all(
-          color: AppTheme.onPrimary,
-          width: 0,
-        ),
-      ),
+
       child: Column(
         children: [
           Text(
