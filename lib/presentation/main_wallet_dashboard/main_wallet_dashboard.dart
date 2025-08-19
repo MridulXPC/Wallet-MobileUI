@@ -21,59 +21,58 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   int _selectedIndex = 0;
 
   final String _vaultName = 'Main Vault';
-  final String _totalValue = '\$0.00';
+  final String _totalValue = '\$500.00';
 
-void _onItemTapped(int index) {
+  void _onItemTapped(int index) {
     if (index == 1) {
-    Navigator.pushNamed(context, AppRoutes.walletInfoScreen); // ✅ Add this line
-    return;
-  }
-  if (index == 2) {
-    Navigator.pushNamed(context, AppRoutes.swapScreen); // ✅ Add this line
-    return;
-  }
+      Navigator.pushNamed(
+          context, AppRoutes.walletInfoScreen); // ✅ Add this line
+      return;
+    }
+    if (index == 2) {
+      Navigator.pushNamed(context, AppRoutes.swapScreen); // ✅ Add this line
+      return;
+    }
 
-  if (index == 3) {
-    Navigator.pushNamed(context, AppRoutes.profileScreen);
-    return;
+    if (index == 3) {
+      Navigator.pushNamed(context, AppRoutes.profileScreen);
+      return;
+    }
+
+    setState(() {
+      _selectedIndex = index;
+    });
   }
-
-  setState(() {
-    _selectedIndex = index;
-  });
-}
-
 
   late final PageController _pageController;
-int _currentPage = 0;
-late final Timer _timer;
+  int _currentPage = 0;
+  late final Timer _timer;
 
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(viewportFraction: 1.0);
 
-@override
-void initState() {
-  super.initState();
-  _pageController = PageController(viewportFraction: 1.0);
+    _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+      if (_pageController.hasClients) {
+        _currentPage++;
+        if (_currentPage >= 4) _currentPage = 0;
 
-  _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
-    if (_pageController.hasClients) {
-      _currentPage++;
-      if (_currentPage >= 4) _currentPage = 0;
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.bounceIn,
+        );
+      }
+    });
+  }
 
-      _pageController.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.bounceIn,
-      );
-    }
-  });
-}
-
-@override
-void dispose() {
-  _pageController.dispose();
-  _timer.cancel();
-  super.dispose();
-}
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _timer.cancel();
+    super.dispose();
+  }
 
   void _showWalletOptionsSheet() {
     showModalBottomSheet(
@@ -142,7 +141,7 @@ void dispose() {
       'today': List.generate(24, (i) => 0.95 + Random().nextDouble() * 0.05),
       'yearly': List.generate(12, (i) => 0.8 + Random().nextDouble() * 0.2),
     },
-       {
+    {
       'title': 'Trx',
       'price': 0.98,
       'monthly': List.generate(30, (i) => 0.9 + Random().nextDouble() * 0.1),
@@ -150,120 +149,108 @@ void dispose() {
       'yearly': List.generate(12, (i) => 0.8 + Random().nextDouble() * 0.2),
     },
   ];
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
-
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: const Color(0xFF1A1D29),
-   bottomNavigationBar: BottomNavBar(
-  selectedIndex: _selectedIndex,
-  onTap: _onItemTapped,
-),
-
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              VaultHeaderCard(
-                totalValue: _totalValue,
-                vaultName: _vaultName,
-                onTap: _showWalletOptionsSheet,
-              ),
-          
-        
-              SizedBox(
-                height: 38.h,
-                child: PageView.builder(
-                  controller: _pageController,
-              
-                  itemCount: cryptoCards.length,
-                  itemBuilder: (context, index) {
-                    final card = cryptoCards[index];
-                    return CryptoStatCard(
-                      title: card['title'],
-                      currentPrice: card['price'],
-                      monthlyData: card['monthly'],
-                      todayData: card['today'],
-                      yearlyData: card['yearly'], iconPath: 'assets/currencyicons/${card['title'].toLowerCase()}.png',
-                    );
-                  },
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _pageBg,
+      bottomNavigationBar: BottomNavBar(
+        selectedIndex: _selectedIndex,
+        onTap: _onItemTapped,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                VaultHeaderCard(
+                  totalValue: _totalValue,
+                  vaultName: _vaultName,
+                  onTap: _showWalletOptionsSheet,
                 ),
-              ),
-          
-        
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: CryptoPortfolioWidget(
-                  portfolio: [
-                  
-                    {
-                      "symbol": "BTC",
-                      "name": "Bitcoin",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "-1.25%",
-                      "isPositive": false,
-                      "icon": "assets/currencyicons/bitcoin.png",
+                SizedBox(
+                  height: 38.h,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: cryptoCards.length,
+                    itemBuilder: (context, index) {
+                      final card = cryptoCards[index];
+                      return CryptoStatCard(
+                        title: card['title'],
+                        currentPrice: card['price'],
+                        monthlyData: card['monthly'],
+                        todayData: card['today'],
+                        yearlyData: card['yearly'],
+                        iconPath:
+                            'assets/currencyicons/${card['title'].toLowerCase()}.png',
+                      );
                     },
-                    {
-                      "symbol": "ETH",
-                      "name": "Ethereum",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "0.75%",
-                      "isPositive": true,
-                      "icon": "assets/currencyicons/ethereum.png",
-                    },
-                    {
-                      "symbol": "MATIC",
-                      "name": "Polygon",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "-0.50%",
-                      "isPositive": false,
-                      "icon": "assets/currencyicons/matic.png",
-                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: CryptoPortfolioWidget(
+                    portfolio: [
                       {
-                      "symbol": "BCH",
-                      "name": "Bitcoin Cash",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "0.00%",
-                      "isPositive": true,
-                      "icon": "assets/currencyicons/bitcoin-cash.png",
-                    },
-                    {
-                      "symbol": "TRX",
-                      "name": "Tron",
-                      "balance": "0",
-                      "usdValue": "\$0.00",
-                      "change24h": "-0.25%",
-                      "isPositive": false,
-                      "icon": "assets/currencyicons/trx.png",
-                    },
-
-                  ],
+                        "symbol": "BTC",
+                        "name": "Bitcoin",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "-1.25%",
+                        "isPositive": false,
+                        "icon": "assets/currencyicons/bitcoin.png",
+                      },
+                      {
+                        "symbol": "ETH",
+                        "name": "Ethereum",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "0.75%",
+                        "isPositive": true,
+                        "icon": "assets/currencyicons/ethereum.png",
+                      },
+                      {
+                        "symbol": "MATIC",
+                        "name": "Polygon",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "-0.50%",
+                        "isPositive": false,
+                        "icon": "assets/currencyicons/matic.png",
+                      },
+                      {
+                        "symbol": "BCH",
+                        "name": "Bitcoin Cash",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "0.00%",
+                        "isPositive": true,
+                        "icon": "assets/currencyicons/bitcoin-cash.png",
+                      },
+                      {
+                        "symbol": "TRX",
+                        "name": "Tron",
+                        "balance": "0",
+                        "usdValue": "\$0.00",
+                        "change24h": "-0.25%",
+                        "isPositive": false,
+                        "icon": "assets/currencyicons/trx.png",
+                      },
+                    ],
+                  ),
                 ),
-             
-             
-              ),
-           
-           
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
-
-}
-
 
 // Resp
 //onsive Legend Item
@@ -305,5 +292,3 @@ class LegendItem extends StatelessWidget {
     );
   }
 }
-
-

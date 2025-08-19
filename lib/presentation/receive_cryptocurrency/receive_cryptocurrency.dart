@@ -1,396 +1,275 @@
+// lib/presentation/receive_cryptocurrency/receive_cryptocurrency.dart
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sizer/sizer.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
-import './widgets/qr_code_widget.dart';
-import './widgets/recent_addresses_widget.dart';
+class ReceiveQR extends StatefulWidget {
+  final String title; // e.g. "Your address to receive XRP"
+  final String address; // wallet address text
 
-// Models for better type safety
-class CryptocurrencyAsset {
-  final String id;
-  final String name;
-  final String symbol;
-  final String icon;
-  final String balance;
-  String address;
-  final String network;
-  final String warning;
-
-  CryptocurrencyAsset({
-    required this.id,
-    required this.name,
-    required this.symbol,
-    required this.icon,
-    required this.balance,
+  const ReceiveQR({
+    super.key,
+    required this.title,
     required this.address,
-    required this.network,
-    required this.warning,
   });
-}
-
-class RecentAddress {
-  final String address;
-  final String timestamp;
-  final String asset;
-  final bool used;
-
-  const RecentAddress({
-    required this.address,
-    required this.timestamp,
-    required this.asset,
-    required this.used,
-  });
-}
-
-class ReceiveCryptocurrency extends StatefulWidget {
-  const ReceiveCryptocurrency({super.key});
 
   @override
-  State<ReceiveCryptocurrency> createState() => _ReceiveCryptocurrencyState();
+  State<ReceiveQR> createState() => _ReceiveQRState();
 }
 
-class _ReceiveCryptocurrencyState extends State<ReceiveCryptocurrency> {
-  // Constants for better maintainability
-  
-  // Address lengths for different cryptocurrencies
+class _ReceiveQRState extends State<ReceiveQR> {
+  final GlobalKey _qrKey = GlobalKey();
 
-  // Cached data - using models for type safety
-  List<CryptocurrencyAsset> _supportedAssets = [];
-  List<RecentAddress> _recentAddresses = [];
-  
-  int _selectedAssetIndex = 0;
-  bool _isHighContrast = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeData();
-    _refreshBalance();
-  }
-
-  void _initializeData() {
-    _supportedAssets = [
-      CryptocurrencyAsset(
-        id: "bitcoin",
-        name: "Bitcoin",
-        symbol: "BTC",
-        icon: "assets/currencyicons/bitcoin.png",
-        balance: "0.00234567",
-        address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-        network: "Bitcoin",
-        warning: "Only send Bitcoin to this address",
-      ),
-      CryptocurrencyAsset(
-        id: "ethereum",
-        name: "Ethereum",
-        symbol: "ETH",
-        icon: "assets/currencyicons/ethereum.png",
-        balance: "1.23456789",
-        address: "0x742d35Cc6634C0532925a3b8D4C2E5e2c8b6c8e3",
-        network: "Ethereum",
-        warning: "Only send Ethereum and ERC-20 tokens to this address",
-      ),
-    ];
-
-    _recentAddresses = const [
-      RecentAddress(
-        address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-        timestamp: "2024-01-15 14:30:00",
-        asset: "BTC",
-        used: true,
-      ),
-      RecentAddress(
-        address: "0x742d35Cc6634C0532925a3b8D4C2E5e2c8b6c8e3",
-        timestamp: "2024-01-14 09:15:00",
-        asset: "ETH",
-        used: true,
-      ),
-      RecentAddress(
-        address: "bnb1grpf0955h0ykzq3ar5nmum7y6gdfl6lxfn46h2",
-        timestamp: "2024-01-13 16:45:00",
-        asset: "BNB",
-        used: false,
-      ),
-    ];
-  }
-
-  Future<void> _refreshBalance() async {
-    // Simulate async balance refresh
-    // In real implementation, this would call an API
-    await Future.delayed(const Duration(milliseconds: 100));
-    if (mounted) {
-      setState(() {
-        // Update balance data
-      });
-    }
-  }
-
-  Future<void> _copyToClipboard(String text) async {
-    try {
-      await Clipboard.setData(ClipboardData(text: text));
-      if (mounted) {
-        HapticFeedback.lightImpact();
-        _showToast("Address copied to clipboard");
-      }
-    } catch (e) {
-      if (mounted) {
-        _showToast("Failed to copy address");
-      }
-    }
-  }
-
-  void _shareAddress() {
-    // In real implementation, use share_plus package
-    _showToast("Share sheet opened");
-  }
-
-
-
-
-  void _showToast(String message) {
-    final theme = Theme.of(context);
-    Fluttertoast.showToast(
-      msg: message,
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      backgroundColor: theme.colorScheme.surface,
-      textColor: theme.colorScheme.onSurface,
-    );
-  }
-
-
-
-  void _showRecentAddressesBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1D29),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            
-              Expanded(
-                child: RecentAddressesWidget(
-                  addresses: _recentAddresses.map((addr) => {
-                    "address": addr.address,
-                    "timestamp": addr.timestamp,
-                    "asset": addr.asset,
-                    "used": addr.used,
-                  }).toList(),
-                  onCopy: _copyToClipboard,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  CryptocurrencyAsset get _selectedAsset => _supportedAssets[_selectedAssetIndex];
+  // Colors tuned to match the screenshot
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
+  static const Color _qrCardBg = Colors.white;
+  static const Color _addressPill = Color(0xFF1B2037); // bluish pill
+  static const Color _copyBtnBg = Color(0xFF262B45); // slightly brighter circle
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1D29),
-      appBar: _buildAppBar(theme),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.0.h),
+        backgroundColor: _pageBg,
+        body: SafeArea(
+          bottom: false,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-             
-              _buildMergedQRAndAddressSection(),
-              SizedBox(height: 2.h),
-              _buildShareButton(theme),
-       
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(ThemeData theme) {
-    return AppBar(
-      backgroundColor: const Color(0xFF1A1D29),
-      elevation: 0,
-      leading: IconButton(
-        onPressed: () => Navigator.pop(context),
-        icon: const Icon(
-          Icons.arrow_back_ios,
-          color: Colors.white,
-          size: 20,
-        ),
-      ),
-      title: const Text(
-        'Receive',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      centerTitle: true,
-      actions: [
-        IconButton(
-          onPressed: _showRecentAddressesBottomSheet,
-          icon: const Icon(
-            Icons.history,
-            color: Colors.white70,
-            size: 24,
-          ),
-          tooltip: 'Recent Addresses',
-        ),
-       
-      ],
-    );
-  }
-
-
-  Widget _buildMergedQRAndAddressSection() {
-    return Container(
-    
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        children: [
-          // QR Code Section
-          QRCodeWidget(
-            address: _selectedAsset.address,
-            amount: "",
-            symbol: _selectedAsset.symbol,
-            isHighContrast: _isHighContrast,
-          ),
-          const SizedBox(height: 24),
-          
-          // Address Display Section
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Wallet Address',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 12),
-              
-              // Address container
-              Container(
-          
-                child: Column(
+              // ======= HEADER =======
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      _selectedAsset.address,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
-                      ),
-                      textAlign: TextAlign.center,
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new,
+                          color: Colors.white, size: 22),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      tooltip: 'Back',
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // Action buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _copyToClipboard(_selectedAsset.address),
-                            icon: const Icon(Icons.copy, size: 18),
-                            label: const Text('Copy'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF4A4D5A),
-                              foregroundColor: Colors.white70,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                  
-                     
-                      ],
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 26),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      tooltip: 'Close',
                     ),
                   ],
                 ),
               ),
+
+              // ======= TITLE =======
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Text(
+                  widget.title.isEmpty
+                      ? 'Your address to receive XRP'
+                      : widget.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              // QR card (with save on long-press)
+              GestureDetector(
+                onLongPress: _saveQRToGallery,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 100,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _qrCardBg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: RepaintBoundary(
+                    key: _qrKey,
+                    child: Container(
+                      color: _qrCardBg,
+                      child: Center(
+                        child: QrImageView(
+                          data: widget.address.isEmpty
+                              ? 'rKXxQ9AmpYKWDHECvERVfduRefDh21e3VF'
+                              : widget.address,
+                          version: QrVersions.auto,
+                          gapless: true,
+                          size:
+                              190, // 👈 reduce this value (default: fills parent)
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
+                            color: Colors.black,
+                          ),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                            color: Colors.black,
+                          ),
+                          backgroundColor: _qrCardBg,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Address pill with circular copy icon at the right
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: _addressPill,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Text(
+                            widget.address.isEmpty
+                                ? 'rKXxQ9AmpYKWDHECvERVfduRefDh21e3VF'
+                                : widget.address,
+                            style: const TextStyle(
+                              color: Color(0xFFE4E7F5),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      _CircleIconButton(
+                        onTap: _copyAddress,
+                        bg: _copyBtnBg,
+                        icon: Icons.copy_rounded,
+                        iconColor: const Color(0xFFE4E7F5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Spacer to push the button to the bottom like the screenshot
+              const Spacer(),
+
+              // Big rounded white Share button
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                child: SizedBox(
+                  height: 50,
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _share,
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: Colors.white,
+                      foregroundColor: _pageBg,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    icon: const Icon(Icons.share, size: 22),
+                    label: const Text('Share'),
+                  ),
+                ),
+              ),
+
+              // home indicator spacing
+              const SizedBox(height: 8),
             ],
           ),
-        ],
+        ));
+  }
+
+  Future<void> _copyAddress() async {
+    final text = widget.address.isEmpty
+        ? 'rKXxQ9AmpYKWDHECvERVfduRefDh21e3VF'
+        : widget.address;
+    await Clipboard.setData(ClipboardData(text: text));
+    HapticFeedback.selectionClick();
+    Fluttertoast.showToast(msg: 'Address copied');
+  }
+
+  Future<void> _share() async {
+    final text = widget.address.isEmpty
+        ? 'rKXxQ9AmpYKWDHECvERVfduRefDh21e3VF'
+        : widget.address;
+    Share.share(text);
+  }
+
+  Future<void> _saveQRToGallery() async {
+    // Renders the QR area as PNG bytes and puts it in Photo/Downloads via share sheet.
+    try {
+      final boundary =
+          _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null) return;
+
+      // Use share sheet for a frictionless “Save Image” on iOS; or connect your gallery saver.
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, name: 'receive_qr.png', mimeType: 'image/png')],
+        subject: 'Wallet QR',
+        text: 'Wallet address QR',
+      );
+      HapticFeedback.mediumImpact();
+      Fluttertoast.showToast(msg: 'Long‑press: share/save QR');
+    } catch (_) {
+      Fluttertoast.showToast(msg: 'Couldn’t export QR');
+    }
+  }
+}
+
+class _CircleIconButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final IconData icon;
+  final Color bg;
+  final Color iconColor;
+
+  const _CircleIconButton({
+    required this.onTap,
+    required this.icon,
+    required this.bg,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: bg,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const SizedBox(
+          height: 40,
+          width: 40,
+          child: Icon(Icons.copy_rounded, size: 16, color: Color(0xFFE4E7F5)),
+        ),
       ),
     );
   }
-
-  Widget _buildShareButton(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: _shareAddress,
-        icon: const Icon(
-          Icons.share,
-          color: Colors.white,
-          size: 20,
-        ),
-        label: const Text(
-          'Share Address',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
-    );
-  }
-
 }

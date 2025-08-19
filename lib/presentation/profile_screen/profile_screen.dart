@@ -1,3 +1,4 @@
+// lib/presentation/profile_screen/profile_screen.dart
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
@@ -14,106 +15,438 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // ===== Colors tuned to the screenshot =====
+  static const Color _pageBg = Color(0xFF0B0D1A);
+  static const Color _card = Color(0xFF171B2B);
+  static const Color _stroke = Color(0xFF272C42);
+  static const Color _faint = Color(0xFFBFC5DA);
 
+  Future<void> _openQRScanner() async {
+    final status = await Permission.camera.request();
 
-Future<void> _openQRScanner() async {
-  final status = await Permission.camera.request();
+    if (status.isGranted) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QRScannerScreen(
+            onScan: (code) async {
+              // Handle the scanned session id
+              try {
+                // Prefer pulling from storage/service
+                String? token = await AuthService.getStoredToken();
 
-  if (status.isGranted) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => QRScannerScreen(
-          onScan: (code) async {
-            debugPrint('📦 Scanned session ID: $code');
+                // fallback, if you still want a hardcoded token for dev:
+                token ??=
+                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
 
-            try {
-              // Get token from storage instead of hardcoding
-              // final token = await AuthService.getStoredToken();
-              final token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
+                if (token == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          '❌ Authentication required. Please login first.'),
+                    ),
+                  );
+                  Navigator.pop(context);
+                  return;
+                }
 
-              
-              if (token == null) {
+                final result = await AuthService.authorizeWebSession(
+                  sessionId: code,
+                  token: token,
+                );
+
+                if (!mounted) return;
+                if (result.success) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SessionInfoScreen(sessionId: code),
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          result.message ?? '❌ Failed to authorize session'),
+                    ),
+                  );
+                  Navigator.pop(context);
+                }
+              } catch (e) {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('❌ Authentication required. Please login first.'),
-                  ),
+                      content:
+                          Text('❌ An error occurred during authorization')),
                 );
                 Navigator.pop(context);
-                return;
               }
+            },
+          ),
+        ),
+      );
+    } else if (status.isPermanentlyDenied) {
+      openAppSettings();
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Camera permission is required.')),
+      );
+    }
+  }
 
-              final result = await AuthService.authorizeWebSession(
-                sessionId: code,
-                token: token,
-              );
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _pageBg,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          children: [
+            // Title
+            const Text(
+              'Profile',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 14),
 
-              if (result.success && mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SessionInfoScreen(sessionId: code),
+            // Search bar
+            Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: _stroke, width: 1),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.search, color: Color(0xFF8E94AA)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Search',
+                      style: TextStyle(
+                        color: Color(0xFF8E94AA),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(result.message ?? '❌ Failed to authorize session'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Notification banner
+            _HubBanner(
+              leading: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.notifications_none,
+                      color: Colors.white, size: 22),
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                   ),
-                );
-                Navigator.pop(context);
-              }
-            } catch (e) {
-              debugPrint('❌ Authorization error: $e');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ An error occurred during authorization'),
+                ],
+              ),
+              title: 'You have 25 unread notification',
+              onTap: () {},
+            ),
+            const SizedBox(height: 12),
+
+            // Level card
+            Container(
+              height: 120,
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Stack(
+                children: [
+                  // Left text
+                  const Positioned(
+                    left: 16,
+                    top: 16,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Lvl. 0',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700)),
+                        SizedBox(height: 4),
+                        Text('Earned 0 points',
+                            style: TextStyle(color: _faint, fontSize: 14)),
+                      ],
+                    ),
                   ),
-                );
-                Navigator.pop(context);
-              }
-            }
-          },
+                  // Right decorative coin/art (placeholder)
+                  Positioned.fill(
+                    right: 0,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        width: 150,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [Color(0x00171B2B), _card],
+                          ),
+                        ),
+                        child: const Align(
+                          alignment: Alignment.center,
+                          child: Icon(Icons.monetization_on_rounded,
+                              color: Colors.white, size: 68),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 2 x 2 grid of setting cards
+            Row(
+              children: [
+                Expanded(
+                  child: _HubSquareCard(
+                    icon: Icons.settings_outlined,
+                    title: 'General\nSettings',
+                    onTap: () {},
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _HubSquareCard(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: 'Wallet\nSettings',
+                    onTap: () {},
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _HubSquareCard(
+                    icon: Icons.lock_outline,
+                    title: 'Security\nSettings',
+                    onTap: () {},
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _HubSquareCard(
+                    icon: Icons.help_outline,
+                    title: 'Tech &\nSupport',
+                    onTap: () {},
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // ===== Removed Buy Crypto / Staking / Swap Center =====
+            // Replaced with: Link Web Session
+            _HubListTile(
+              leadingIcon: Icons.qr_code_scanner,
+              title: 'Link Web Session',
+              subtitle: 'Authorize your browser with a QR',
+              onTap: _openQRScanner,
+            ),
+
+            const SizedBox(height: 72), // bottom spacing
+          ],
         ),
       ),
-    );
-  } else if (status.isPermanentlyDenied) {
-    openAppSettings();
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Camera permission is required.')),
+      bottomNavigationBar: BottomNavBar(
+        selectedIndex: 4,
+        onTap: (index) {
+          if (index == 4) return; // stay here
+          Navigator.pushReplacementNamed(
+            context,
+            index == 0
+                ? AppRoutes.dashboardScreen
+                : index == 1
+                    ? AppRoutes.dashboardScreen
+                    : AppRoutes.swapScreen,
+          );
+        },
+      ),
     );
   }
 }
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: const Text('Profile')),
-    body: Center(
-      child: ElevatedButton.icon(
-        onPressed: _openQRScanner,
-        icon: const Icon(Icons.qr_code_scanner),
-        label: const Text("Link Web Session"),
+
+/// Banner row used for notifications strip
+class _HubBanner extends StatelessWidget {
+  const _HubBanner({
+    required this.leading,
+    required this.title,
+    required this.onTap,
+  });
+
+  final Widget leading;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _ProfileScreenState._card,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              leading,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: _ProfileScreenState._faint),
+            ],
+          ),
+        ),
       ),
-    ),
-    bottomNavigationBar: BottomNavBar(
-      selectedIndex: 3,
-      onTap: (index) {
-        if (index == 3) return; // Stay on profile
-        Navigator.pushReplacementNamed(
-          context,
-          index == 0
-              ? AppRoutes.dashboardScreen
-              : index == 1
-                  ? AppRoutes.dashboardScreen// Use Wallet route if separate
-                  : AppRoutes.swapScreen,
-        );
-      },
-    ),
-  );
+    );
+  }
 }
+
+/// Square cards in the 2x2 grid
+class _HubSquareCard extends StatelessWidget {
+  const _HubSquareCard({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _ProfileScreenState._card,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Container(
+          height: 128,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 2),
+              Icon(icon, color: _ProfileScreenState._faint, size: 28),
+              const Spacer(),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+/// List row styled like the screenshot’s “Buy Crypto” row
+class _HubListTile extends StatelessWidget {
+  const _HubListTile({
+    required this.leadingIcon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData leadingIcon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _ProfileScreenState._card,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Icon(leadingIcon, color: _ProfileScreenState._faint, size: 22),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            color: _ProfileScreenState._faint, fontSize: 14)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: _ProfileScreenState._faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =================== QR Scanner ===================
 
 class QRScannerScreen extends StatefulWidget {
   final Function(String code) onScan;
@@ -138,19 +471,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
       if (code != null) {
         _hasScanned = true;
-        debugPrint('📦 Scanned Code: $code,',);
-   debugPrint(code.runtimeType.toString());
+        debugPrint('📦 Scanned Code: $code');
         debugPrint('🔍 Format: $format');
+
         try {
-
-          debugPrint('📦 Attempting to parse JSON from QR code...');
-          // final Map<String, dynamic> data = jsonDecode(code);
+          // If your QR contains JSON, parse it here;
+          // otherwise, we assume it’s the session id directly.
           final sessionId = code;
-
-          debugPrint('📦 Extracted session ID: $sessionId');
           widget.onScan(sessionId);
-                } catch (e) {
+        } catch (e) {
           debugPrint('❌ Invalid QR content: $e');
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Invalid QR code format.')),
           );
@@ -216,7 +547,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ),
         ],
       ),
-   
     );
   }
 }
@@ -229,19 +559,26 @@ class CornerFramePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    double length = 30;
+    const double length = 30;
 
-    canvas.drawLine(Offset(0, 0), Offset(length, 0), _paint);
-    canvas.drawLine(Offset(0, 0), Offset(0, length), _paint);
-
-    canvas.drawLine(Offset(size.width, 0), Offset(size.width - length, 0), _paint);
+    // TL
+    canvas.drawLine(const Offset(0, 0), const Offset(length, 0), _paint);
+    canvas.drawLine(const Offset(0, 0), const Offset(0, length), _paint);
+    // TR
+    canvas.drawLine(
+        Offset(size.width, 0), Offset(size.width - length, 0), _paint);
+    canvas.drawLine(const Offset(0, 0), const Offset(0, 0), _paint);
     canvas.drawLine(Offset(size.width, 0), Offset(size.width, length), _paint);
-
-    canvas.drawLine(Offset(0, size.height), Offset(length, size.height), _paint);
-    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - length), _paint);
-
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width - length, size.height), _paint);
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - length), _paint);
+    // BL
+    canvas.drawLine(
+        Offset(0, size.height), Offset(length, size.height), _paint);
+    canvas.drawLine(
+        Offset(0, size.height), Offset(0, size.height - length), _paint);
+    // BR
+    canvas.drawLine(Offset(size.width, size.height),
+        Offset(size.width - length, size.height), _paint);
+    canvas.drawLine(Offset(size.width, size.height),
+        Offset(size.width, size.height - length), _paint);
   }
 
   @override

@@ -55,13 +55,22 @@ class AppRoutes {
     dashboardScreen: (context) => const WalletHomeScreen(),
 
     // Wallet Features
-    receiveCrypto: (context) => const ReceiveCryptocurrency(),
+    receiveCrypto: (context) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      String title = 'Your address to receive XRP';
+      String address = '';
+      if (args is Map) {
+        title = (args['title'] as String?) ?? title;
+        address = (args['address'] as String?) ?? address;
+      }
+      return ReceiveQR(title: title, address: address);
+    },
+
     sendCrypto: (context) => const SendCryptocurrency(),
     transactionHistory: (context) => const TransactionHistory(),
     tokenDetail: (context) => const TokenDetailScreen(),
     swapScreen: (context) => const SwapScreen(),
-    walletInfoScreen: (context) =>  WalletInfoScreen(),
-    
+    walletInfoScreen: (context) => WalletInfoScreen(),
 
     // Profile
     profileScreen: (context) => const ProfileScreen(),

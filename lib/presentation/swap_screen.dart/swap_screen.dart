@@ -118,7 +118,7 @@ class _SwapScreenState extends State<SwapScreen> {
             List<Map<String, String>> filteredCoins = selectedFilter == 'ALL'
                 ? allCoins
                 : allCoins.where((c) => c['symbol'] == selectedFilter).toList();
-            
+
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -137,7 +137,8 @@ class _SwapScreenState extends State<SwapScreen> {
                             decoration: InputDecoration(
                               hintText: 'Type to search chain',
                               hintStyle: const TextStyle(color: Colors.white54),
-                              prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                              prefixIcon: const Icon(Icons.search,
+                                  color: Colors.white54),
                               filled: true,
                               fillColor: const Color(0xFF2A2D3A),
                               border: OutlineInputBorder(
@@ -153,7 +154,8 @@ class _SwapScreenState extends State<SwapScreen> {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: ['ALL', 'BTC', 'ETH', 'MATIC', 'TRX', 'USDT'].map((filter) {
+                        children: ['ALL', 'BTC', 'ETH', 'MATIC', 'TRX', 'USDT']
+                            .map((filter) {
                           final isSelected = selectedFilter == filter;
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -164,7 +166,8 @@ class _SwapScreenState extends State<SwapScreen> {
                                   setModalState(() => selectedFilter = filter),
                               selectedColor: Colors.blue,
                               labelStyle: TextStyle(
-                                color: isSelected ? Colors.white : Colors.white70,
+                                color:
+                                    isSelected ? Colors.white : Colors.white70,
                               ),
                               backgroundColor: const Color(0xFF2A2D3A),
                             ),
@@ -214,9 +217,10 @@ class _SwapScreenState extends State<SwapScreen> {
                             trailing: Text(
                               coin['change24h'] ?? '',
                               style: TextStyle(
-                                color: coin['change24h']?.startsWith('-') == true 
-                                    ? Colors.red 
-                                    : Colors.green,
+                                color:
+                                    coin['change24h']?.startsWith('-') == true
+                                        ? Colors.red
+                                        : Colors.green,
                                 fontSize: 12,
                               ),
                             ),
@@ -252,13 +256,14 @@ class _SwapScreenState extends State<SwapScreen> {
   }) {
     final coinData = getCoinData(coin);
     final coinIcon = getCoinIcon(coin);
-    
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 10, vertical: 0), // smaller vertical
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2D3A),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF171B2B),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,17 +274,17 @@ class _SwapScreenState extends State<SwapScreen> {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   color: Colors.white70,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               if (isFrom)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3D4A),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.transparent,
                   ),
                   child: Text(
                     'Balance: ${coinData?['balance'] ?? '0.00'}',
@@ -294,7 +299,8 @@ class _SwapScreenState extends State<SwapScreen> {
               GestureDetector(
                 onTap: () => _selectCoin(isFrom),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(20),
@@ -318,10 +324,13 @@ class _SwapScreenState extends State<SwapScreen> {
                             errorBuilder: (context, error, stackTrace) {
                               return CircleAvatar(
                                 radius: 12,
-                                backgroundColor: coin == 'USDT' ? Colors.green : Colors.purple,
+                                backgroundColor: coin == 'USDT'
+                                    ? Colors.green
+                                    : Colors.purple,
                                 child: Text(
                                   coin[0],
-                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 12),
                                 ),
                               );
                             },
@@ -331,7 +340,8 @@ class _SwapScreenState extends State<SwapScreen> {
                       const SizedBox(width: 8),
                       Text(
                         coin,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 16),
                       ),
                       const SizedBox(width: 4),
                       const Icon(
@@ -346,7 +356,8 @@ class _SwapScreenState extends State<SwapScreen> {
               const Spacer(),
               if (isFrom)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(12),
@@ -360,9 +371,11 @@ class _SwapScreenState extends State<SwapScreen> {
               Expanded(
                 child: TextField(
                   controller: isFrom ? _fromController : null,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,8}')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,8}')),
                   ],
                   textAlign: TextAlign.end,
                   style: const TextStyle(
@@ -405,17 +418,20 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
+  static const Color _pageBg = Color(0xFF0B0D1A);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1D29),
+      backgroundColor: _pageBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1D29),
+        backgroundColor: _pageBg,
         elevation: 0,
         leading: const BackButton(color: Colors.white),
         title: const Text(
           'Swap',
-          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
         ),
         centerTitle: false,
         actions: [
@@ -430,7 +446,8 @@ class _SwapScreenState extends State<SwapScreen> {
               children: [
                 Icon(Icons.tune, color: Colors.white70, size: 16),
                 SizedBox(width: 4),
-                Text('Auto', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                Text('Auto',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),
@@ -487,15 +504,15 @@ class _SwapScreenState extends State<SwapScreen> {
           ),
           // Positioned swap button between containers
           Positioned(
-            top: 125, // Position between the two containers
+            top: 105, // Position between the two containers
             left: 0,
             right: 0,
             child: Center(
               child: GestureDetector(
                 onTap: _swapCoins,
                 child: Container(
-                  width: 48,
-                  height: 48,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1D29),
                     shape: BoxShape.circle,

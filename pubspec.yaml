@@ -1,10 +1,10 @@
 name: cryptowallet
 description: A new Flutter project.
 version: 1.0.0+1
-environment: 
+environment:
   sdk: ^3.6.0
-dependencies: 
-  flutter: 
+dependencies:
+  flutter:
     sdk: flutter
   cached_network_image: ^3.3.1
   flutter_svg: ^2.0.9
@@ -19,21 +19,24 @@ dependencies:
 
   permission_handler: ^12.0.1
 
-
   mobile_scanner: ^6.0.10
   http: ^1.4.0
   smooth_page_indicator: ^1.2.1
   bip39: ^1.0.6
   syncfusion_flutter_charts: ^29.1.38
   graphic: ^2.6.0
+  clipboard: ^2.0.2
 
-dev_dependencies: 
-  flutter_test: 
+  qr_flutter: ^4.1.0
+  share_plus: ^11.1.0
+
+dev_dependencies:
+  flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-flutter: 
+flutter:
   uses-material-design: true
-  assets: 
+  assets:
     - assets/
 
     - assets/currencyicons/

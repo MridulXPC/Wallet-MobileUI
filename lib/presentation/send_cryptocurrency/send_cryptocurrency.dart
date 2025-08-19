@@ -12,7 +12,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _currentAmount = '0';
   bool _isADASelected = true;
   double _usdValue = 0.00;
-  
+
   // Selected asset properties
   String _selectedAsset = 'Cardano';
   String _selectedAssetSymbol = 'ADA';
@@ -87,7 +87,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       double amount = _selectedAssetBalance * percentage;
       _currentAmount = amount.toStringAsFixed(8);
       // Remove trailing zeros
-      _currentAmount = _currentAmount.replaceAll(RegExp(r'0*$'), '').replaceAll(RegExp(r'\.$'), '');
+      _currentAmount = _currentAmount
+          .replaceAll(RegExp(r'0*$'), '')
+          .replaceAll(RegExp(r'\.$'), '');
       if (_currentAmount.isEmpty) _currentAmount = '0';
       _calculateUSDValue();
     });
@@ -142,44 +144,44 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               ),
             ),
             ...(_cryptoAssets.map((asset) => ListTile(
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _getAssetColor(asset["name"]),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.currency_bitcoin,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              title: Text(
-                '${asset["symbol"]} - ${asset["name"]}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                'Balance: ${(asset["balance"] as double).toStringAsFixed(4)}',
-                style: const TextStyle(
-                  color: Color(0xFF9CA3AF),
-                ),
-              ),
-              trailing: Text(
-                '\$${(asset["price"] as double).toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              onTap: () {
-                _onAssetSelected(asset);
-                Navigator.pop(context);
-              },
-            ))).toList(),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _getAssetColor(asset["name"]),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.currency_bitcoin,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    '${asset["symbol"]} - ${asset["name"]}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Balance: ${(asset["balance"] as double).toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ),
+                  trailing: Text(
+                    '\$${(asset["price"] as double).toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  onTap: () {
+                    _onAssetSelected(asset);
+                    Navigator.pop(context);
+                  },
+                ))).toList(),
             const SizedBox(height: 20),
           ],
         ),
@@ -207,9 +209,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenHeight < 700;
+    final isSmallScreen = screenHeight < 0.6 * screenWidth;
     final isTablet = screenWidth > 600;
-    
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A1D29),
       appBar: AppBar(
@@ -244,8 +246,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
-                      SizedBox(height: isSmallScreen ? 1.h : 1.h),
-                      
+                      SizedBox(height: 1.h),
+
                       // Account Card - Now Interactive
                       GestureDetector(
                         onTap: _showAssetSelector,
@@ -253,11 +255,11 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           margin: EdgeInsets.symmetric(horizontal: 4.w),
                           padding: EdgeInsets.all(isSmallScreen ? 3.w : 2.w),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2A2D3A),
-                            borderRadius: BorderRadius.circular(16),
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: const Color(0xFF3A3D4A),
-                              width: 1,
+                              color: const Color.fromARGB(255, 170, 171, 177),
+                              width: 1.2,
                             ),
                           ),
                           child: Row(
@@ -279,7 +281,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                 ),
                               ),
                               SizedBox(width: 3.w),
-                              
+
                               // Account Details - Now Dynamic
                               Expanded(
                                 child: Column(
@@ -293,7 +295,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    SizedBox(height: 0.5.h),
                                     Text(
                                       _selectedAsset,
                                       style: TextStyle(
@@ -304,7 +305,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                   ],
                                 ),
                               ),
-                              
+
                               // Balance
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -326,21 +327,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                   ),
                                 ],
                               ),
-                              
-                              // Dropdown Arrow
-                              SizedBox(width: 2.w),
-                              Icon(
-                                Icons.keyboard_arrow_down,
-                                color: Colors.white,
-                                size: isSmallScreen ? 20 : 24,
-                              ),
                             ],
                           ),
                         ),
                       ),
-                      
+
                       SizedBox(height: isSmallScreen ? 2.h : 2.h),
-                      
+
                       // Currency Toggle Buttons
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -351,12 +344,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                             },
                             child: Container(
                               padding: EdgeInsets.symmetric(
-                                horizontal: isTablet ? 8.w : 6.w, 
-                                vertical: 1.2.h
-                              ),
+                                  horizontal: 4.w, vertical: 0.3.h),
                               decoration: BoxDecoration(
-                                color: _isADASelected ? const Color(0xFF4C5563) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(25),
+                                color: _isADASelected
+                                    ? const Color(0xFF4C5563)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
                                   color: const Color(0xFF4C5563),
                                   width: 1,
@@ -365,7 +358,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                               child: Text(
                                 _selectedAssetSymbol,
                                 style: TextStyle(
-                                  color: _isADASelected ? Colors.white : const Color(0xFF9CA3AF),
+                                  color: _isADASelected
+                                      ? Colors.white
+                                      : const Color(0xFF9CA3AF),
                                   fontSize: isSmallScreen ? 14 : 16,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -379,12 +374,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                             },
                             child: Container(
                               padding: EdgeInsets.symmetric(
-                                horizontal: isTablet ? 8.w : 6.w, 
-                                vertical: 1.2.h
-                              ),
+                                  horizontal: 4.w, vertical: 0.3.h),
                               decoration: BoxDecoration(
-                                color: !_isADASelected ? const Color(0xFF4C5563) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(25),
+                                color: !_isADASelected
+                                    ? const Color(0xFF4C5563)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
                                   color: const Color(0xFF4C5563),
                                   width: 1,
@@ -393,7 +388,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                               child: Text(
                                 'USD',
                                 style: TextStyle(
-                                  color: !_isADASelected ? Colors.white : const Color(0xFF9CA3AF),
+                                  color: !_isADASelected
+                                      ? Colors.white
+                                      : const Color(0xFF9CA3AF),
                                   fontSize: isSmallScreen ? 14 : 16,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -402,82 +399,79 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                         ],
                       ),
-                      
+
                       SizedBox(height: isSmallScreen ? 2.h : 1.h),
-                      
+
                       // Amount Display Section
-                      Flexible(
-                        child: Column(
-                          children: [
-                            Text(
-                              'Amount',
-                              style: TextStyle(
-                                color: const Color(0xFF9CA3AF),
-                                fontSize: isSmallScreen ? 14 : 14,
-                              ),
+                      Column(
+                        children: [
+                          Text(
+                            'Amount',
+                            style: TextStyle(
+                              color: const Color(0xFF9CA3AF),
+                              fontSize: isSmallScreen ? 14 : 14,
                             ),
-                            SizedBox(height: isSmallScreen ? 1.h : 1.h),
-                            
-                            Text(
-                              _currentAmount,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: isSmallScreen ? 30 : isTablet ? 50 : 40,
-                                fontWeight: FontWeight.w300,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 0.5.h),
+                          Text(
+                            _currentAmount,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w600,
                             ),
-                            SizedBox(height: 0.5.h),
-                            
-                            Text(
-                              '≈ ${_usdValue.toStringAsFixed(2)} USD',
-                              style: TextStyle(
-                                color: const Color(0xFF9CA3AF),
-                                fontSize: isSmallScreen ? 14 : 16,
-                              ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 0.5.h),
+                          Text(
+                            '≈ ${_usdValue.toStringAsFixed(2)} USD',
+                            style: TextStyle(
+                              color: const Color(0xFF9CA3AF),
+                              fontSize: isSmallScreen ? 14 : 16,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      
-     
-                      
+                      SizedBox(height: 2.w),
                       // Percentage Buttons
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4.w),
                         child: Row(
                           children: [
-                            _buildPercentageButton('25%', 0.25, isSmallScreen),
+                            _buildPercentageButton('25%', 0.0, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('50%', 0.50, isSmallScreen),
+                            _buildPercentageButton('50%', 0.0, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('75%', 0.75, isSmallScreen),
+                            _buildPercentageButton('75%', 0.0, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('100%', 1.0, isSmallScreen),
+                            _buildPercentageButton('100%', 0.0, isSmallScreen),
                           ],
                         ),
                       ),
-                      
-                      SizedBox(height: isSmallScreen ? 2.h : 1.h),
-                      
+
                       // Number Pad - Flexible to take remaining space
                       Flexible(
-                        flex: 2,
+                        flex: 0,
                         child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4.w),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 4.w, vertical: 2.h),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               _buildNumberRow(['1', '2', '3'], isSmallScreen),
+                              SizedBox(height: 1.h),
                               _buildNumberRow(['4', '5', '6'], isSmallScreen),
+                              SizedBox(height: 1.h),
                               _buildNumberRow(['7', '8', '9'], isSmallScreen),
-                              _buildNumberRow(['.', '0', 'backspace'], isSmallScreen),
+                              SizedBox(height: 1.h),
+                              _buildNumberRow(
+                                  ['.', '0', 'backspace'], isSmallScreen),
                             ],
                           ),
                         ),
                       ),
-                      
+                      Spacer(),
                       // Next Button - Always at bottom
                       Container(
                         margin: EdgeInsets.all(4.w),
@@ -529,15 +523,16 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     );
   }
 
-  Widget _buildPercentageButton(String text, double percentage, bool isSmallScreen) {
+  Widget _buildPercentageButton(
+      String text, double percentage, bool isSmallScreen) {
     return Expanded(
       child: GestureDetector(
         onTap: () => _onPercentagePressed(percentage),
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 1.h : 1.5.h),
+          padding: EdgeInsets.symmetric(vertical: 0.5.h),
           decoration: BoxDecoration(
-            color: const Color(0xFF2A2D3A),
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: const Color(0xFF3A3D4A),
               width: 1,
@@ -560,7 +555,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   Widget _buildNumberRow(List<String> numbers, bool isSmallScreen) {
     return Row(
-      children: numbers.map((number) => _buildNumberButton(number, isSmallScreen)).toList(),
+      children: numbers
+          .map((number) => _buildNumberButton(number, isSmallScreen))
+          .toList(),
     );
   }
 
@@ -578,7 +575,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         },
         child: Container(
           margin: EdgeInsets.symmetric(horizontal: 1.w),
-          height: isSmallScreen ? 5.5.h : 6.5.h,
+          height: isSmallScreen ? 2.h : 5.h,
           decoration: BoxDecoration(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(35),

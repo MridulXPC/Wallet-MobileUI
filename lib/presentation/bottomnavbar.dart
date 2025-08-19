@@ -13,28 +13,42 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar( backgroundColor: const Color(0xFF1A1D29),
-      currentIndex: selectedIndex,
-      onTap: (index) {
-        if (index == 2) {
-          Navigator.pushNamed(context, AppRoutes.swapScreen);
-        }else if (index == 1) {
-          Navigator.pushNamed(context, AppRoutes.walletInfoScreen);
-        } 
-         else if (index == 3) {
-          Navigator.pushNamed(context, AppRoutes.profileScreen);
-        } else {
-          onTap(index); // Call parent callback to update index
-        }
-      },
-      selectedItemColor: Colors.white,
-      unselectedItemColor: const Color.fromARGB(255, 93, 93, 93),
-      type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Wallet'),
-        BottomNavigationBarItem(icon: Icon(Icons.swap_horiz), label: 'Swap'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Divider(
+          height: 1,
+          thickness: 1,
+          color: Color(0xFF2A2D3A), // subtle grey line
+        ),
+        BottomNavigationBar(
+          backgroundColor: const Color(0xFF0B0D1A),
+          currentIndex: selectedIndex,
+          onTap: (index) {
+            if (index == 2) {
+              Navigator.pushNamed(context, AppRoutes.swapScreen);
+            } else if (index == 1) {
+              Navigator.pushNamed(context, AppRoutes.walletInfoScreen);
+            } else if (index == 3) {
+              Navigator.pushNamed(context, AppRoutes.profileScreen);
+            } else {
+              onTap(index);
+            }
+          },
+          selectedItemColor: Colors.white,
+          unselectedItemColor: const Color.fromARGB(255, 93, 93, 93),
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Wallet'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.swap_horiz), label: 'Swap'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.explore), label: 'Explorer'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.settings), label: 'Settings'),
+          ],
+        ),
       ],
     );
   }

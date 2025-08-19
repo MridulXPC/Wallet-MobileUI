@@ -51,14 +51,15 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       // Load the image as bytes
       final ByteData data = await rootBundle.load(widget.iconPath);
       final Uint8List bytes = data.buffer.asUint8List();
-      
+
       // Decode the image
       final ui.Codec codec = await ui.instantiateImageCodec(bytes);
       final ui.FrameInfo frameInfo = await codec.getNextFrame();
       final ui.Image image = frameInfo.image;
-      
+
       // Convert to byte data
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (byteData != null) {
         final Color extractedColor = _getDominantColorFromBytes(byteData);
         if (mounted) {
@@ -82,7 +83,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   Color _getDominantColorFromBytes(ByteData byteData) {
     final Uint8List pixels = byteData.buffer.asUint8List();
     Map<int, int> colorCounts = {};
-    
+
     // Sample every 4th pixel to improve performance
     for (int i = 0; i < pixels.length; i += 16) {
       if (i + 3 < pixels.length) {
@@ -90,32 +91,31 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         final int g = pixels[i + 1];
         final int b = pixels[i + 2];
         final int a = pixels[i + 3];
-        
+
         // Skip transparent pixels
         if (a < 128) continue;
-        
+
         // Skip very light or very dark colors
         final double luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         if (luminance > 0.9 || luminance < 0.1) continue;
-        
+
         final int colorKey = (r << 16) | (g << 8) | b;
         colorCounts[colorKey] = (colorCounts[colorKey] ?? 0) + 1;
       }
     }
-    
+
     if (colorCounts.isEmpty) {
       return _getDefaultColorForCrypto(widget.title);
     }
-    
+
     // Find the most common color
-    int dominantColorKey = colorCounts.entries
-        .reduce((a, b) => a.value > b.value ? a : b)
-        .key;
-    
+    int dominantColorKey =
+        colorCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+
     final int r = (dominantColorKey >> 16) & 0xFF;
     final int g = (dominantColorKey >> 8) & 0xFF;
     final int b = dominantColorKey & 0xFF;
-    
+
     return Color.fromRGBO(r, g, b, 1.0);
   }
 
@@ -131,7 +131,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       'Dogecoin': const Color(0xFFC2A633),
       'Litecoin': const Color(0xFFBFBFBF),
     };
-    
+
     return cryptoColors[title] ?? const Color(0xFF1A73E8);
   }
 
@@ -143,21 +143,21 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         end: Alignment.bottomCenter,
       );
     }
-    
+
     // Create a gradient using the dominant color
     final HSLColor hslColor = HSLColor.fromColor(_dominantColor);
-    
+
     // Create lighter and darker variants
     final Color lightColor = hslColor
         .withLightness(math.min(0.7, hslColor.lightness + 0.2))
         .withSaturation(math.min(1.0, hslColor.saturation + 0.1))
         .toColor();
-        
+
     final Color darkColor = hslColor
         .withLightness(math.max(0.3, hslColor.lightness - 0.2))
         .withSaturation(math.min(1.0, hslColor.saturation + 0.2))
         .toColor();
-    
+
     return LinearGradient(
       colors: [lightColor, darkColor],
       begin: Alignment.topCenter,
@@ -170,12 +170,20 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   }
 
   double getMinY() {
-    final all = [...widget.monthlyData, ...widget.todayData, ...widget.yearlyData];
+    final all = [
+      ...widget.monthlyData,
+      ...widget.todayData,
+      ...widget.yearlyData
+    ];
     return all.reduce(math.min) * 0.98;
   }
 
   double getMaxY() {
-    final all = [...widget.monthlyData, ...widget.todayData, ...widget.yearlyData];
+    final all = [
+      ...widget.monthlyData,
+      ...widget.todayData,
+      ...widget.yearlyData
+    ];
     return all.reduce(math.max) * 1.02;
   }
 
@@ -185,22 +193,41 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = screenWidth > 600;
     final isLargeScreen = screenWidth > 900;
-    
+
     // Responsive dimensions
-    final cardPadding = isLargeScreen ? 24.0 : isTablet ? 20.0 : 16.0;
-    final borderRadius = isLargeScreen ? 24.0 : isTablet ? 22.0 : 20.0;
-    final iconSize = isLargeScreen ? 40.0 : isTablet ? 36.0 : 32.0;
-    final priceTextSize = isLargeScreen ? 32.0 : isTablet ? 30.0 : 28.0;
-    final watermarkSize = isLargeScreen ? 200.0 : isTablet ? 180.0 : 160.0;
-    
+    final cardPadding = isLargeScreen
+        ? 24.0
+        : isTablet
+            ? 20.0
+            : 16.0;
+    final borderRadius = isLargeScreen
+        ? 24.0
+        : isTablet
+            ? 22.0
+            : 20.0;
+    final iconSize = isLargeScreen
+        ? 40.0
+        : isTablet
+            ? 36.0
+            : 32.0;
+    final priceTextSize = isLargeScreen
+        ? 32.0
+        : isTablet
+            ? 30.0
+            : 28.0;
+    final watermarkSize = isLargeScreen
+        ? 200.0
+        : isTablet
+            ? 180.0
+            : 160.0;
+
     // Responsive margins
     final horizontalMargin = screenWidth * 0.02; // 2% of screen width
-    final verticalMargin = screenHeight * 0.015; // 1.5% of screen height
 
     return Container(
       margin: EdgeInsets.symmetric(
+        vertical: 6,
         horizontal: horizontalMargin.clamp(8.0, 20.0),
-        vertical: verticalMargin.clamp(8.0, 16.0),
       ),
       padding: EdgeInsets.all(cardPadding),
       decoration: BoxDecoration(
@@ -245,7 +272,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                   ),
                 ),
               ),
-              
+
               // Main content
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,7 +286,11 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                           '${widget.title} price',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: isLargeScreen ? 16 : isTablet ? 15 : 14,
+                            fontSize: isLargeScreen
+                                ? 16
+                                : isTablet
+                                    ? 15
+                                    : 14,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -267,12 +298,21 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                       Icon(
                         Icons.qr_code_scanner,
                         color: Colors.white,
-                        size: isLargeScreen ? 24 : isTablet ? 22 : 20,
+                        size: isLargeScreen
+                            ? 24
+                            : isTablet
+                                ? 22
+                                : 20,
                       ),
                     ],
                   ),
-                  SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
-                  
+                  SizedBox(
+                      height: isLargeScreen
+                          ? 12
+                          : isTablet
+                              ? 10
+                              : 8),
+
                   // Price + Icon Row
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -287,7 +327,12 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                           size: iconSize,
                         ),
                       ),
-                      SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                      SizedBox(
+                          width: isLargeScreen
+                              ? 12
+                              : isTablet
+                                  ? 10
+                                  : 8),
                       Flexible(
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
@@ -305,18 +350,32 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     ],
                   ),
 
-                  SizedBox(height: isLargeScreen ? 8 : isTablet ? 6 : 4),
-                  
+                  SizedBox(
+                      height: isLargeScreen
+                          ? 8
+                          : isTablet
+                              ? 6
+                              : 4),
+
                   // Percentage Change
                   Text(
                     '▲74.99% (+\$51,176.67)',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: isLargeScreen ? 16 : isTablet ? 15 : 14,
+                      fontSize: isLargeScreen
+                          ? 16
+                          : isTablet
+                              ? 15
+                              : 14,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
-                  SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  SizedBox(
+                      height: isLargeScreen
+                          ? 12
+                          : isTablet
+                              ? 10
+                              : 8),
 
                   // Investment text
                   Text(
@@ -324,10 +383,19 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: isLargeScreen ? 14 : isTablet ? 17 : 14,
+                      fontSize: isLargeScreen
+                          ? 14
+                          : isTablet
+                              ? 17
+                              : 14,
                     ),
                   ),
-                  SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  SizedBox(
+                      height: isLargeScreen
+                          ? 12
+                          : isTablet
+                              ? 10
+                              : 8),
 
                   // Amount Buttons - Single row for all devices
                   Row(
@@ -339,14 +407,24 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                           isLarge: isLargeScreen,
                         ),
                       ),
-                      SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                      SizedBox(
+                          width: isLargeScreen
+                              ? 12
+                              : isTablet
+                                  ? 10
+                                  : 8),
                       Expanded(
                         child: _AmountButton(
                           amount: '\$200',
                           isLarge: isLargeScreen,
                         ),
                       ),
-                      SizedBox(width: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                      SizedBox(
+                          width: isLargeScreen
+                              ? 12
+                              : isTablet
+                                  ? 10
+                                  : 8),
                       Expanded(
                         child: _AmountButton(
                           amount: '\$500',
@@ -356,10 +434,16 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     ],
                   ),
 
-                  SizedBox(height: isLargeScreen ? 12 : isTablet ? 10 : 8),
+                  SizedBox(
+                      height: isLargeScreen
+                          ? 12
+                          : isTablet
+                              ? 10
+                              : 8),
 
                   // Actions - Your ActionButtonsGridWidget
-                  ActionButtonsGridWidget(isLarge: isLargeScreen, isTablet: isTablet),
+                  ActionButtonsGridWidget(
+                      isLarge: isLargeScreen, isTablet: isTablet),
                 ],
               ),
             ],
