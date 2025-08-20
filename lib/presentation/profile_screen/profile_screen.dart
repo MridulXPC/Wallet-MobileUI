@@ -172,7 +172,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Level card
             Container(
-              height: 120,
+              height: 100,
               decoration: BoxDecoration(
                 color: _card,
                 borderRadius: BorderRadius.circular(6),
@@ -231,7 +231,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _HubSquareCard(
                     icon: Icons.settings_outlined,
                     title: 'General\nSettings',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushNamed(
+                          context, AppRoutes.generalSettingsScreen);
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -239,7 +242,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _HubSquareCard(
                     icon: Icons.account_balance_wallet_outlined,
                     title: 'Wallet\nSettings',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushNamed(
+                          context, AppRoutes.walletSettingsScreen);
+                    },
                   ),
                 ),
               ],
@@ -251,7 +257,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _HubSquareCard(
                     icon: Icons.lock_outline,
                     title: 'Security\nSettings',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushNamed(
+                          context, AppRoutes.securitysettingscreen);
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -259,7 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _HubSquareCard(
                     icon: Icons.help_outline,
                     title: 'Tech &\nSupport',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushNamed(context, AppRoutes.techSupportScreen);
+                    },
                   ),
                 ),
               ],
@@ -313,9 +324,9 @@ class _HubBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: _ProfileScreenState._card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(6),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(6),
         onTap: onTap,
         child: Container(
           height: 64,
@@ -364,7 +375,7 @@ class _HubSquareCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         onTap: onTap,
         child: Container(
-          height: 128,
+          height: 110,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,7 +423,7 @@ class _HubListTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         onTap: onTap,
         child: Container(
-          height: 72,
+          height: 70,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           margin: const EdgeInsets.only(bottom: 12),
           child: Row(

@@ -454,6 +454,152 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   }
 }
 
+class CryptoStatsPager extends StatefulWidget {
+  const CryptoStatsPager({
+    super.key,
+    required this.cards, // Pass a list of CryptoStatCard widgets
+    this.viewportPeek = 0.95, // 0.85 shows more peek; 1.0 shows full width
+    this.height = 340, // Tune to your card’s natural height
+    this.showArrows = true,
+    this.showDots = true,
+    this.scrollable = true, // set false if you want arrows-only
+  });
+
+  final List<Widget> cards;
+  final double viewportPeek;
+  final double height;
+  final bool showArrows;
+  final bool showDots;
+  final bool scrollable;
+
+  @override
+  State<CryptoStatsPager> createState() => _CryptoStatsPagerState();
+}
+
+class _CryptoStatsPagerState extends State<CryptoStatsPager> {
+  late final PageController _controller;
+  int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(viewportFraction: widget.viewportPeek);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _go(int delta) {
+    final next = (_index + delta).clamp(0, widget.cards.length - 1);
+    if (next == _index) return;
+    setState(() => _index = next);
+    _controller.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: widget.height,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            padEnds:
+                false, // keeps the first card flush to the left while still peeking the next
+            physics: widget.scrollable
+                ? const BouncingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _index = i),
+            itemCount: widget.cards.length,
+            itemBuilder: (_, i) => Padding(
+              // keep a tiny gap between cards; tweak as you like
+              padding: const EdgeInsets.symmetric(horizontal: 0),
+              child: widget.cards[i],
+            ),
+          ),
+          if (widget.showArrows && widget.cards.length > 1) ...[
+            Positioned(
+              left: 0,
+              child: _NavArrow(
+                enabled: _index > 0,
+                onTap: () => _go(-1),
+                icon: Icons.chevron_left,
+              ),
+            ),
+            Positioned(
+              right: 0,
+              child: _NavArrow(
+                enabled: _index < widget.cards.length - 1,
+                onTap: () => _go(1),
+                icon: Icons.chevron_right,
+              ),
+            ),
+          ],
+          if (widget.showDots && widget.cards.length > 1)
+            Positioned(
+              bottom: 8,
+              child: Row(
+                children: List.generate(widget.cards.length, (i) {
+                  final active = i == _index;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    height: 6,
+                    width: active ? 14 : 6,
+                    decoration: BoxDecoration(
+                      color: active ? Colors.white : Colors.white38,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavArrow extends StatelessWidget {
+  const _NavArrow({
+    required this.enabled,
+    required this.onTap,
+    required this.icon,
+  });
+
+  final bool enabled;
+  final VoidCallback onTap;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.35,
+      child: Material(
+        color: const Color(0x33000000),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: SizedBox(
+            height: 36,
+            width: 36,
+            child: Icon(icon, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // Helper widget for amount buttons (you'll need to implement this)
 class _AmountButton extends StatelessWidget {
   final String amount;
@@ -469,7 +615,7 @@ class _AmountButton extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         vertical: isLarge ? 12 : 10,
-        horizontal: isLarge ? 16 : 12,
+        horizontal: isLarge ? 10 : 10,
       ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.2),

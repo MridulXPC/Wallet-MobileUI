@@ -172,24 +172,24 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                   vaultName: _vaultName,
                   onTap: _showWalletOptionsSheet,
                 ),
-                SizedBox(
-                  height: 38.h,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: cryptoCards.length,
-                    itemBuilder: (context, index) {
-                      final card = cryptoCards[index];
-                      return CryptoStatCard(
-                        title: card['title'],
-                        currentPrice: card['price'],
-                        monthlyData: card['monthly'],
-                        todayData: card['today'],
-                        yearlyData: card['yearly'],
-                        iconPath:
-                            'assets/currencyicons/${card['title'].toLowerCase()}.png',
-                      );
-                    },
-                  ),
+                CryptoStatsPager(
+                  cards: cryptoCards.map((card) {
+                    return CryptoStatCard(
+                      title: card['title'],
+                      currentPrice: card['price'],
+                      monthlyData: List<double>.from(card['monthly']),
+                      todayData: List<double>.from(card['today']),
+                      yearlyData: List<double>.from(card['yearly']),
+                      iconPath:
+                          'assets/currencyicons/${card['title'].toLowerCase()}.png',
+                    );
+                  }).toList(),
+
+                  height: 340, // or 38.h like before
+
+                  showArrows: false, // <— hide left/right arrows
+                  showDots: false, // <— hide dots
+                  scrollable: true, // user can swipe
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),

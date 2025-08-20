@@ -1,3 +1,7 @@
+import 'package:cryptowallet/presentation/profile_screen/GeneralSettingsScreen.dart';
+import 'package:cryptowallet/presentation/profile_screen/SecuritySettingsScreen.dart';
+import 'package:cryptowallet/presentation/profile_screen/TechSupportScreen.dart';
+import 'package:cryptowallet/presentation/profile_screen/WalletSettingsScreen.dart';
 import 'package:cryptowallet/presentation/walletscreen/wallet_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -41,6 +45,10 @@ class AppRoutes {
   // Profile
   static const String profileScreen = '/profile';
   static const String sessionInfoScreen = '/session-info';
+  static const String generalSettingsScreen = '/general-settings';
+  static const String walletSettingsScreen = '/wallet-settings';
+  static const String securitysettingscreen = '/security-settings';
+  static const String techSupportScreen = '/tech-support';
 
   // Routes map
   static final Map<String, WidgetBuilder> routes = {
@@ -53,6 +61,10 @@ class AppRoutes {
     biometricAuthScreen: (context) => const BiometricAuthentication(),
     appLockScreen: (context) => const AppLockScreen(),
     dashboardScreen: (context) => const WalletHomeScreen(),
+    generalSettingsScreen: (context) => const GeneralSettingsScreen(),
+    walletSettingsScreen: (context) => const WalletSettingsScreen(),
+    securitysettingscreen: (context) => const SecuritySettingsScreen(),
+    techSupportScreen: (context) => const TechSupportScreen(),
 
     // Wallet Features
     receiveCrypto: (context) {
