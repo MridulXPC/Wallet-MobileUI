@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
@@ -39,9 +40,6 @@ Future<String> _determineStartRoute() async {
   return AppRoutes.welcomeScreen;
 }
 
-
-
-
 class MyApp extends StatelessWidget {
   final String initialRoute;
 
@@ -54,12 +52,19 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'CryptoWallet',
           debugShowCheckedModeBanner: false,
-      
-
+          theme: ThemeData(
+            textTheme: GoogleFonts
+                .interTextTheme(), // applies Inter to all text styles
+          ),
           builder: (context, child) {
+            final base = Theme.of(context).textTheme;
             return MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.0)),
-              child: child!,
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.0)),
+              child: DefaultTextStyle.merge(
+                style: GoogleFonts.interTextTheme(base).bodyMedium!,
+                child: child!,
+              ),
             );
           },
           initialRoute: initialRoute,

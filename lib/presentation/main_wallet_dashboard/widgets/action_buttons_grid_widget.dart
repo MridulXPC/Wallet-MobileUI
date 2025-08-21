@@ -6,7 +6,6 @@ import 'package:sizer/sizer.dart';
 import '../../../core/app_export.dart';
 
 class ActionButtonsGridWidget extends StatelessWidget {
-  
   final bool isLarge;
   final bool isTablet;
 
@@ -107,8 +106,6 @@ class ActionButtonsGridWidget extends StatelessWidget {
     );
   }
 }
-
-
 
 class _ActionButton {
   final String title;

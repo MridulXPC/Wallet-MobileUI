@@ -2,300 +2,656 @@ import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 
-class WalletInfoScreen extends StatelessWidget {
+class WalletInfoScreen extends StatefulWidget {
   const WalletInfoScreen({Key? key}) : super(key: key);
+
+  @override
+  State<WalletInfoScreen> createState() => _WalletInfoScreenState();
+}
+
+class _WalletInfoScreenState extends State<WalletInfoScreen> {
+  String selectedCoin = 'BTC';
+  String selectedCoinName = 'Bitcoin';
+  String selectedCoinPrice = '43,825.67';
+  String selectedCoinBalance = '0.00';
+  String selectedCoinUsdBalance = '0.00';
+  String selectedCoinAddress = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
+
+  final Map<String, Map<String, String>> coinData = {
+    'BTC': {
+      'name': 'Bitcoin',
+      'price': '43,825.67',
+      'balance': '0.00',
+      'usdBalance': '0.00',
+      'address': 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+      'icon': '₿'
+    },
+    'XRP': {
+      'name': 'XRP',
+      'price': '2.93',
+      'balance': '0.00',
+      'usdBalance': '0.00',
+      'address': 'rKXxQ...h21e3VF',
+      'icon': 'X'
+    },
+    'ETH': {
+      'name': 'Ethereum',
+      'price': '2,641.25',
+      'balance': '0.00',
+      'usdBalance': '0.00',
+      'address': '0x742d35Cc6Dd7D8b4B8B4f42C8B4B2f4D8E8F8G8H',
+      'icon': 'Ξ'
+    },
+    'ADA': {
+      'name': 'Cardano',
+      'price': '1.05',
+      'balance': '0.00',
+      'usdBalance': '0.00',
+      'address': 'addr1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+      'icon': '₳'
+    },
+  };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1D29),
-       bottomNavigationBar: BottomNavBar(
-      selectedIndex: 1,
-      onTap: (index) {
-        if (index == 1) return; // Stay on profile
-        Navigator.pushReplacementNamed(
-          context,
-          index == 0
-              ? AppRoutes.dashboardScreen
-              : index == 1
-                  ? AppRoutes.dashboardScreen// Use Wallet route if separate
-                  : AppRoutes.swapScreen,
-        );
-      },
-    ),
+      backgroundColor: const Color(0xFF0B0D1A),
+      bottomNavigationBar: BottomNavBar(
+        selectedIndex: 1, // Balance tab selected
+        onTap: (index) {
+          if (index == 1) return; // Stay on balance
+          Navigator.pushReplacementNamed(
+            context,
+            index == 0
+                ? AppRoutes.dashboardScreen
+                : index == 1
+                    ? AppRoutes.swapScreen
+                    : index == 2
+                        ? AppRoutes.dashboardScreen // Portfolio
+                        : AppRoutes.dashboardScreen, // Hub
+          );
+        },
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              // Header
-              _buildHeader(),
-              
-              // Main Content
-              Expanded(
+        child: Column(
+          children: [
+            // Header with coin selector
+            _buildHeader(),
+
+            // Main scrollable content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildWalletIcon(),
-                    const SizedBox(height: 32),
-                    _buildWelcomeText(),
-                    const SizedBox(height: 24),
-                    _buildDescriptionText(),
-                    const SizedBox(height: 48),
-                    _buildCreateWalletButton(context),
                     const SizedBox(height: 16),
-                    _buildImportWalletButton(),
+
+                    // Main balance card
+                    _buildBalanceCard(),
+
+                    const SizedBox(height: 16),
+
+                    // Available and Reserved row
+                    _buildAvailableReservedRow(),
+
+                    const SizedBox(height: 24),
+
+                    // Action buttons
+                    _buildActionButtons(),
+
+                    const SizedBox(height: 24),
+
+                    // Transactions section
+                    _buildTransactionsSection(),
                   ],
                 ),
               ),
-              
-              // Footer
-              _buildFooterText(),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text(
-          'Wallet',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: Row(
+        children: [
+          // Coin info and dropdown
+          Expanded(
+            child: GestureDetector(
+              onTap: _showCoinSelector,
+              child: Row(
+                children: [
+                  // Coin icon
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2D3A),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Center(
+                      child: Text(
+                        coinData[selectedCoin]!['icon']!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Coin details
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Select Crypto',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              selectedCoin,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                        ),
+                        Text(
+                          '= ${coinData[selectedCoin]!['price']!} USD',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1F1F23),
-            borderRadius: BorderRadius.circular(12),
+
+          // Dropdown button
+          GestureDetector(
+            onTap: _showCoinSelector,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2D3A),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
           ),
-          child: const Icon(
-            Icons.settings_outlined,
-            color: Color(0xFF6B7280),
-            size: 22,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildWalletIcon() {
+  Widget _buildBalanceCard() {
     return Container(
-      width: 120,
-      height: 120,
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
+          colors: [
+            Color(0xFF2A2D3A),
+            Color.fromARGB(255, 0, 0, 0),
+            Color.fromARGB(255, 0, 12, 56),
+          ],
+          stops: [0.0, 0.5, 1.0],
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF3A3D4A), width: 1),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
-            blurRadius: 30,
-            offset: const Offset(0, 15),
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: const Icon(
-        Icons.account_balance_wallet_outlined,
-        color: Colors.white,
-        size: 50,
-      ),
-    );
-  }
-
-  Widget _buildWelcomeText() {
-    return const Text(
-      'Welcome to CryptoWallet',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  Widget _buildDescriptionText() {
-    return const Text(
-      'Start your crypto journey by creating\na secure wallet to store, send, and\nreceive digital assets.',
-      style: TextStyle(
-        color: Color(0xFF6B7280),
-        fontSize: 16,
-        height: 1.5,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  Widget _buildCreateWalletButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () {
-          // Handle create wallet action
-          _showCreateWalletDialog(context);
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ).copyWith(
-          backgroundColor: MaterialStateProperty.all(Colors.transparent),
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: const Text(
-              'Create New Wallet',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with coin name and copy button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$selectedCoin - Main Account',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D4A),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.copy,
+                  color: Color(0xFF6B7280),
+                  size: 14,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          // Address
+          Text(
+            coinData[selectedCoin]!['address']!,
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 11,
             ),
           ),
-        ),
+
+          const SizedBox(height: 16),
+
+          // Balance
+          Text(
+            coinData[selectedCoin]!['balance']!,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 42,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+
+          const SizedBox(height: 2),
+
+          Text(
+            '= ${coinData[selectedCoin]!['usdBalance']!} USD',
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildImportWalletButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: () {
-          // Handle import wallet action
-        },
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          side: const BorderSide(color: Color(0xFF2D2D32)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: const Text(
-          'Import Existing Wallet',
-          style: TextStyle(
-            color: Color(0xFF6B7280),
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooterText() {
-    return const Text(
-      'Your wallet is secured with advanced\nencryption and stored locally on your device',
-      style: TextStyle(
-        color: Color(0xFF4B5563),
-        fontSize: 12,
-        height: 1.4,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  void _showCreateWalletDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: const Color(0xFF1F1F23),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
+  Widget _buildAvailableReservedRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Create Wallet',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'This will create a new wallet with a unique seed phrase. Make sure to write down your recovery phrase securely.',
+                  'Available',
                   style: TextStyle(
                     color: Color(0xFF6B7280),
-                    fontSize: 14,
-                    height: 1.4,
+                    fontSize: 13,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 4),
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF2D2D32)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(color: Color(0xFF6B7280)),
-                        ),
+                    Text(
+                      coinData[selectedCoin]!['balance']!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          // Navigate to wallet creation flow
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Continue',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF6B7280),
+                      size: 16,
                     ),
                   ],
                 ),
               ],
             ),
           ),
-        );
-      },
+          Container(
+            width: 1,
+            height: 36,
+            color: const Color(0xFF3A3D4A),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Reserved',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Text(
+                        '0',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF6B7280),
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildActionButton('Send', Icons.send, () {}),
+          _buildActionButton('Swap', Icons.swap_horiz, () {}),
+          _buildActionButton('Receive', Icons.arrow_downward, () {}),
+          _buildActionButton('Charge', Icons.credit_card, () {}),
+          _buildActionButton('Scan', Icons.qr_code_scanner, () {}),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        child: Column(
+          children: [
+            Container(
+              width: 60,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2D3A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF3A3D4A)),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        const Text(
+          'Transactions',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Error state
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            children: [
+              const Text(
+                'Oops, something went wrong',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                'Error when trying to load the Transaction list',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Retry button
+              GestureDetector(
+                onTap: () {
+                  // Handle retry
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.refresh,
+                      color: Color(0xFF6B7280),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 100), // Extra space for scrolling
+      ],
+    );
+  }
+
+  void _showCoinSelector() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1D29),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 20),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D4A),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Header
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text(
+                      'Select Cryptocurrency',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Coin list
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: coinData.length,
+                  itemBuilder: (context, index) {
+                    String coinKey = coinData.keys.elementAt(index);
+                    Map<String, String> coin = coinData[coinKey]!;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        tileColor: selectedCoin == coinKey
+                            ? const Color(0xFF2A2D3A)
+                            : const Color(0xFF1F2329),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3A3D4A),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Center(
+                            child: Text(
+                              coin['icon']!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          coinKey,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: Text(
+                          coin['name']!,
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '\$${coin['price']!}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              '${coin['balance']} $coinKey',
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        onTap: () {
+                          setState(() {
+                            selectedCoin = coinKey;
+                            selectedCoinName = coin['name']!;
+                            selectedCoinPrice = coin['price']!;
+                            selectedCoinBalance = coin['balance']!;
+                            selectedCoinUsdBalance = coin['usdBalance']!;
+                            selectedCoinAddress = coin['address']!;
+                          });
+                          Navigator.pop(context);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
