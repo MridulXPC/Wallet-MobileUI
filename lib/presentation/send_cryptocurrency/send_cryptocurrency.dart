@@ -4,6 +4,160 @@ import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/coin_store.dart'; // ✅ Provider source of truth
 
+// 1. IMAGE CACHE MANAGER
+class ImageCacheManager {
+  static final Map<String, ImageProvider> _cachedImages = {};
+
+  static ImageProvider getCachedImage(String assetPath) {
+    if (!_cachedImages.containsKey(assetPath)) {
+      _cachedImages[assetPath] = AssetImage(assetPath);
+    }
+    return _cachedImages[assetPath]!;
+  }
+
+  static void preloadImages(List<String> assetPaths, BuildContext context) {
+    for (String path in assetPaths) {
+      precacheImage(AssetImage(path), context).catchError((error) {
+        // Silently handle preload errors
+        debugPrint('Failed to preload image: $path');
+      });
+    }
+  }
+
+  static void clearCache() {
+    _cachedImages.clear();
+  }
+}
+
+// 2. OPTIMIZED COIN ICON WIDGET
+class OptimizedCoinIcon extends StatelessWidget {
+  final String assetPath;
+  final double size;
+
+  const OptimizedCoinIcon({
+    Key? key,
+    required this.assetPath,
+    this.size = 40,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFF1F2431),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image(
+        image: ImageCacheManager.getCachedImage(assetPath),
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded) {
+            return child;
+          }
+          return AnimatedOpacity(
+            opacity: frame == null ? 0 : 1,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: child,
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: const Color(0xFF1F2431),
+          child: Icon(
+            Icons.currency_bitcoin,
+            color: Colors.white,
+            size: size * 0.6,
+          ),
+        ),
+        gaplessPlayback: true,
+      ),
+    );
+  }
+}
+
+// 3. OPTIMIZED LIST TILE WIDGET
+class OptimizedAssetListTile extends StatelessWidget {
+  final Coin coin;
+  final double price;
+  final double balance;
+  final VoidCallback onTap;
+
+  const OptimizedAssetListTile({
+    Key? key,
+    required this.coin,
+    required this.price,
+    required this.balance,
+    required this.onTap,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: Colors.white.withOpacity(0.1),
+        highlightColor: Colors.white.withOpacity(0.05),
+        child: Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              // Use optimized icon widget
+              OptimizedCoinIcon(
+                assetPath: coin.assetPath,
+                size: 40,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${coin.symbol} - ${coin.name}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Balance: ${balance.toStringAsFixed(4)}',
+                      style: const TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '\$${price.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SendCryptocurrency extends StatefulWidget {
   const SendCryptocurrency({super.key});
 
@@ -13,15 +167,16 @@ class SendCryptocurrency extends StatefulWidget {
 
 class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _currentAmount = '0';
-  bool _isCryptoSelected = true; // just a UI toggle for the chip highlight
+  bool _isCryptoSelected = true;
   double _usdValue = 0.00;
+  bool _isImagesPreloaded = false;
 
   // Selected asset properties (derived from CoinStore)
   String _selectedAsset = 'Bitcoin';
   String _selectedAssetSymbol = 'BTC';
-  double _selectedAssetBalance = 0.00; // dummy for now
+  double _selectedAssetBalance = 0.00;
   String _selectedAssetIconPath = 'assets/currencyicons/bitcoin.png';
-  double _selectedAssetPrice = 30000.00; // dummy USD price
+  double _selectedAssetPrice = 30000.00;
 
   // Dummy prices/balances (plug your API later)
   final Map<String, double> _dummyPrices = const {
@@ -43,7 +198,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   };
 
   final Map<String, double> _dummyBalances = const {
-    // balances are in coin units; adjust as needed
     'BTC': 0.0,
     'BTC-LN': 0.0,
     'ETH': 0.0,
@@ -60,6 +214,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     'XMR': 0.0,
     'XMR-XMR': 0.0,
   };
+
+  @override
+  void dispose() {
+    // Clear image cache when widget is disposed to free memory
+    ImageCacheManager.clearCache();
+    super.dispose();
+  }
 
   // ---------- Amount helpers ----------
   void _onNumberPressed(String number) {
@@ -112,9 +273,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   // ---------- Selector & state updates ----------
   void _onAssetSelected(Coin coin) {
     final symbol = coin.symbol;
-    final price = _dummyPrices[symbol] ??
-        _dummyPrices[coin.id] ??
-        1.0; // try by symbol, then id, fallback 1
+    final price = _dummyPrices[symbol] ?? _dummyPrices[coin.id] ?? 1.0;
     final balance = _dummyBalances[symbol] ?? _dummyBalances[coin.id] ?? 0.0;
 
     setState(() {
@@ -131,11 +290,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      enableDrag: true,
       builder: (context) {
         final coins = context.read<CoinStore>().coins.values.toList()
           ..sort((a, b) => a.symbol.compareTo(b.symbol));
 
-        // Build chip list: ALL + unique base symbols (e.g., USDT, BTC)
+        // Build chip list
         final baseSet = <String>{};
         for (final c in coins) {
           final base = _baseSymbol(c.id);
@@ -159,14 +320,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             }).toList();
 
             return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
               decoration: const BoxDecoration(
                 color: Color(0xFF2A2D3A),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: SafeArea(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Handle bar
                     Container(
                       margin: const EdgeInsets.symmetric(vertical: 10),
                       height: 4,
@@ -176,6 +338,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
+
+                    // Title
                     const Padding(
                       padding: EdgeInsets.all(16.0),
                       child: Text(
@@ -187,6 +351,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         ),
                       ),
                     ),
+
+                    // Search field
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: TextField(
@@ -206,7 +372,10 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         onChanged: (v) => setModalState(() => search = v),
                       ),
                     ),
+
                     const SizedBox(height: 10),
+
+                    // Filter chips
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -234,10 +403,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                             .toList(),
                       ),
                     ),
+
                     const SizedBox(height: 8),
-                    Flexible(
+
+                    // Optimized list view
+                    Expanded(
                       child: ListView.builder(
-                        shrinkWrap: true,
+                        physics: const ClampingScrollPhysics(),
+                        cacheExtent: 500,
+                        itemExtent: 72,
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final coin = filtered[i];
@@ -247,28 +421,11 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           final balance = _dummyBalances[coin.symbol] ??
                               _dummyBalances[coin.id] ??
                               0.0;
-                          return ListTile(
-                            leading: _iconCircle(coin.assetPath, 40),
-                            title: Text(
-                              '${coin.symbol} - ${coin.name}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Balance: ${balance.toStringAsFixed(4)}',
-                              style: const TextStyle(
-                                color: Color(0xFF9CA3AF),
-                              ),
-                            ),
-                            trailing: Text(
-                              '\$${price.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+
+                          return OptimizedAssetListTile(
+                            coin: coin,
+                            price: price,
+                            balance: balance,
                             onTap: () {
                               _onAssetSelected(coin);
                               Navigator.pop(context);
@@ -277,6 +434,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         },
                       ),
                     ),
+
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -294,21 +452,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   }
 
   Widget _iconCircle(String assetPath, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Color(0xFF1F2431),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Image.asset(
-        assetPath,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            const Icon(Icons.token, color: Colors.white),
-      ),
-    );
+    return OptimizedCoinIcon(assetPath: assetPath, size: size);
   }
 
   void _toggleCurrency() {
@@ -320,6 +464,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    if (!_isImagesPreloaded) {
+      // Preload all coin images for better performance
+      final coins = context.read<CoinStore>().coins.values.toList();
+      final imagePaths = coins.map((coin) => coin.assetPath).toList();
+      ImageCacheManager.preloadImages(imagePaths, context);
+      _isImagesPreloaded = true;
+    }
+
     // Initialize selection from Provider the first time
     final coins = context.read<CoinStore>().coins.values.toList()
       ..sort((a, b) => a.symbol.compareTo(b.symbol));
@@ -388,7 +541,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                           child: Row(
                             children: [
-                              // Asset Icon (real icon from assets)
+                              // Asset Icon (optimized)
                               _iconCircle(_selectedAssetIconPath, 40),
 
                               SizedBox(width: 3.w),
@@ -445,7 +598,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: isSmallScreen ? 2.h : 2.h),
 
-                      // Currency Toggle Buttons (visual only)
+                      // Currency Toggle Buttons
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -547,7 +700,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: 2.w),
 
-                      // Percentage Buttons (now use real percentages)
+                      // Percentage Buttons
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4.w),
                         child: Row(

@@ -1,14 +1,15 @@
+// lib/presentation/main_wallet_dashboard/widgets/crypto_stat_card.dart
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:cryptowallet/coin_store.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui' as ui;
-import 'dart:typed_data';
-import 'dart:math' as math;
-
-// ✅ New: Provider & CoinStore
 import 'package:provider/provider.dart';
 
 class CryptoStatCard extends StatefulWidget {
@@ -38,169 +39,211 @@ class CryptoStatCard extends StatefulWidget {
 }
 
 class _CryptoStatCardState extends State<CryptoStatCard> {
-  Color _dominantColor = const Color(0xFF1A73E8); // Default blue
-  bool _isColorExtracted = false;
+  // ===== Asset provider cache (fast icon reuse) =====
+  static final Map<String, AssetImage> _assetProviderCache = {};
+  AssetImage? _getAssetProvider(String key, String? assetPath) {
+    if (assetPath == null || assetPath.isEmpty) return null;
+    final cached = _assetProviderCache[key];
+    if (cached != null && cached.assetName == assetPath) return cached;
+    final created = AssetImage(assetPath);
+    _assetProviderCache[key] = created;
+    return created;
+  }
+
+  // ===== Dominant color cache: coinId -> Color =====
+  static final Map<String, Color> _dominantColorCache = {};
+
+  Color _dominantColor = const Color(0xFF1A73E8); // default blue
+  bool _isColorReady = false;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _extractDominantColor();
+    // Kick off color resolution ASAP
+    _resolveDominantColor();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Precache current coin icon
+    final coin = context.read<CoinStore>().getById(widget.coinId);
+    final assetPath = coin?.assetPath;
+    final provider = _getAssetProvider(widget.coinId, assetPath);
+    if (provider != null) {
+      precacheImage(provider, context);
+    }
   }
 
   @override
   void didUpdateWidget(CryptoStatCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.coinId != widget.coinId || oldWidget.title != widget.title) {
-      _extractDominantColor();
+      // Precache icon for the new coin
+      final coin = context.read<CoinStore>().getById(widget.coinId);
+      final assetPath = coin?.assetPath;
+      final provider = _getAssetProvider(widget.coinId, assetPath);
+      if (provider != null) {
+        precacheImage(provider, context);
+      }
+      _resolveDominantColor();
     }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _resolveDominantColor() {
+    _debounce?.cancel();
+    // Small debounce to collapse rapid page changes
+    _debounce = Timer(const Duration(milliseconds: 40), _extractDominantColor);
   }
 
   Future<void> _extractDominantColor() async {
+    final store = context.read<CoinStore>();
+    final coin = store.getById(widget.coinId);
+    final assetPath = coin?.assetPath;
+
+    // 1) If cached, use it immediately
+    final cached = _dominantColorCache[widget.coinId];
+    if (cached != null) {
+      if (!mounted) return;
+      setState(() {
+        _dominantColor = cached;
+        _isColorReady = true;
+      });
+      return;
+    }
+
+    // 2) If no icon, choose a deterministic fallback color
+    if (assetPath == null || assetPath.isEmpty) {
+      if (!mounted) return;
+      final fallback =
+          _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
+      setState(() {
+        _dominantColor = fallback;
+        _isColorReady = true;
+      });
+      _dominantColorCache[widget.coinId] = fallback;
+      return;
+    }
+
     try {
-      final store = context.read<CoinStore>();
-      final coin = store.getById(widget.coinId);
-
-      // If no coin or asset path, fall back immediately.
-      final assetPath = coin?.assetPath;
-      if (assetPath == null) {
-        if (mounted) {
-          setState(() {
-            _dominantColor =
-                _getDefaultColorForCrypto(widget.title ?? coin?.name ?? '');
-            _isColorExtracted = true;
-          });
-        }
-        return;
-      }
-
-      // Load the image as bytes
+      // 3) Load bytes (assets are instant after first read), then decode small
       final ByteData data = await rootBundle.load(assetPath);
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode the image
-      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-      final ui.FrameInfo frameInfo = await codec.getNextFrame();
-      final ui.Image image = frameInfo.image;
+      // Decode icon to tiny size — super fast
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 48,
+        targetHeight: 48,
+      );
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image img = frame.image;
+      final ByteData? rgba =
+          await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (rgba == null) throw StateError('rgba null');
 
-      // Convert to byte data
-      final ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (byteData != null && mounted) {
-        final Color extractedColor = _getDominantColorFromBytes(byteData);
-        setState(() {
-          _dominantColor = extractedColor;
-          _isColorExtracted = true;
-        });
-      }
-    } catch (e) {
+      // 4) Compute dominant color off the UI thread
+      final int rgb = await compute(
+          _dominantColorFromRgbaIsolate, rgba.buffer.asUint8List());
+
+      final color = Color(0xFF000000 | rgb);
       if (!mounted) return;
       setState(() {
-        _dominantColor =
-            _getDefaultColorForCrypto(_effectiveTitle(context) ?? '');
-        _isColorExtracted = true;
+        _dominantColor = color;
+        _isColorReady = true;
       });
+      _dominantColorCache[widget.coinId] = color;
+    } catch (_) {
+      if (!mounted) return;
+      final fallback =
+          _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
+      setState(() {
+        _dominantColor = fallback;
+        _isColorReady = true;
+      });
+      _dominantColorCache[widget.coinId] = fallback;
     }
   }
 
-  String? _effectiveTitle(BuildContext context) {
-    final coin = context.read<CoinStore>().getById(widget.coinId);
-    return widget.title ?? coin?.name;
-  }
+  static int _dominantColorFromRgbaIsolate(Uint8List pixels) {
+    // Returns 0xRRGGBB
+    final Map<int, int> counts = {};
+    // sample roughly every 4th pixel (16 bytes/px RGBA => step 16*4 = 64)
+    for (int i = 0; i + 3 < pixels.length; i += 64) {
+      final int r = pixels[i];
+      final int g = pixels[i + 1];
+      final int b = pixels[i + 2];
+      final int a = pixels[i + 3];
+      if (a < 128) continue;
 
-  String? _effectiveIconPath(BuildContext context) {
-    final coin = context.watch<CoinStore>().getById(widget.coinId);
-    return coin?.assetPath;
-  }
+      final double lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+      if (lum > 0.92 || lum < 0.08) continue;
 
-  Color _getDominantColorFromBytes(ByteData byteData) {
-    final Uint8List pixels = byteData.buffer.asUint8List();
-    final Map<int, int> colorCounts = {};
-
-    // Sample every 4th pixel to improve performance
-    for (int i = 0; i < pixels.length; i += 16) {
-      if (i + 3 < pixels.length) {
-        final int r = pixels[i];
-        final int g = pixels[i + 1];
-        final int b = pixels[i + 2];
-        final int a = pixels[i + 3];
-
-        // Skip transparent pixels
-        if (a < 128) continue;
-
-        // Skip very light or very dark colors
-        final double luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        if (luminance > 0.9 || luminance < 0.1) continue;
-
-        final int colorKey = (r << 16) | (g << 8) | b;
-        colorCounts[colorKey] = (colorCounts[colorKey] ?? 0) + 1;
-      }
+      final int key = (r << 16) | (g << 8) | b;
+      counts[key] = (counts[key] ?? 0) + 1;
     }
-
-    if (colorCounts.isEmpty) {
-      return _getDefaultColorForCrypto(_effectiveTitle(context) ?? '');
+    if (counts.isEmpty) {
+      // mid-blue default if nothing suitable
+      return 0x1A73E8;
     }
-
-    // Most common color
-    final int dominantColorKey =
-        colorCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
-
-    final int r = (dominantColorKey >> 16) & 0xFF;
-    final int g = (dominantColorKey >> 8) & 0xFF;
-    final int b = dominantColorKey & 0xFF;
-
-    return Color.fromRGBO(r, g, b, 1.0);
+    return counts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
   }
 
-  Color _getDefaultColorForCrypto(String title) {
-    // Fallback colors for common cryptocurrencies
-    final Map<String, Color> cryptoColors = {
-      'Bitcoin': const Color(0xFFF7931A),
-      'Ethereum': const Color(0xFF627EEA),
-      'Solana': const Color(0xFF14F195),
-      'Tron': const Color(0xFFEB0029),
-      'Tether': const Color(0xFF26A17B),
-      'BNB': const Color(0xFFF3BA2F),
-      'Monero': const Color(0xFFF26822),
+  Color _fallbackColor(String nameOrSymbol) {
+    const fallback = Color(0xFF1A73E8);
+    const map = <String, Color>{
+      'Bitcoin': Color(0xFFF7931A),
+      'BTC': Color(0xFFF7931A),
+      'Ethereum': Color(0xFF627EEA),
+      'ETH': Color(0xFF627EEA),
+      'Solana': Color(0xFF14F195),
+      'SOL': Color(0xFF14F195),
+      'Tron': Color(0xFFEB0029),
+      'TRX': Color(0xFFEB0029),
+      'Tether': Color(0xFF26A17B),
+      'USDT': Color(0xFF26A17B),
+      'BNB': Color(0xFFF3BA2F),
+      'Monero': Color(0xFFF26822),
+      'XMR': Color(0xFFF26822),
     };
-
-    return cryptoColors[title] ?? const Color(0xFF1A73E8);
+    return map[nameOrSymbol] ?? fallback;
   }
 
-  LinearGradient _createGradient() {
-    if (!_isColorExtracted) {
+  LinearGradient _gradient() {
+    if (!_isColorReady) {
       return const LinearGradient(
         colors: [Color.fromARGB(255, 100, 162, 228), Color(0xFF1A73E8)],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       );
     }
-
-    // Create a gradient using the dominant color
-    final HSLColor hslColor = HSLColor.fromColor(_dominantColor);
-
-    // Create lighter and darker variants
-    final Color lightColor = hslColor
-        .withLightness(math.min(0.7, hslColor.lightness + 0.2))
-        .withSaturation(math.min(1.0, hslColor.saturation + 0.1))
+    final hsl = HSLColor.fromColor(_dominantColor);
+    final light = hsl
+        .withLightness(math.min(0.72, hsl.lightness + 0.22))
+        .withSaturation(math.min(1.0, hsl.saturation + 0.08))
         .toColor();
-
-    final Color darkColor = hslColor
-        .withLightness(math.max(0.3, hslColor.lightness - 0.2))
-        .withSaturation(math.min(1.0, hslColor.saturation + 0.2))
+    final dark = hsl
+        .withLightness(math.max(0.28, hsl.lightness - 0.22))
+        .withSaturation(math.min(1.0, hsl.saturation + 0.18))
         .toColor();
-
     return LinearGradient(
-      colors: [lightColor, darkColor],
+      colors: [light, dark],
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
     );
   }
 
-  List<FlSpot> generateSpots(List<double> prices) {
-    return List.generate(prices.length, (i) => FlSpot(i.toDouble(), prices[i]));
-  }
+  List<FlSpot> _spots(List<double> prices) =>
+      List.generate(prices.length, (i) => FlSpot(i.toDouble(), prices[i]));
 
-  double getMinY() {
+  double _minY() {
     final all = [
       ...widget.monthlyData,
       ...widget.todayData,
@@ -209,7 +252,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     return all.reduce(math.min) * 0.98;
   }
 
-  double getMaxY() {
+  double _maxY() {
     final all = [
       ...widget.monthlyData,
       ...widget.todayData,
@@ -222,187 +265,191 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   Widget build(BuildContext context) {
     final coin = context.watch<CoinStore>().getById(widget.coinId);
     final title = widget.title ?? coin?.name ?? 'Unknown';
-    final iconPath = _effectiveIconPath(context);
-
     final screenWidth = MediaQuery.of(context).size.width;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
     final isTablet = screenWidth > 600;
-    final isLargeScreen = screenWidth > 900;
+    final isLarge = screenWidth > 900;
 
-    // Responsive dimensions
-    final cardPadding = isLargeScreen ? 24.0 : (isTablet ? 20.0 : 16.0);
-    final borderRadius = isLargeScreen ? 24.0 : (isTablet ? 22.0 : 20.0);
-    final iconSize = isLargeScreen ? 40.0 : (isTablet ? 36.0 : 32.0);
-    final priceTextSize = isLargeScreen ? 32.0 : (isTablet ? 30.0 : 28.0);
-    final watermarkSize = isLargeScreen ? 200.0 : (isTablet ? 180.0 : 160.0);
-    final horizontalMargin = (screenWidth * 0.02).clamp(8.0, 20.0);
+    // Responsive dims
+    final cardPad = isLarge ? 24.0 : (isTablet ? 20.0 : 16.0);
+    final radius = isLarge ? 24.0 : (isTablet ? 22.0 : 20.0);
+    final iconSize = isLarge ? 40.0 : (isTablet ? 36.0 : 32.0);
+    final priceFs = isLarge ? 32.0 : (isTablet ? 30.0 : 28.0);
+    final watermarkSize = isLarge ? 200.0 : (isTablet ? 180.0 : 160.0);
+    final hMargin = (screenWidth * 0.02).clamp(8.0, 20.0);
+    final cacheW = (iconSize * dpr).round();
+    final cacheH = (iconSize * dpr).round();
+    final watermarkCacheW = (watermarkSize * dpr).round();
 
     return Container(
-      margin: EdgeInsets.symmetric(
-        vertical: 6,
-        horizontal: horizontalMargin,
-      ),
-      padding: EdgeInsets.all(cardPadding),
+      margin: EdgeInsets.symmetric(vertical: 6, horizontal: hMargin),
+      padding: EdgeInsets.all(cardPad),
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: _dominantColor.withOpacity(0.3),
-            blurRadius: isLargeScreen ? 12 : 8,
-            offset: Offset(isLargeScreen ? 6 : 4, isLargeScreen ? 8 : 6),
+            color: _dominantColor.withOpacity(0.28),
+            blurRadius: isLarge ? 12 : 8,
+            offset: Offset(isLarge ? 6 : 4, isLarge ? 8 : 6),
           ),
-          BoxShadow(
-            color: const Color.fromARGB(31, 0, 0, 0),
-            blurRadius: isLargeScreen ? 8 : 6,
-            offset: Offset(isLargeScreen ? 10 : 8, isLargeScreen ? 10 : 8),
-          )
+          const BoxShadow(
+            color: Color.fromARGB(31, 0, 0, 0),
+            blurRadius: 8,
+            offset: Offset(8, 10),
+          ),
         ],
-        gradient: _createGradient(),
-        borderRadius: BorderRadius.circular(borderRadius),
+        gradient: _gradient(),
+        borderRadius: BorderRadius.circular(radius),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              // Watermark icon in the background
-              Positioned(
-                right: -watermarkSize * 0.3,
-                top: -watermarkSize * 0.2,
-                child: ColorFiltered(
+      child: Stack(
+        children: [
+          // ===== Watermark background icon (rebuilds only when asset path changes)
+          Positioned(
+            right: -watermarkSize * 0.3,
+            top: -watermarkSize * 0.2,
+            child: Selector<CoinStore, String?>(
+              selector: (_, s) => s.getById(widget.coinId)?.assetPath,
+              builder: (context, assetPath, _) {
+                final provider = _getAssetProvider(widget.coinId, assetPath);
+                if (provider == null) {
+                  return Icon(
+                    Icons.currency_bitcoin,
+                    color: _dominantColor.withOpacity(0.15),
+                    size: watermarkSize,
+                  );
+                }
+                return ColorFiltered(
                   colorFilter: ColorFilter.mode(
                     _dominantColor.withOpacity(0.15),
                     BlendMode.srcIn,
                   ),
-                  child: iconPath != null
-                      ? Image.asset(
-                          iconPath,
-                          width: watermarkSize,
-                          height: watermarkSize,
-                          fit: BoxFit.contain,
-                        )
-                      : Icon(
-                          Icons.currency_bitcoin,
-                          color: _dominantColor.withOpacity(0.15),
-                          size: watermarkSize,
-                        ),
-                ),
-              ),
+                  child: Image.asset(
+                    assetPath!,
+                    width: watermarkSize,
+                    height: watermarkSize,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.low,
+                    cacheWidth: watermarkCacheW,
+                  ),
+                );
+              },
+            ),
+          ),
 
-              // Main content
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          // ===== Main content
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Top Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '$title price',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: isLargeScreen ? 16 : (isTablet ? 15 : 14),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.qr_code_scanner,
+                  Flexible(
+                    child: Text(
+                      '$title price',
+                      style: TextStyle(
                         color: Colors.white,
-                        size: isLargeScreen ? 24 : (isTablet ? 22 : 20),
+                        fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
-
-                  // Price + Icon Row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (iconPath != null)
-                        Image.asset(
-                          iconPath,
-                          width: iconSize,
-                          height: iconSize,
-                        )
-                      else
-                        Icon(
-                          Icons.currency_bitcoin,
-                          color: Colors.white,
-                          size: iconSize,
-                        ),
-                      SizedBox(
-                          height: 0,
-                          width: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '\$${widget.currentPrice.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: priceTextSize,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  SizedBox(height: isLargeScreen ? 8 : (isTablet ? 6 : 4)),
-
-                  // Percentage Change (dummy)
-                  Text(
-                    '▲74.99% (+\$51,176.67)',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isLargeScreen ? 16 : (isTablet ? 15 : 14),
-                      fontWeight: FontWeight.w400,
                     ),
                   ),
-                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
-
-                  // Investment text
-                  Text(
-                    'Start investing – buy your first $title now!',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: isLargeScreen ? 14 : (isTablet ? 17 : 14),
-                    ),
-                  ),
-                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
-
-                  // Amount Buttons - Single row for all devices
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Expanded(
-                          child:
-                              _AmountButton(amount: '\$100', isLarge: false)),
-                      SizedBox(width: 8),
-                      Expanded(
-                          child:
-                              _AmountButton(amount: '\$200', isLarge: false)),
-                      SizedBox(width: 8),
-                      Expanded(
-                          child:
-                              _AmountButton(amount: '\$500', isLarge: false)),
-                    ],
-                  ),
-
-                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
-
-                  // Actions - Your ActionButtonsGridWidget
-                  ActionButtonsGridWidget(
-                    isLarge: isLargeScreen,
-                    isTablet: isTablet,
+                  Icon(
+                    Icons.qr_code_scanner,
+                    color: Colors.white,
+                    size: isLarge ? 24 : (isTablet ? 22 : 20),
                   ),
                 ],
               ),
+              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
+
+              // Price row with icon (Selector to avoid full rebuilds)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Selector<CoinStore, String?>(
+                    selector: (_, s) => s.getById(widget.coinId)?.assetPath,
+                    builder: (context, assetPath, _) {
+                      final provider =
+                          _getAssetProvider(widget.coinId, assetPath);
+                      if (provider == null) {
+                        return Icon(Icons.currency_bitcoin,
+                            color: Colors.white, size: iconSize);
+                      }
+                      return Image.asset(
+                        assetPath!,
+                        width: iconSize,
+                        height: iconSize,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.low,
+                        cacheWidth: cacheW,
+                        cacheHeight: cacheH,
+                      );
+                    },
+                  ),
+                  SizedBox(width: isLarge ? 12 : (isTablet ? 10 : 8)),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '\$${widget.currentPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: priceFs,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: isLarge ? 8 : (isTablet ? 6 : 4)),
+
+              // Dummy change
+              Text(
+                '▲74.99% (+\$51,176.67)',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
+
+              Text(
+                'Start investing – buy your first $title now!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: isLarge ? 14 : (isTablet ? 17 : 14),
+                ),
+              ),
+              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  Expanded(
+                      child: _AmountButton(amount: '\$100', isLarge: false)),
+                  SizedBox(width: 8),
+                  Expanded(
+                      child: _AmountButton(amount: '\$200', isLarge: false)),
+                  SizedBox(width: 8),
+                  Expanded(
+                      child: _AmountButton(amount: '\$500', isLarge: false)),
+                ],
+              ),
+              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
+
+              // Actions row
+              ActionButtonsGridWidget(
+                isLarge: isLarge,
+                isTablet: isTablet,
+              ),
             ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -411,12 +458,12 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 class CryptoStatsPager extends StatefulWidget {
   const CryptoStatsPager({
     super.key,
-    required this.cards, // Pass a list of CryptoStatCard widgets
-    this.viewportPeek = 0.95, // 0.85 shows more peek; 1.0 shows full width
-    this.height = 340, // Tune to your card’s natural height
+    required this.cards,
+    this.viewportPeek = 0.95,
+    this.height = 340,
     this.showArrows = true,
     this.showDots = true,
-    this.scrollable = true, // set false if you want arrows-only
+    this.scrollable = true,
   });
 
   final List<Widget> cards;
