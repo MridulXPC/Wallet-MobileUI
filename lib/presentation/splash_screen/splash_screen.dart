@@ -1,9 +1,7 @@
+import 'package:cryptowallet/routes/app_routes.dart';
+import 'package:cryptowallet/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sizer/sizer.dart';
-
-import '../../core/app_export.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,297 +10,62 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _logoAnimationController;
-  late AnimationController _loadingAnimationController;
-  late Animation<double> _logoScaleAnimation;
-  late Animation<double> _logoFadeAnimation;
-  late Animation<double> _loadingFadeAnimation;
-
-  bool _showRetryOption = false;
-  bool _isInitializing = true;
-
+class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _initializeApp();
+    _navigateToNextScreen();
   }
 
-  void _initializeAnimations() {
-    _logoAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
+  Future<void> _navigateToNextScreen() async {
+    // Show splash for at least 2 seconds (adjust as needed)
+    await Future.delayed(const Duration(seconds: 2));
 
-    _loadingAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
+    final prefs = await SharedPreferences.getInstance();
+    final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
+    final hasPassword = prefs.getString('wallet_password') != null;
 
-    _logoScaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoAnimationController,
-        curve: Curves.elasticOut,
-      ),
-    );
-
-    _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoAnimationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
-      ),
-    );
-
-    _loadingFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _loadingAnimationController,
-        curve: Curves.easeIn,
-      ),
-    );
-
-    _logoAnimationController.forward();
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) _loadingAnimationController.forward();
-    });
-  }
-
-  Future<void> _initializeApp() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('jwt_token');
-
-      if (token != null && token.isNotEmpty) {
-        debugPrint("✅ Token found → Dashboard");
-        _navigateToApplock();
-      } else {
-        debugPrint("🛑 No token found → Welcome");
-        _navigateToWelcome();
-      }
-    } catch (e) {
-      debugPrint("🚨 Error in splash init: $e");
-      setState(() {
-        _isInitializing = false;
-        _showRetryOption = true;
-      });
+    String nextRoute;
+    if (isFirstLaunch) {
+      nextRoute = AppRoutes.welcomeScreen;
+    } else if (hasPassword) {
+      nextRoute = AppRoutes.appLockScreen;
+    } else {
+      nextRoute = AppRoutes.welcomeScreen;
     }
-  }
 
-  void _navigateToApplock() {
-    Navigator.of(context).pushReplacementNamed(AppRoutes.appLockScreen);
-  }
-
-  void _navigateToWelcome() {
-    Navigator.of(context).pushReplacementNamed(AppRoutes.welcomeScreen);
-  }
-
-  void _retryInitialization() {
-    setState(() {
-      _showRetryOption = false;
-      _isInitializing = true;
-    });
-    _initializeApp();
-  }
-
-  @override
-  void dispose() {
-    _logoAnimationController.dispose();
-    _loadingAnimationController.dispose();
-    super.dispose();
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, nextRoute);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-          statusBarBrightness: Brightness.dark,
-          systemNavigationBarColor: Colors.black,
-          systemNavigationBarIconBrightness: Brightness.light,
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: double.infinity,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(flex: 2),
-                AnimatedBuilder(
-                  animation: _logoAnimationController,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _logoScaleAnimation.value,
-                      child: Opacity(
-                        opacity: _logoFadeAnimation.value,
-                        child: _buildLogo(),
-                      ),
-                    );
-                  },
-                ),
-                SizedBox(height: 8.h),
-                AnimatedBuilder(
-                  animation: _loadingAnimationController,
-                  builder: (context, child) {
-                    return Opacity(
-                      opacity: _loadingFadeAnimation.value,
-                      child: _buildLoadingSection(),
-                    );
-                  },
-                ),
-                const Spacer(flex: 3),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
-    return Container(
-      width: 25.w,
-      height: 25.w,
-      decoration: BoxDecoration(
-        color: AppTheme.info,
-        borderRadius: BorderRadius.circular(6.w),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.info.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Center(
+      backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CustomIconWidget(
-              iconName: 'account_balance_wallet',
-              color: AppTheme.onPrimary,
-              size: 8.w,
+            // Your app logo
+            Icon(
+              Icons.account_balance_wallet,
+              size: 100,
+              color: Theme.of(context).primaryColor,
             ),
-            SizedBox(height: 1.h),
+            const SizedBox(height: 20),
             Text(
-              'CW',
-              style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-                color: AppTheme.onPrimary,
+              'CryptoWallet',
+              style: TextStyle(
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
-                fontSize: 4.w,
+                color: Theme.of(context).primaryColor,
               ),
             ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildLoadingSection() {
-    if (_showRetryOption) return _buildRetrySection();
-
-    return Column(
-      children: [
-        SizedBox(
-          width: 6.w,
-          height: 6.w,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.info),
-            backgroundColor: AppTheme.info.withOpacity(0.2),
-          ),
-        ),
-        SizedBox(height: 3.h),
-        Text(
-          'Initializing Wallet...',
-          style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-            color: AppTheme.textMediumEmphasis,
-            fontSize: 3.5.w,
-          ),
-        ),
-        SizedBox(height: 1.h),
-        Text(
-          _getLoadingStatusText(),
-          style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-            color: AppTheme.textDisabled,
-            fontSize: 3.w,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRetrySection() {
-    return Column(
-      children: [
-        Container(
-          width: 12.w,
-          height: 12.w,
-          decoration: BoxDecoration(
-            color: AppTheme.error.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6.w),
-          ),
-          child: Center(
-            child: CustomIconWidget(
-              iconName: 'error_outline',
-              color: AppTheme.error,
-              size: 6.w,
-            ),
-          ),
-        ),
-        SizedBox(height: 3.h),
-        Text(
-          'Connection Failed',
-          style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-            color: AppTheme.textHighEmphasis,
-            fontSize: 4.w,
-          ),
-        ),
-        SizedBox(height: 1.h),
-        Text(
-          'Unable to initialize app',
-          style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-            color: AppTheme.textMediumEmphasis,
-            fontSize: 3.w,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: 4.h),
-        ElevatedButton(
-          onPressed: _retryInitialization,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.info,
-            foregroundColor: AppTheme.onPrimary,
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(3.w),
-            ),
-          ),
-          child: Text(
-            'Retry',
-            style: AppTheme.darkTheme.textTheme.labelLarge?.copyWith(
-              color: AppTheme.onPrimary,
-              fontSize: 3.5.w,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _getLoadingStatusText() {
-    if (!_isInitializing) return '';
-    final states = [
-      'Checking authentication...',
-      'Loading wallet keys...',
-      'Fetching crypto prices...',
-      'Preparing portfolio...',
-    ];
-    return states[DateTime.now().millisecond % states.length];
   }
 }

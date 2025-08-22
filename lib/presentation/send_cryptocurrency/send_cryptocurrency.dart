@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:provider/provider.dart';
+
+import 'package:cryptowallet/coin_store.dart'; // ✅ Provider source of truth
 
 class SendCryptocurrency extends StatefulWidget {
   const SendCryptocurrency({super.key});
@@ -10,48 +13,55 @@ class SendCryptocurrency extends StatefulWidget {
 
 class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _currentAmount = '0';
-  bool _isADASelected = true;
+  bool _isCryptoSelected = true; // just a UI toggle for the chip highlight
   double _usdValue = 0.00;
 
-  // Selected asset properties
-  String _selectedAsset = 'Cardano';
-  String _selectedAssetSymbol = 'ADA';
-  double _selectedAssetBalance = 0.00;
-  String _selectedAssetIcon = 'assets/currencyicons/cardano.png';
-  double _selectedAssetPrice = 0.45;
+  // Selected asset properties (derived from CoinStore)
+  String _selectedAsset = 'Bitcoin';
+  String _selectedAssetSymbol = 'BTC';
+  double _selectedAssetBalance = 0.00; // dummy for now
+  String _selectedAssetIconPath = 'assets/currencyicons/bitcoin.png';
+  double _selectedAssetPrice = 30000.00; // dummy USD price
 
-  // Mock cryptocurrency data
-  final List<Map<String, dynamic>> _cryptoAssets = [
-    {
-      "name": "Bitcoin",
-      "symbol": "BTC",
-      "balance": 0.5432,
-      "icon": "assets/currencyicons/bitcoin.png",
-      "price": 43250.00,
-    },
-    {
-      "name": "Ethereum",
-      "symbol": "ETH",
-      "balance": 2.1567,
-      "icon": "assets/currencyicons/ethereum.png",
-      "price": 2650.00,
-    },
-    {
-      "name": "Cardano",
-      "symbol": "ADA",
-      "balance": 0.00,
-      "icon": "assets/currencyicons/cardano.png",
-      "price": 0.45,
-    },
-    {
-      "name": "Solana",
-      "symbol": "SOL",
-      "balance": 15.8934,
-      "icon": "assets/currencyicons/solana.png",
-      "price": 98.50,
-    },
-  ];
+  // Dummy prices/balances (plug your API later)
+  final Map<String, double> _dummyPrices = const {
+    'BTC': 43825.67,
+    'BTC-LN': 43825.67,
+    'ETH': 2641.25,
+    'BNB': 580.00,
+    'SOL': 148.12,
+    'TRX': 0.13,
+    'USDT': 1.00,
+    'USDT-ETH': 1.00,
+    'USDT-TRX': 1.00,
+    'BNB-BNB': 580.00,
+    'ETH-ETH': 2641.25,
+    'SOL-SOL': 148.12,
+    'TRX-TRX': 0.13,
+    'XMR': 168.00,
+    'XMR-XMR': 168.00,
+  };
 
+  final Map<String, double> _dummyBalances = const {
+    // balances are in coin units; adjust as needed
+    'BTC': 0.0,
+    'BTC-LN': 0.0,
+    'ETH': 0.0,
+    'BNB': 0.0,
+    'SOL': 0.0,
+    'TRX': 0.0,
+    'USDT': 0.0,
+    'USDT-ETH': 0.0,
+    'USDT-TRX': 0.0,
+    'BNB-BNB': 0.0,
+    'ETH-ETH': 0.0,
+    'SOL-SOL': 0.0,
+    'TRX-TRX': 0.0,
+    'XMR': 0.0,
+    'XMR-XMR': 0.0,
+  };
+
+  // ---------- Amount helpers ----------
   void _onNumberPressed(String number) {
     setState(() {
       if (_currentAmount == '0') {
@@ -84,10 +94,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   void _onPercentagePressed(double percentage) {
     setState(() {
-      double amount = _selectedAssetBalance * percentage;
-      _currentAmount = amount.toStringAsFixed(8);
-      // Remove trailing zeros
-      _currentAmount = _currentAmount
+      final amt = _selectedAssetBalance * percentage;
+      _currentAmount = amt
+          .toStringAsFixed(8)
           .replaceAll(RegExp(r'0*$'), '')
           .replaceAll(RegExp(r'\.$'), '');
       if (_currentAmount.isEmpty) _currentAmount = '0';
@@ -96,17 +105,24 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   }
 
   void _calculateUSDValue() {
-    double amount = double.tryParse(_currentAmount) ?? 0.0;
+    final amount = double.tryParse(_currentAmount) ?? 0.0;
     _usdValue = amount * _selectedAssetPrice;
   }
 
-  void _onAssetSelected(Map<String, dynamic> asset) {
+  // ---------- Selector & state updates ----------
+  void _onAssetSelected(Coin coin) {
+    final symbol = coin.symbol;
+    final price = _dummyPrices[symbol] ??
+        _dummyPrices[coin.id] ??
+        1.0; // try by symbol, then id, fallback 1
+    final balance = _dummyBalances[symbol] ?? _dummyBalances[coin.id] ?? 0.0;
+
     setState(() {
-      _selectedAsset = asset["name"] as String;
-      _selectedAssetSymbol = asset["symbol"] as String;
-      _selectedAssetBalance = asset["balance"] as double;
-      _selectedAssetIcon = asset["icon"] as String;
-      _selectedAssetPrice = asset["price"] as double;
+      _selectedAsset = coin.name;
+      _selectedAssetSymbol = symbol;
+      _selectedAssetBalance = balance;
+      _selectedAssetIconPath = coin.assetPath;
+      _selectedAssetPrice = price;
     });
     _calculateUSDValue();
   }
@@ -115,98 +131,212 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF2A2D3A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              height: 4,
-              width: 40,
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) {
+        final coins = context.read<CoinStore>().coins.values.toList()
+          ..sort((a, b) => a.symbol.compareTo(b.symbol));
+
+        // Build chip list: ALL + unique base symbols (e.g., USDT, BTC)
+        final baseSet = <String>{};
+        for (final c in coins) {
+          final base = _baseSymbol(c.id);
+          baseSet.add(base);
+        }
+        final chips = ['ALL', ...baseSet.toList()..sort()];
+
+        String search = '';
+        String chip = 'ALL';
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filtered = coins.where((c) {
+              final q = search.trim().toLowerCase();
+              final matchesSearch = q.isEmpty ||
+                  c.symbol.toLowerCase().contains(q) ||
+                  c.name.toLowerCase().contains(q) ||
+                  c.id.toLowerCase().contains(q);
+              final matchesChip = chip == 'ALL' || _baseSymbol(c.id) == chip;
+              return matchesSearch && matchesChip;
+            }).toList();
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF2A2D3A),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'Select Asset',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      height: 4,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'Select Asset',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: TextField(
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Search symbol, name, or network',
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          prefixIcon:
+                              const Icon(Icons.search, color: Colors.white54),
+                          filled: true,
+                          fillColor: const Color(0xFF1F2431),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onChanged: (v) => setModalState(() => search = v),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: chips
+                            .map(
+                              (f) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                child: ChoiceChip(
+                                  label: Text(f),
+                                  selected: chip == f,
+                                  onSelected: (_) =>
+                                      setModalState(() => chip = f),
+                                  selectedColor: Colors.blue,
+                                  labelStyle: TextStyle(
+                                    color: chip == f
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                  backgroundColor: const Color(0xFF1F2431),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: filtered.length,
+                        itemBuilder: (context, i) {
+                          final coin = filtered[i];
+                          final price = _dummyPrices[coin.symbol] ??
+                              _dummyPrices[coin.id] ??
+                              1.0;
+                          final balance = _dummyBalances[coin.symbol] ??
+                              _dummyBalances[coin.id] ??
+                              0.0;
+                          return ListTile(
+                            leading: _iconCircle(coin.assetPath, 40),
+                            title: Text(
+                              '${coin.symbol} - ${coin.name}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Balance: ${balance.toStringAsFixed(4)}',
+                              style: const TextStyle(
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                            trailing: Text(
+                              '\$${price.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            onTap: () {
+                              _onAssetSelected(coin);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
               ),
-            ),
-            ...(_cryptoAssets.map((asset) => ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _getAssetColor(asset["name"]),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.currency_bitcoin,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  title: Text(
-                    '${asset["symbol"]} - ${asset["name"]}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Balance: ${(asset["balance"] as double).toStringAsFixed(4)}',
-                    style: const TextStyle(
-                      color: Color(0xFF9CA3AF),
-                    ),
-                  ),
-                  trailing: Text(
-                    '\$${(asset["price"] as double).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  onTap: () {
-                    _onAssetSelected(asset);
-                    Navigator.pop(context);
-                  },
-                ))).toList(),
-            const SizedBox(height: 20),
-          ],
-        ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _baseSymbol(String coinId) {
+    final dash = coinId.indexOf('-');
+    return dash == -1 ? coinId : coinId.substring(0, dash);
+  }
+
+  Widget _iconCircle(String assetPath, double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFF1F2431),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        assetPath,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.token, color: Colors.white),
       ),
     );
   }
 
-  Color _getAssetColor(String assetName) {
-    final Map<String, Color> colors = {
-      'Bitcoin': const Color(0xFFF7931A),
-      'Ethereum': const Color(0xFF627EEA),
-      'Cardano': const Color(0xFF0033AD),
-      'Solana': const Color(0xFF14F195),
-    };
-    return colors[assetName] ?? const Color(0xFF1A73E8);
-  }
-
   void _toggleCurrency() {
     setState(() {
-      _isADASelected = !_isADASelected;
+      _isCryptoSelected = !_isCryptoSelected;
     });
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Initialize selection from Provider the first time
+    final coins = context.read<CoinStore>().coins.values.toList()
+      ..sort((a, b) => a.symbol.compareTo(b.symbol));
+    if (coins.isNotEmpty) {
+      final initial = coins.firstWhere(
+        (c) => c.symbol == _selectedAssetSymbol,
+        orElse: () => coins.first,
+      );
+      _onAssetSelected(initial);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // ensure rebuilds if coins update (icons/names)
+    context.watch<CoinStore>();
+
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenHeight < 0.6 * screenWidth;
@@ -219,11 +349,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.white,
-            size: 20,
-          ),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
         ),
         title: Text(
           'Insert Amount',
@@ -240,15 +366,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           builder: (context, constraints) {
             return SingleChildScrollView(
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
                       SizedBox(height: 1.h),
 
-                      // Account Card - Now Interactive
+                      // Account Card (tap to select asset)
                       GestureDetector(
                         onTap: _showAssetSelector,
                         child: Container(
@@ -264,25 +388,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                           child: Row(
                             children: [
-                              // Asset Icon
-                              Container(
-                                width: isSmallScreen ? 40 : 40,
-                                height: isSmallScreen ? 40 : 40,
-                                decoration: BoxDecoration(
-                                  color: _getAssetColor(_selectedAsset),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.currency_bitcoin,
-                                    color: Colors.white,
-                                    size: isSmallScreen ? 20 : 24,
-                                  ),
-                                ),
-                              ),
+                              // Asset Icon (real icon from assets)
+                              _iconCircle(_selectedAssetIconPath, 40),
+
                               SizedBox(width: 3.w),
 
-                              // Account Details - Now Dynamic
+                              // Account Details
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,7 +430,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                     ),
                                   ),
                                   Text(
-                                    '≈ ${(_selectedAssetBalance * _selectedAssetPrice).toStringAsFixed(2)} USD',
+                                    '≈ \$${(_selectedAssetBalance * _selectedAssetPrice).toStringAsFixed(2)}',
                                     style: TextStyle(
                                       color: const Color(0xFF9CA3AF),
                                       fontSize: isSmallScreen ? 10 : 12,
@@ -334,19 +445,19 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: isSmallScreen ? 2.h : 2.h),
 
-                      // Currency Toggle Buttons
+                      // Currency Toggle Buttons (visual only)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           GestureDetector(
                             onTap: () {
-                              if (!_isADASelected) _toggleCurrency();
+                              if (!_isCryptoSelected) _toggleCurrency();
                             },
                             child: Container(
                               padding: EdgeInsets.symmetric(
                                   horizontal: 4.w, vertical: 0.3.h),
                               decoration: BoxDecoration(
-                                color: _isADASelected
+                                color: _isCryptoSelected
                                     ? const Color(0xFF4C5563)
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(6),
@@ -358,7 +469,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                               child: Text(
                                 _selectedAssetSymbol,
                                 style: TextStyle(
-                                  color: _isADASelected
+                                  color: _isCryptoSelected
                                       ? Colors.white
                                       : const Color(0xFF9CA3AF),
                                   fontSize: isSmallScreen ? 14 : 16,
@@ -370,13 +481,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           SizedBox(width: 4.w),
                           GestureDetector(
                             onTap: () {
-                              if (_isADASelected) _toggleCurrency();
+                              if (_isCryptoSelected) _toggleCurrency();
                             },
                             child: Container(
                               padding: EdgeInsets.symmetric(
                                   horizontal: 4.w, vertical: 0.3.h),
                               decoration: BoxDecoration(
-                                color: !_isADASelected
+                                color: !_isCryptoSelected
                                     ? const Color(0xFF4C5563)
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(6),
@@ -388,7 +499,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                               child: Text(
                                 'USD',
                                 style: TextStyle(
-                                  color: !_isADASelected
+                                  color: !_isCryptoSelected
                                       ? Colors.white
                                       : const Color(0xFF9CA3AF),
                                   fontSize: isSmallScreen ? 14 : 16,
@@ -402,7 +513,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: isSmallScreen ? 2.h : 1.h),
 
-                      // Amount Display Section
+                      // Amount Display
                       Column(
                         children: [
                           Text(
@@ -415,7 +526,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           SizedBox(height: 0.5.h),
                           Text(
                             _currentAmount,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 28,
                               fontWeight: FontWeight.w600,
@@ -425,7 +536,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                           SizedBox(height: 0.5.h),
                           Text(
-                            '≈ ${_usdValue.toStringAsFixed(2)} USD',
+                            '≈ \$${_usdValue.toStringAsFixed(2)} USD',
                             style: TextStyle(
                               color: const Color(0xFF9CA3AF),
                               fontSize: isSmallScreen ? 14 : 16,
@@ -433,81 +544,77 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                         ],
                       ),
+
                       SizedBox(height: 2.w),
-                      // Percentage Buttons
+
+                      // Percentage Buttons (now use real percentages)
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4.w),
                         child: Row(
                           children: [
-                            _buildPercentageButton('25%', 0.0, isSmallScreen),
+                            _buildPercentageButton('25%', 0.25, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('50%', 0.0, isSmallScreen),
+                            _buildPercentageButton('50%', 0.50, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('75%', 0.0, isSmallScreen),
+                            _buildPercentageButton('75%', 0.75, isSmallScreen),
                             SizedBox(width: 2.w),
-                            _buildPercentageButton('100%', 0.0, isSmallScreen),
+                            _buildPercentageButton('100%', 1.00, isSmallScreen),
                           ],
                         ),
                       ),
 
-                      // Number Pad - Flexible to take remaining space
-                      Flexible(
-                        flex: 0,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 4.w, vertical: 2.h),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildNumberRow(['1', '2', '3'], isSmallScreen),
-                              SizedBox(height: 1.h),
-                              _buildNumberRow(['4', '5', '6'], isSmallScreen),
-                              SizedBox(height: 1.h),
-                              _buildNumberRow(['7', '8', '9'], isSmallScreen),
-                              SizedBox(height: 1.h),
-                              _buildNumberRow(
-                                  ['.', '0', 'backspace'], isSmallScreen),
-                            ],
-                          ),
+                      // Number Pad
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 4.w, vertical: 2.h),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildNumberRow(['1', '2', '3'], isSmallScreen),
+                            SizedBox(height: 1.h),
+                            _buildNumberRow(['4', '5', '6'], isSmallScreen),
+                            SizedBox(height: 1.h),
+                            _buildNumberRow(['7', '8', '9'], isSmallScreen),
+                            SizedBox(height: 1.h),
+                            _buildNumberRow(
+                                ['.', '0', 'backspace'], isSmallScreen),
+                          ],
                         ),
                       ),
-                      Spacer(),
-                      // Next Button - Always at bottom
+
+                      const Spacer(),
+
+                      // Next Button
                       Container(
                         margin: EdgeInsets.all(4.w),
                         width: double.infinity,
                         height: isSmallScreen ? 5.h : 6.h,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF6366F1),
-                                Color(0xFF8B5CF6),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            child: Text(
-                              'Next',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: isSmallScreen ? 16 : 18,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                          child: Text(
+                            'Next',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmallScreen ? 16 : 18,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -533,10 +640,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           decoration: BoxDecoration(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: const Color(0xFF3A3D4A),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFF3A3D4A), width: 1),
           ),
           child: Center(
             child: Text(
@@ -555,9 +659,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   Widget _buildNumberRow(List<String> numbers, bool isSmallScreen) {
     return Row(
-      children: numbers
-          .map((number) => _buildNumberButton(number, isSmallScreen))
-          .toList(),
+      children:
+          numbers.map((n) => _buildNumberButton(n, isSmallScreen)).toList(),
     );
   }
 
@@ -579,18 +682,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           decoration: BoxDecoration(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(35),
-            border: Border.all(
-              color: const Color(0xFF3A3D4A),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFF3A3D4A), width: 1),
           ),
           child: Center(
             child: number == 'backspace'
-                ? Icon(
-                    Icons.backspace_outlined,
-                    color: Colors.white,
-                    size: isSmallScreen ? 20 : 24,
-                  )
+                ? Icon(Icons.backspace_outlined,
+                    color: Colors.white, size: isSmallScreen ? 20 : 24)
                 : Text(
                     number,
                     style: TextStyle(

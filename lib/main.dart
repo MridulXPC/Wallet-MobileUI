@@ -1,7 +1,9 @@
+// lib/main.dart
+import 'package:cryptowallet/coin_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:provider/provider.dart'; // ✅ Provider
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
@@ -19,12 +21,16 @@ void main() async {
   // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  final initialRoute = await _determineStartRoute();
-
-  runApp(MyApp(initialRoute: initialRoute));
+  runApp(
+    // ✅ Provide CoinStore globally so any screen can read coin icons/names
+    ChangeNotifierProvider(
+      create: (_) => CoinStore(),
+      child: const MyApp(),
+    ),
+  );
 }
 
-Future<String> _determineStartRoute() async {
+Future<String> determineNextRoute() async {
   final prefs = await SharedPreferences.getInstance();
   final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
   final hasPassword = prefs.getString('wallet_password') != null;
@@ -41,12 +47,18 @@ Future<String> _determineStartRoute() async {
 }
 
 class MyApp extends StatelessWidget {
-  final String initialRoute;
-
-  const MyApp({super.key, required this.initialRoute});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // (Optional) Precache coin icons right after first frame to avoid flicker.
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   final store = context.read<CoinStore>();
+    //   for (final c in store.coins.values) {
+    //     precacheImage(AssetImage(c.assetPath), context);
+    //   }
+    // });
+
     return Sizer(
       builder: (context, orientation, deviceType) {
         return MaterialApp(
@@ -67,7 +79,11 @@ class MyApp extends StatelessWidget {
               ),
             );
           },
-          initialRoute: initialRoute,
+
+          // If you want to decide the first screen via determineNextRoute(),
+          // you can swap to onGenerateInitialRoutes or do a Splash that calls it.
+          // Keeping your current splash route as requested:
+          initialRoute: AppRoutes.splashScreen, // Always start with splash
           routes: AppRoutes.routes,
         );
       },

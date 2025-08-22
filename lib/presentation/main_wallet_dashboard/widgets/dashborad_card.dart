@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cryptowallet/coin_store.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -6,22 +8,29 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:math' as math;
 
+// ✅ New: Provider & CoinStore
+import 'package:provider/provider.dart';
+
 class CryptoStatCard extends StatefulWidget {
-  final String title;
+  /// Canonical coin key from CoinStore, e.g. "BTC", "ETH", "USDT-ETH"
+  final String coinId;
+
+  /// Optional title override; if null we’ll use Coin.name from Provider.
+  final String? title;
+
   final double currentPrice;
   final List<double> monthlyData;
   final List<double> todayData;
   final List<double> yearlyData;
-  final String iconPath;
 
   const CryptoStatCard({
     super.key,
-    required this.title,
+    required this.coinId,
+    this.title,
     required this.currentPrice,
     required this.monthlyData,
     required this.todayData,
     required this.yearlyData,
-    required this.iconPath,
   });
 
   @override
@@ -41,15 +50,31 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   @override
   void didUpdateWidget(CryptoStatCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.iconPath != widget.iconPath) {
+    if (oldWidget.coinId != widget.coinId || oldWidget.title != widget.title) {
       _extractDominantColor();
     }
   }
 
   Future<void> _extractDominantColor() async {
     try {
+      final store = context.read<CoinStore>();
+      final coin = store.getById(widget.coinId);
+
+      // If no coin or asset path, fall back immediately.
+      final assetPath = coin?.assetPath;
+      if (assetPath == null) {
+        if (mounted) {
+          setState(() {
+            _dominantColor =
+                _getDefaultColorForCrypto(widget.title ?? coin?.name ?? '');
+            _isColorExtracted = true;
+          });
+        }
+        return;
+      }
+
       // Load the image as bytes
-      final ByteData data = await rootBundle.load(widget.iconPath);
+      final ByteData data = await rootBundle.load(assetPath);
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode the image
@@ -60,29 +85,36 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       // Convert to byte data
       final ByteData? byteData =
           await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (byteData != null) {
+      if (byteData != null && mounted) {
         final Color extractedColor = _getDominantColorFromBytes(byteData);
-        if (mounted) {
-          setState(() {
-            _dominantColor = extractedColor;
-            _isColorExtracted = true;
-          });
-        }
-      }
-    } catch (e) {
-      // If extraction fails, use default color based on crypto type
-      if (mounted) {
         setState(() {
-          _dominantColor = _getDefaultColorForCrypto(widget.title);
+          _dominantColor = extractedColor;
           _isColorExtracted = true;
         });
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _dominantColor =
+            _getDefaultColorForCrypto(_effectiveTitle(context) ?? '');
+        _isColorExtracted = true;
+      });
     }
+  }
+
+  String? _effectiveTitle(BuildContext context) {
+    final coin = context.read<CoinStore>().getById(widget.coinId);
+    return widget.title ?? coin?.name;
+  }
+
+  String? _effectiveIconPath(BuildContext context) {
+    final coin = context.watch<CoinStore>().getById(widget.coinId);
+    return coin?.assetPath;
   }
 
   Color _getDominantColorFromBytes(ByteData byteData) {
     final Uint8List pixels = byteData.buffer.asUint8List();
-    Map<int, int> colorCounts = {};
+    final Map<int, int> colorCounts = {};
 
     // Sample every 4th pixel to improve performance
     for (int i = 0; i < pixels.length; i += 16) {
@@ -105,11 +137,11 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     }
 
     if (colorCounts.isEmpty) {
-      return _getDefaultColorForCrypto(widget.title);
+      return _getDefaultColorForCrypto(_effectiveTitle(context) ?? '');
     }
 
-    // Find the most common color
-    int dominantColorKey =
+    // Most common color
+    final int dominantColorKey =
         colorCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
 
     final int r = (dominantColorKey >> 16) & 0xFF;
@@ -124,12 +156,11 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final Map<String, Color> cryptoColors = {
       'Bitcoin': const Color(0xFFF7931A),
       'Ethereum': const Color(0xFF627EEA),
-      'Cardano': const Color(0xFF0033AD),
       'Solana': const Color(0xFF14F195),
-      'Polygon': const Color(0xFF8247E5),
-      'Chainlink': const Color(0xFF375BD2),
-      'Dogecoin': const Color(0xFFC2A633),
-      'Litecoin': const Color(0xFFBFBFBF),
+      'Tron': const Color(0xFFEB0029),
+      'Tether': const Color(0xFF26A17B),
+      'BNB': const Color(0xFFF3BA2F),
+      'Monero': const Color(0xFFF26822),
     };
 
     return cryptoColors[title] ?? const Color(0xFF1A73E8);
@@ -189,45 +220,26 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
   @override
   Widget build(BuildContext context) {
+    final coin = context.watch<CoinStore>().getById(widget.coinId);
+    final title = widget.title ?? coin?.name ?? 'Unknown';
+    final iconPath = _effectiveIconPath(context);
+
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = screenWidth > 600;
     final isLargeScreen = screenWidth > 900;
 
     // Responsive dimensions
-    final cardPadding = isLargeScreen
-        ? 24.0
-        : isTablet
-            ? 20.0
-            : 16.0;
-    final borderRadius = isLargeScreen
-        ? 24.0
-        : isTablet
-            ? 22.0
-            : 20.0;
-    final iconSize = isLargeScreen
-        ? 40.0
-        : isTablet
-            ? 36.0
-            : 32.0;
-    final priceTextSize = isLargeScreen
-        ? 32.0
-        : isTablet
-            ? 30.0
-            : 28.0;
-    final watermarkSize = isLargeScreen
-        ? 200.0
-        : isTablet
-            ? 180.0
-            : 160.0;
-
-    // Responsive margins
-    final horizontalMargin = screenWidth * 0.02; // 2% of screen width
+    final cardPadding = isLargeScreen ? 24.0 : (isTablet ? 20.0 : 16.0);
+    final borderRadius = isLargeScreen ? 24.0 : (isTablet ? 22.0 : 20.0);
+    final iconSize = isLargeScreen ? 40.0 : (isTablet ? 36.0 : 32.0);
+    final priceTextSize = isLargeScreen ? 32.0 : (isTablet ? 30.0 : 28.0);
+    final watermarkSize = isLargeScreen ? 200.0 : (isTablet ? 180.0 : 160.0);
+    final horizontalMargin = (screenWidth * 0.02).clamp(8.0, 20.0);
 
     return Container(
       margin: EdgeInsets.symmetric(
         vertical: 6,
-        horizontal: horizontalMargin.clamp(8.0, 20.0),
+        horizontal: horizontalMargin,
       ),
       padding: EdgeInsets.all(cardPadding),
       decoration: BoxDecoration(
@@ -259,17 +271,18 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     _dominantColor.withOpacity(0.15),
                     BlendMode.srcIn,
                   ),
-                  child: Image.asset(
-                    widget.iconPath,
-                    width: watermarkSize,
-                    height: watermarkSize,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.currency_bitcoin,
-                      color: _dominantColor.withOpacity(0.15),
-                      size: watermarkSize,
-                    ),
-                  ),
+                  child: iconPath != null
+                      ? Image.asset(
+                          iconPath,
+                          width: watermarkSize,
+                          height: watermarkSize,
+                          fit: BoxFit.contain,
+                        )
+                      : Icon(
+                          Icons.currency_bitcoin,
+                          color: _dominantColor.withOpacity(0.15),
+                          size: watermarkSize,
+                        ),
                 ),
               ),
 
@@ -283,14 +296,10 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     children: [
                       Flexible(
                         child: Text(
-                          '${widget.title} price',
+                          '$title price',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: isLargeScreen
-                                ? 16
-                                : isTablet
-                                    ? 15
-                                    : 14,
+                            fontSize: isLargeScreen ? 16 : (isTablet ? 15 : 14),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -298,41 +307,31 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                       Icon(
                         Icons.qr_code_scanner,
                         color: Colors.white,
-                        size: isLargeScreen
-                            ? 24
-                            : isTablet
-                                ? 22
-                                : 20,
+                        size: isLargeScreen ? 24 : (isTablet ? 22 : 20),
                       ),
                     ],
                   ),
-                  SizedBox(
-                      height: isLargeScreen
-                          ? 12
-                          : isTablet
-                              ? 10
-                              : 8),
+                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
 
                   // Price + Icon Row
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Image.asset(
-                        widget.iconPath,
-                        width: iconSize,
-                        height: iconSize,
-                        errorBuilder: (_, __, ___) => Icon(
+                      if (iconPath != null)
+                        Image.asset(
+                          iconPath,
+                          width: iconSize,
+                          height: iconSize,
+                        )
+                      else
+                        Icon(
                           Icons.currency_bitcoin,
                           color: Colors.white,
                           size: iconSize,
                         ),
-                      ),
                       SizedBox(
-                          width: isLargeScreen
-                              ? 12
-                              : isTablet
-                                  ? 10
-                                  : 8),
+                          height: 0,
+                          width: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
                       Flexible(
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
@@ -350,100 +349,55 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                     ],
                   ),
 
-                  SizedBox(
-                      height: isLargeScreen
-                          ? 8
-                          : isTablet
-                              ? 6
-                              : 4),
+                  SizedBox(height: isLargeScreen ? 8 : (isTablet ? 6 : 4)),
 
-                  // Percentage Change
+                  // Percentage Change (dummy)
                   Text(
                     '▲74.99% (+\$51,176.67)',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: isLargeScreen
-                          ? 16
-                          : isTablet
-                              ? 15
-                              : 14,
+                      fontSize: isLargeScreen ? 16 : (isTablet ? 15 : 14),
                       fontWeight: FontWeight.w400,
                     ),
                   ),
-                  SizedBox(
-                      height: isLargeScreen
-                          ? 12
-                          : isTablet
-                              ? 10
-                              : 8),
+                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
 
                   // Investment text
                   Text(
-                    'Start investing – buy your first ${widget.title} now!',
+                    'Start investing – buy your first $title now!',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: isLargeScreen
-                          ? 14
-                          : isTablet
-                              ? 17
-                              : 14,
+                      fontSize: isLargeScreen ? 14 : (isTablet ? 17 : 14),
                     ),
                   ),
-                  SizedBox(
-                      height: isLargeScreen
-                          ? 12
-                          : isTablet
-                              ? 10
-                              : 8),
+                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
 
                   // Amount Buttons - Single row for all devices
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
+                    children: const [
                       Expanded(
-                        child: _AmountButton(
-                          amount: '\$100',
-                          isLarge: isLargeScreen,
-                        ),
-                      ),
-                      SizedBox(
-                          width: isLargeScreen
-                              ? 12
-                              : isTablet
-                                  ? 10
-                                  : 8),
+                          child:
+                              _AmountButton(amount: '\$100', isLarge: false)),
+                      SizedBox(width: 8),
                       Expanded(
-                        child: _AmountButton(
-                          amount: '\$200',
-                          isLarge: isLargeScreen,
-                        ),
-                      ),
-                      SizedBox(
-                          width: isLargeScreen
-                              ? 12
-                              : isTablet
-                                  ? 10
-                                  : 8),
+                          child:
+                              _AmountButton(amount: '\$200', isLarge: false)),
+                      SizedBox(width: 8),
                       Expanded(
-                        child: _AmountButton(
-                          amount: '\$500',
-                          isLarge: isLargeScreen,
-                        ),
-                      ),
+                          child:
+                              _AmountButton(amount: '\$500', isLarge: false)),
                     ],
                   ),
 
-                  SizedBox(
-                      height: isLargeScreen
-                          ? 12
-                          : isTablet
-                              ? 10
-                              : 8),
+                  SizedBox(height: isLargeScreen ? 12 : (isTablet ? 10 : 8)),
 
                   // Actions - Your ActionButtonsGridWidget
                   ActionButtonsGridWidget(
-                      isLarge: isLargeScreen, isTablet: isTablet),
+                    isLarge: isLargeScreen,
+                    isTablet: isTablet,
+                  ),
                 ],
               ),
             ],
@@ -512,15 +466,13 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
         children: [
           PageView.builder(
             controller: _controller,
-            padEnds:
-                false, // keeps the first card flush to the left while still peeking the next
+            padEnds: false,
             physics: widget.scrollable
                 ? const BouncingScrollPhysics()
                 : const NeverScrollableScrollPhysics(),
             onPageChanged: (i) => setState(() => _index = i),
             itemCount: widget.cards.length,
             itemBuilder: (_, i) => Padding(
-              // keep a tiny gap between cards; tweak as you like
               padding: const EdgeInsets.symmetric(horizontal: 0),
               child: widget.cards[i],
             ),
@@ -600,7 +552,6 @@ class _NavArrow extends StatelessWidget {
   }
 }
 
-// Helper widget for amount buttons (you'll need to implement this)
 class _AmountButton extends StatelessWidget {
   final String amount;
   final bool isLarge;
@@ -612,6 +563,7 @@ class _AmountButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTablet = MediaQuery.of(context).size.width > 600;
     return Container(
       padding: EdgeInsets.symmetric(
         vertical: isLarge ? 12 : 10,
@@ -631,7 +583,7 @@ class _AmountButton extends StatelessWidget {
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: isLarge ? 14 : 12,
+            fontSize: isTablet ? 14 : 12,
           ),
         ),
       ),

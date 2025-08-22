@@ -3,6 +3,9 @@ import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import 'package:cryptowallet/coin_store.dart';
 
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});
@@ -12,99 +15,40 @@ class SwapScreen extends StatefulWidget {
 }
 
 class _SwapScreenState extends State<SwapScreen> {
-  String fromCoin = 'BTC';
-  String toCoin = 'ETH';
+  /// We store **coinId** (must match CoinStore ids)
+  String fromCoinId = 'BTC';
+  String toCoinId = 'ETH';
 
   double fromAmount = 0.0;
   final TextEditingController _fromController = TextEditingController();
 
-  final List<Map<String, String>> allCoins = [
-    {
-      "symbol": "BTC",
-      "name": "Bitcoin",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "-1.25%",
-      "icon": "assets/currencyicons/bitcoin.png",
-    },
-    {
-      "symbol": "ETH",
-      "name": "Ethereum",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "0.75%",
-      "icon": "assets/currencyicons/ethereum.png",
-    },
-    {
-      "symbol": "MATIC",
-      "name": "Polygon",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "-0.50%",
-      "icon": "assets/currencyicons/matic.png",
-    },
-    {
-      "symbol": "BCH",
-      "name": "Bitcoin Cash",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "0.00%",
-      "icon": "assets/currencyicons/bitcoin-cash.png",
-    },
-    {
-      "symbol": "TRX",
-      "name": "Tron",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "-0.25%",
-      "icon": "assets/currencyicons/trx.png",
-    },
-    {
-      "symbol": "USDT",
-      "name": "Tether",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "0.00%",
-      "icon": "assets/currencyicons/usdt.png",
-    },
-    {
-      "symbol": "KLV",
-      "name": "Klever",
-      "balance": "0",
-      "usdValue": "\$0.00",
-      "change24h": "2.15%",
-      "icon": "assets/currencyicons/klv.png",
-    },
-  ];
+  // Modal filter/search UI state
+  String _chipFilter = 'ALL';
+  String _search = '';
 
-  String selectedFilter = 'ALL';
+  static const Color _pageBg = Color(0xFF0B0D1A);
 
-  // Helper method to get coin data by symbol
-  Map<String, String>? getCoinData(String symbol) {
-    try {
-      return allCoins.firstWhere((coin) => coin['symbol'] == symbol);
-    } catch (e) {
-      return null;
-    }
-  }
+  Coin? _coinById(BuildContext ctx, String id) =>
+      ctx.read<CoinStore>().getById(id);
 
-  // Helper method to get coin icon path
-  String getCoinIcon(String symbol) {
-    final coinData = getCoinData(symbol);
-    return coinData?['icon'] ?? 'assets/currencyicons/default.png';
+  String _baseSymbol(String coinId) {
+    // Examples: USDT-ETH -> USDT, BTC-LN -> BTC, SOL -> SOL
+    final dash = coinId.indexOf('-');
+    return dash == -1 ? coinId : coinId.substring(0, dash);
   }
 
   void _swapCoins() {
     setState(() {
-      final temp = fromCoin;
-      fromCoin = toCoin;
-      toCoin = temp;
+      final tmp = fromCoinId;
+      fromCoinId = toCoinId;
+      toCoinId = tmp;
       _fromController.clear();
       fromAmount = 0.0;
     });
   }
 
-  void _selectCoin(bool isFrom) {
+  // ---------- Coin Picker ----------
+  void _selectCoin({required bool isFrom}) {
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1A1D29),
@@ -113,154 +57,172 @@ class _SwapScreenState extends State<SwapScreen> {
       ),
       context: context,
       builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            List<Map<String, String>> filteredCoins = selectedFilter == 'ALL'
-                ? allCoins
-                : allCoins.where((c) => c['symbol'] == selectedFilter).toList();
+        return StatefulBuilder(builder: (context, setModalState) {
+          final store = context.read<CoinStore>();
+          final coins = store.coins.values.toList()
+            ..sort((a, b) => a.symbol.compareTo(b.symbol));
 
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 6),
-                    const Text('Select Crypto',
-                        style: TextStyle(color: Colors.white, fontSize: 18)),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Type to search chain',
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              prefixIcon: const Icon(Icons.search,
-                                  color: Colors.white54),
-                              filled: true,
-                              fillColor: const Color(0xFF2A2D3A),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide.none,
-                              ),
+          // Build unique chip list: ALL + base symbols present
+          final baseSet = <String>{};
+          for (final c in coins) baseSet.add(_baseSymbol(c.id));
+          final chips = ['ALL', ...baseSet.toList()..sort()];
+
+          // Filter by chip + search (symbol or name match)
+          final filtered = coins.where((c) {
+            final matchesChip =
+                _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
+            final q = _search.trim().toLowerCase();
+            final matchesSearch = q.isEmpty ||
+                c.symbol.toLowerCase().contains(q) ||
+                c.name.toLowerCase().contains(q) ||
+                c.id.toLowerCase().contains(q);
+            return matchesChip && matchesSearch;
+          }).toList();
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 6),
+                  const Text('Select Crypto',
+                      style: TextStyle(color: Colors.white, fontSize: 18)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Search symbol, name, or network',
+                            hintStyle: const TextStyle(color: Colors.white54),
+                            prefixIcon:
+                                const Icon(Icons.search, color: Colors.white54),
+                            filled: true,
+                            fillColor: const Color(0xFF2A2D3A),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
                             ),
                           ),
+                          onChanged: (v) => setModalState(() => _search = v),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: ['ALL', 'BTC', 'ETH', 'MATIC', 'TRX', 'USDT']
-                            .map((filter) {
-                          final isSelected = selectedFilter == filter;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: ChoiceChip(
-                              label: Text(filter),
-                              selected: isSelected,
-                              onSelected: (_) =>
-                                  setModalState(() => selectedFilter = filter),
-                              selectedColor: Colors.blue,
-                              labelStyle: TextStyle(
-                                color:
-                                    isSelected ? Colors.white : Colors.white70,
-                              ),
-                              backgroundColor: const Color(0xFF2A2D3A),
-                            ),
-                          );
-                        }).toList(),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 400,
-                      child: ListView(
-                        children: filteredCoins.map((coin) {
-                          return ListTile(
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF2A2D3A),
-                              ),
-                              child: ClipOval(
-                                child: Image.asset(
-                                  coin['icon'] ?? '',
-                                  width: 40,
-                                  height: 40,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return CircleAvatar(
-                                      backgroundColor: const Color(0xFF2A2D3A),
-                                      child: Text(
-                                        coin['symbol']?[0] ?? '?',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: chips.map((filter) {
+                        final isSelected = _chipFilter == filter;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: ChoiceChip(
+                            label: Text(filter),
+                            selected: isSelected,
+                            onSelected: (_) =>
+                                setModalState(() => _chipFilter = filter),
+                            selectedColor: Colors.blue,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white70,
                             ),
-                            title: Text(coin['symbol'] ?? '',
-                                style: const TextStyle(color: Colors.white)),
-                            subtitle: Text(coin['name'] ?? '',
-                                style: const TextStyle(color: Colors.white70)),
-                            trailing: Text(
-                              coin['change24h'] ?? '',
-                              style: TextStyle(
-                                color:
-                                    coin['change24h']?.startsWith('-') == true
-                                        ? Colors.red
-                                        : Colors.green,
-                                fontSize: 12,
-                              ),
-                            ),
-                            onTap: () {
-                              Navigator.pop(context);
-                              setState(() {
-                                if (isFrom) {
-                                  fromCoin = coin['symbol']!;
-                                } else {
-                                  toCoin = coin['symbol']!;
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
+                            backgroundColor: const Color(0xFF2A2D3A),
+                          ),
+                        );
+                      }).toList(),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 440,
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final c = filtered[i];
+                        return ListTile(
+                          leading: _coinAvatar(c.assetPath, c.symbol),
+                          title: Text(c.symbol,
+                              style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(c.name,
+                              style: const TextStyle(color: Colors.white70)),
+                          trailing: Text(
+                            _networkHint(c.id),
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 12),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() {
+                              if (isFrom) {
+                                fromCoinId = c.id;
+                              } else {
+                                toCoinId = c.id;
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-        );
+            ),
+          );
+        });
       },
     );
   }
 
+  String _networkHint(String id) {
+    // surface the chain part if present
+    final dash = id.indexOf('-');
+    if (dash == -1) return '';
+    return id.substring(dash + 1); // e.g. ETH, TRX, BNB, LN, etc.
+  }
+
+  Widget _coinAvatar(String assetPath, String symbol) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration:
+          const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF2A2D3A)),
+      child: ClipOval(
+        child: Image.asset(
+          assetPath,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => CircleAvatar(
+            backgroundColor: const Color(0xFF2A2D3A),
+            child: Text(
+              symbol.isNotEmpty ? symbol[0] : '?',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- Swap Card ----------
   Widget _buildSwapCard({
     required String label,
-    required String coin,
+    required String coinId,
     required bool isFrom,
     required double value,
   }) {
-    final coinData = getCoinData(coin);
-    final coinIcon = getCoinIcon(coin);
+    final coin = _coinById(context, coinId);
+    final symbol = coin?.symbol ?? coinId;
+    final path = coin?.assetPath ?? '';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      padding: const EdgeInsets.symmetric(
-          horizontal: 10, vertical: 0), // smaller vertical
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
       decoration: BoxDecoration(
         color: const Color(0xFF171B2B),
         borderRadius: BorderRadius.circular(6),
@@ -268,36 +230,35 @@ class _SwapScreenState extends State<SwapScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Label + (optional) balance
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  )),
               if (isFrom)
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  child: Text(
-                    'Balance: ${coinData?['balance'] ?? '0.00'}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  child: const Text(
+                    'Balance: 0.00',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 20),
+
+          // Chip + Amount
           Row(
             children: [
               GestureDetector(
-                onTap: () => _selectCoin(isFrom),
+                onTap: () => _selectCoin(isFrom: isFrom),
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -308,47 +269,14 @@ class _SwapScreenState extends State<SwapScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFF2A2D3A),
-                        ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            coinIcon,
-                            width: 24,
-                            height: 24,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return CircleAvatar(
-                                radius: 12,
-                                backgroundColor: coin == 'USDT'
-                                    ? Colors.green
-                                    : Colors.purple,
-                                child: Text(
-                                  coin[0],
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 12),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
+                      _coinAvatar(path, symbol),
                       const SizedBox(width: 8),
-                      Text(
-                        coin,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
+                      Text(symbol,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 16)),
                       const SizedBox(width: 4),
-                      const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: Colors.white70,
-                        size: 20,
-                      ),
+                      const Icon(Icons.keyboard_arrow_down,
+                          color: Colors.white70, size: 20),
                     ],
                   ),
                 ),
@@ -362,10 +290,8 @@ class _SwapScreenState extends State<SwapScreen> {
                     color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'MAX',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
+                  child: const Text('MAX',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               const SizedBox(width: 12),
               Expanded(
@@ -395,11 +321,8 @@ class _SwapScreenState extends State<SwapScreen> {
                     focusedBorder: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                   ),
-                  onChanged: (val) {
-                    setState(() {
-                      fromAmount = double.tryParse(val) ?? 0.0;
-                    });
-                  },
+                  onChanged: (val) =>
+                      setState(() => fromAmount = double.tryParse(val) ?? 0.0),
                   enabled: isFrom,
                 ),
               ),
@@ -418,10 +341,18 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  static const Color _pageBg = Color(0xFF0B0D1A);
-
   @override
   Widget build(BuildContext context) {
+    // listen so icons/names react to provider updates
+    final store = context.watch<CoinStore>();
+    // if ids no longer exist (e.g., removed coin), fallback to first available
+    if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
+      fromCoinId = store.coins.values.first.id;
+    }
+    if (store.getById(toCoinId) == null && store.coins.length > 1) {
+      toCoinId = store.coins.values.skip(1).first.id;
+    }
+
     return Scaffold(
       backgroundColor: _pageBg,
       appBar: AppBar(
@@ -464,15 +395,15 @@ class _SwapScreenState extends State<SwapScreen> {
             children: [
               _buildSwapCard(
                 label: 'From',
-                coin: fromCoin,
+                coinId: fromCoinId,
                 isFrom: true,
                 value: fromAmount,
               ),
               _buildSwapCard(
                 label: 'To',
-                coin: toCoin,
+                coinId: toCoinId,
                 isFrom: false,
-                value: fromAmount * 0.95,
+                value: fromAmount * 0.95, // demo conversion
               ),
               const Spacer(),
               Container(
@@ -481,7 +412,7 @@ class _SwapScreenState extends State<SwapScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    // Handle swap action
+                    // TODO: implement swap action with your backend/DEX router
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4A5568),
@@ -493,10 +424,9 @@ class _SwapScreenState extends State<SwapScreen> {
                   child: const Text(
                     'Swap Now',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -504,7 +434,7 @@ class _SwapScreenState extends State<SwapScreen> {
           ),
           // Positioned swap button between containers
           Positioned(
-            top: 105, // Position between the two containers
+            top: 105,
             left: 0,
             right: 0,
             child: Center(
@@ -516,16 +446,11 @@ class _SwapScreenState extends State<SwapScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1D29),
                     shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFF2A2D3A),
-                      width: 2,
-                    ),
+                    border:
+                        Border.all(color: const Color(0xFF2A2D3A), width: 2),
                   ),
-                  child: const Icon(
-                    Icons.swap_vert,
-                    color: Colors.white70,
-                    size: 24,
-                  ),
+                  child: const Icon(Icons.swap_vert,
+                      color: Colors.white70, size: 24),
                 ),
               ),
             ),
