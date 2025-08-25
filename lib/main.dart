@@ -80,9 +80,6 @@ class MyApp extends StatelessWidget {
             );
           },
 
-          // If you want to decide the first screen via determineNextRoute(),
-          // you can swap to onGenerateInitialRoutes or do a Splash that calls it.
-          // Keeping your current splash route as requested:
           initialRoute: AppRoutes.splashScreen, // Always start with splash
           routes: AppRoutes.routes,
         );

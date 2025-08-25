@@ -286,23 +286,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                 ),
 
                 // ✅ Crypto stats pager pulling iconPath from CoinStore by coinId
-                CryptoStatsPager(
-                  cards: _cryptoCardsSeed.map((card) {
-                    final String coinId = card['coinId'] as String;
-                    return CryptoStatCard(
-                      coinId: coinId,
-                      title: card['title'] as String,
-                      currentPrice: card['price'] as double,
-                      monthlyData: List<double>.from(card['monthly'] as List),
-                      todayData: List<double>.from(card['today'] as List),
-                      yearlyData: List<double>.from(card['yearly'] as List),
-                    );
-                  }).toList(),
-                  height: 340,
-                  showArrows: false,
-                  showDots: false,
-                  scrollable: true,
-                ),
+                const MainCoinsOnly(),
 
                 // ✅ Portfolio list: build from Provider coins so icons are guaranteed
                 // ✅ Portfolio list: build from Provider coins so icons are guaranteed
@@ -316,6 +300,65 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class MainCoinsOnly extends StatelessWidget {
+  const MainCoinsOnly({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<CoinStore>();
+
+    // Only these 7 coins in your desired order
+    const ids = ['BTC', 'ETH', 'SOL', 'TRX', 'USDT', 'BNB', 'XMR'];
+
+    // Build cards only for coins that exist in the store
+    final cards = <Widget>[];
+    for (final id in ids) {
+      final coin = store.getById(id);
+      if (coin == null) continue;
+
+      // dummy sparkline data; swap with real series if you have it
+      const series = [1.0, 1.06, 1.02, 1.12, 1.08, 1.18];
+
+      cards.add(
+        CryptoStatCard(
+          key: ValueKey('card-${coin.id}'),
+          coinId: coin.id,
+          title: coin.name,
+          // Ensures one card per color/icon (even if duplicates are passed accidentally)
+          colorKey: coin.assetPath,
+          // TODO: replace with your live price (e.g., from a price provider)
+          currentPrice: 0.0,
+          monthlyData: series,
+          todayData: series,
+          yearlyData: series,
+        ),
+      );
+    }
+
+    // If none found, show a friendly empty state
+    if (cards.isEmpty) {
+      return const SizedBox(
+        height: 160,
+        child: Center(
+          child: Text(
+            'No main coins available',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
+    return CryptoStatsPager(
+      cards: cards, // exactly and only the 7 cards above
+      viewportPeek: 0.92,
+      height: 340,
+      showArrows: false,
+      showDots: false,
+      scrollable: true,
     );
   }
 }

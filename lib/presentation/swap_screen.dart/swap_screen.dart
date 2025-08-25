@@ -4,7 +4,6 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-
 import 'package:cryptowallet/coin_store.dart';
 
 class SwapScreen extends StatefulWidget {
@@ -26,13 +25,15 @@ class _SwapScreenState extends State<SwapScreen> {
   String _chipFilter = 'ALL';
   String _search = '';
 
+  // Slippage (as fraction: 0.01 = 1%)
+  double? _slippage;
+
   static const Color _pageBg = Color(0xFF0B0D1A);
 
   Coin? _coinById(BuildContext ctx, String id) =>
       ctx.read<CoinStore>().getById(id);
 
   String _baseSymbol(String coinId) {
-    // Examples: USDT-ETH -> USDT, BTC-LN -> BTC, SOL -> SOL
     final dash = coinId.indexOf('-');
     return dash == -1 ? coinId : coinId.substring(0, dash);
   }
@@ -47,7 +48,165 @@ class _SwapScreenState extends State<SwapScreen> {
     });
   }
 
-  // ---------- Coin Picker ----------
+  // ---------------- Slippage Bottom Sheet ----------------
+  void _showSlippageSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF131624),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) {
+        double? local = _slippage;
+        return StatefulBuilder(builder: (context, setModal) {
+          void select(double v) => setModal(() => local = v);
+
+          Widget pill(String label, double value) {
+            final selected = local == value;
+            return Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: selected ? Colors.white : Colors.white24,
+                    width: 1.0,
+                  ),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  backgroundColor:
+                      selected ? Colors.white10 : Colors.transparent,
+                ),
+                onPressed: () => select(value),
+                child: Text(label,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, letterSpacing: 0.1)),
+              ),
+            );
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Slippage',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Row of pills
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Row(
+                      children: [
+                        pill('1%', 0.01),
+                        const SizedBox(width: 10),
+                        pill('2%', 0.02),
+                        const SizedBox(width: 10),
+                        pill('5%', 0.05),
+                        const SizedBox(width: 10),
+                        pill('10%', 0.10),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // Info note card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1D2133),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Color(0xFF2F4BA8),
+                            child:
+                                Icon(Icons.info, color: Colors.white, size: 18),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Please note that when you adjust the slippage tolerance, '
+                              'the amount you receive after the swap can be affected',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                height: 1.35,
+                                fontSize: 8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Save button
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() => _slippage = local);
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF0B0D1A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Save',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  // ---------------- Coin Picker ----------------
   void _selectCoin({required bool isFrom}) {
     showModalBottomSheet(
       isScrollControlled: true,
@@ -62,12 +221,10 @@ class _SwapScreenState extends State<SwapScreen> {
           final coins = store.coins.values.toList()
             ..sort((a, b) => a.symbol.compareTo(b.symbol));
 
-          // Build unique chip list: ALL + base symbols present
           final baseSet = <String>{};
           for (final c in coins) baseSet.add(_baseSymbol(c.id));
           final chips = ['ALL', ...baseSet.toList()..sort()];
 
-          // Filter by chip + search (symbol or name match)
           final filtered = coins.where((c) {
             final matchesChip =
                 _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
@@ -176,23 +333,22 @@ class _SwapScreenState extends State<SwapScreen> {
   }
 
   String _networkHint(String id) {
-    // surface the chain part if present
     final dash = id.indexOf('-');
     if (dash == -1) return '';
-    return id.substring(dash + 1); // e.g. ETH, TRX, BNB, LN, etc.
+    return id.substring(dash + 1);
   }
 
   Widget _coinAvatar(String assetPath, String symbol) {
     return Container(
-      width: 40,
-      height: 40,
+      width: 25,
+      height: 25,
       decoration:
           const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF2A2D3A)),
       child: ClipOval(
         child: Image.asset(
           assetPath,
-          width: 40,
-          height: 40,
+          width: 25,
+          height: 25,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => CircleAvatar(
             backgroundColor: const Color(0xFF2A2D3A),
@@ -343,9 +499,7 @@ class _SwapScreenState extends State<SwapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // listen so icons/names react to provider updates
     final store = context.watch<CoinStore>();
-    // if ids no longer exist (e.g., removed coin), fallback to first available
     if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
       fromCoinId = store.coins.values.first.id;
     }
@@ -366,20 +520,29 @@ class _SwapScreenState extends State<SwapScreen> {
         ),
         centerTitle: false,
         actions: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2D3A),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.tune, color: Colors.white70, size: 16),
-                SizedBox(width: 4),
-                Text('Auto',
-                    style: TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
+          // Tap to open slippage sheet
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _showSlippageSheet,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2D3A),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tune, color: Colors.white70, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    _slippage == null
+                        ? 'Auto'
+                        : '${(_slippage! * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -403,7 +566,8 @@ class _SwapScreenState extends State<SwapScreen> {
                 label: 'To',
                 coinId: toCoinId,
                 isFrom: false,
-                value: fromAmount * 0.95, // demo conversion
+                value: fromAmount *
+                    (1 - (_slippage ?? 0.0)), // ✅ safe null handling
               ),
               const Spacer(),
               Container(
@@ -412,7 +576,7 @@ class _SwapScreenState extends State<SwapScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    // TODO: implement swap action with your backend/DEX router
+                    // TODO: implement swap with _slippage tolerance applied
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4A5568),

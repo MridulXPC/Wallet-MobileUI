@@ -1,6 +1,5 @@
 import 'package:cryptowallet/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
-import 'package:cryptowallet/presentation/token_detail_screen/token_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -23,20 +22,6 @@ class CryptoPortfolioWidget extends StatefulWidget {
   /// Set to false if you want to pass a custom subset via [portfolio].
   final bool useAllCoinsFromProvider;
 
-  /// Optional manual list (used only when [useAllCoinsFromProvider] == false).
-  /// Each map item example:
-  /// {
-  ///   "id": "USDT-TRX",
-  ///   "symbol": "USDT",
-  ///   "name": "Tether (TRX)",
-  ///   "icon": "assets/currencyicons/usdt on trx.png",
-  ///   "balance": "0",
-  ///   "usdValue": "\$0.00",
-  ///   "usdBalance": "0.00",
-  ///   "change24h": "0.00%",
-  ///   "isPositive": true,
-  ///   "enabled": true,
-  /// }
   final List<Map<String, dynamic>> portfolio;
 
   const CryptoPortfolioWidget({
@@ -73,12 +58,25 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
   void _refreshFromSource() {
     if (widget.useAllCoinsFromProvider) {
       final store = context.read<CoinStore>();
-      final all = store.coins.values.map((c) {
+
+      // whitelist: only show these IDs
+      const allowedIds = [
+        "TRX-TRX", // TRX-TRX
+        "BNB-BNB", // BNB on BNB
+        "USDT-TRX", // USDT on TRX
+        "USDT-ETH", // USDT on ETH
+        "XMR-XMR", // XMR-XMR
+        "ETH-ETH", // ETH-ETH
+      ];
+
+      final all = store.coins.values
+          .where((c) => allowedIds.contains(c.id)) // filter here
+          .map((c) {
         return {
-          "id": c.id, // e.g., USDT-TRX
-          "symbol": c.symbol, // e.g., USDT
-          "name": c.name, // e.g., Tether (TRX)
-          "icon": c.assetPath, // guaranteed asset path from store
+          "id": c.id,
+          "symbol": c.symbol,
+          "name": c.name,
+          "icon": c.assetPath,
           "balance": "0",
           "usdValue": "\$0.00",
           "usdBalance": "0.00",
@@ -93,6 +91,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
       _visiblePortfolio =
           widget.portfolio.where((x) => x["enabled"] != false).toList();
     }
+
     if (mounted) setState(() {});
   }
 
@@ -178,7 +177,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         onPressed: _openTokenFilterSheet,
         icon: const Icon(Icons.tune, color: Colors.white),
         label: const Text(
-          'Filter Tokens',
+          'Manage Tokens',
           style: TextStyle(color: Colors.white),
         ),
       ),
@@ -241,23 +240,22 @@ class _PortfolioRow extends StatelessWidget {
           arguments: crypto,
         );
       },
-      borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10.0),
         child: Row(
           children: [
             // Icon (cheap decode using ResizeImage)
             CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFF2A2D3A),
-              foregroundImage: ResizeImage(
-                AssetImage(iconPath),
-                // decode roughly for current DPR
-                width: (36 * MediaQuery.of(context).devicePixelRatio).round(),
+              radius: 22,
+              backgroundColor: Colors.transparent,
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(4), // small padding prevents cutting
+                child: Image.asset(
+                  iconPath,
+                  fit: BoxFit.contain,
+                ),
               ),
-              onForegroundImageError: (_, __) {},
-              child: const Icon(Icons.currency_bitcoin,
-                  color: Colors.white, size: 16),
             ),
             const SizedBox(width: 12),
 
