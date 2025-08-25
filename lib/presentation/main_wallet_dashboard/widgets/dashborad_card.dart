@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cryptowallet/coin_store.dart';
+
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart' show compute;
@@ -19,6 +20,10 @@ class CryptoStatCard extends StatefulWidget {
   /// Optional title override; if null we’ll use Coin.name from Provider.
   final String? title;
 
+  /// Cards with the same colorKey will be considered the "same color"
+  /// for deduping in the pager. Recommended: the icon assetPath.
+  final String? colorKey;
+
   final double currentPrice;
   final List<double> monthlyData;
   final List<double> todayData;
@@ -28,6 +33,7 @@ class CryptoStatCard extends StatefulWidget {
     super.key,
     required this.coinId,
     this.title,
+    this.colorKey,
     required this.currentPrice,
     required this.monthlyData,
     required this.todayData,
@@ -50,8 +56,14 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     return created;
   }
 
-  // ===== Dominant color cache: coinId -> Color =====
+  // ===== Dominant color cache: assetOrNameKey -> Color =====
   static final Map<String, Color> _dominantColorCache = {};
+
+  String _colorCacheKey({String? assetPath, required String nameOrId}) {
+    return (assetPath != null && assetPath.isNotEmpty)
+        ? 'asset:$assetPath'
+        : 'name:$nameOrId';
+  }
 
   Color _dominantColor = const Color(0xFF1A73E8); // default blue
   bool _isColorReady = false;
@@ -60,7 +72,14 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   @override
   void initState() {
     super.initState();
-    // Kick off color resolution ASAP
+
+    // Provide an immediate coin-specific fallback so there’s no shared “blue flash”.
+    final store = context.read<CoinStore>();
+    final coin = store.getById(widget.coinId);
+    final initial = _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
+    _dominantColor = initial;
+    _isColorReady = true;
+
     _resolveDominantColor();
   }
 
@@ -79,7 +98,9 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   @override
   void didUpdateWidget(CryptoStatCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.coinId != widget.coinId || oldWidget.title != widget.title) {
+    if (oldWidget.coinId != widget.coinId ||
+        oldWidget.title != widget.title ||
+        oldWidget.colorKey != widget.colorKey) {
       // Precache icon for the new coin
       final coin = context.read<CoinStore>().getById(widget.coinId);
       final assetPath = coin?.assetPath;
@@ -107,9 +128,12 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final store = context.read<CoinStore>();
     final coin = store.getById(widget.coinId);
     final assetPath = coin?.assetPath;
+    final nameOrId = widget.title ?? coin?.name ?? widget.coinId;
+
+    final cacheKey = _colorCacheKey(assetPath: assetPath, nameOrId: nameOrId);
 
     // 1) If cached, use it immediately
-    final cached = _dominantColorCache[widget.coinId];
+    final cached = _dominantColorCache[cacheKey];
     if (cached != null) {
       if (!mounted) return;
       setState(() {
@@ -119,16 +143,9 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       return;
     }
 
-    // 2) If no icon, choose a deterministic fallback color
+    // 2) If no icon, keep the good fallback we set in initState — also cache it
     if (assetPath == null || assetPath.isEmpty) {
-      if (!mounted) return;
-      final fallback =
-          _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
-      setState(() {
-        _dominantColor = fallback;
-        _isColorReady = true;
-      });
-      _dominantColorCache[widget.coinId] = fallback;
+      _dominantColorCache[cacheKey] = _dominantColor;
       return;
     }
 
@@ -159,16 +176,10 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         _dominantColor = color;
         _isColorReady = true;
       });
-      _dominantColorCache[widget.coinId] = color;
+      _dominantColorCache[cacheKey] = color;
     } catch (_) {
-      if (!mounted) return;
-      final fallback =
-          _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
-      setState(() {
-        _dominantColor = fallback;
-        _isColorReady = true;
-      });
-      _dominantColorCache[widget.coinId] = fallback;
+      // Keep fallback and cache it
+      _dominantColorCache[cacheKey] = _dominantColor;
     }
   }
 
@@ -197,21 +208,16 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   }
 
   Color _fallbackColor(String nameOrSymbol) {
+    // Per-coin deterministic fallbacks to avoid repeated default color.
     const fallback = Color(0xFF1A73E8);
     const map = <String, Color>{
       'Bitcoin': Color(0xFFF7931A),
-      'BTC': Color(0xFFF7931A),
       'Ethereum': Color(0xFF627EEA),
-      'ETH': Color(0xFF627EEA),
       'Solana': Color(0xFF14F195),
-      'SOL': Color(0xFF14F195),
       'Tron': Color(0xFFEB0029),
-      'TRX': Color(0xFFEB0029),
       'Tether': Color(0xFF26A17B),
-      'USDT': Color(0xFF26A17B),
       'BNB': Color(0xFFF3BA2F),
       'Monero': Color(0xFFF26822),
-      'XMR': Color(0xFFF26822),
     };
     return map[nameOrSymbol] ?? fallback;
   }
@@ -466,6 +472,8 @@ class CryptoStatsPager extends StatefulWidget {
     this.scrollable = true,
   });
 
+  /// May contain duplicates or mixed widgets.
+  /// This widget guarantees only ONE card per color (when CryptoStatCard.colorKey is provided).
   final List<Widget> cards;
   final double viewportPeek;
   final double height;
@@ -487,14 +495,35 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
     _controller = PageController(viewportFraction: widget.viewportPeek);
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Object _identityFor(Widget w) {
+    // Prefer color-based dedupe when possible.
+    if (w is CryptoStatCard) {
+      if (w.colorKey != null && w.colorKey!.isNotEmpty) {
+        return 'color:${w.colorKey}';
+      }
+      // Fallback: dedupe by coin id if no colorKey provided.
+      return 'coin:${w.coinId}';
+    }
+    // Otherwise, try key; else type+toStringShort.
+    final k = w.key;
+    if (k is ValueKey) {
+      return k.value ?? '${w.runtimeType}-${w.toStringShort()}';
+    }
+    return '${w.runtimeType}-${w.toStringShort()}';
   }
 
-  void _go(int delta) {
-    final next = (_index + delta).clamp(0, widget.cards.length - 1);
+  List<Widget> _dedupeByIdentity(List<Widget> cards) {
+    final seen = <Object>{};
+    final out = <Widget>[];
+    for (final w in cards) {
+      final id = _identityFor(w);
+      if (seen.add(id)) out.add(w);
+    }
+    return out;
+  }
+
+  void _go(int delta, int maxIndex) {
+    final next = (_index + delta).clamp(0, maxIndex);
     if (next == _index) return;
     setState(() => _index = next);
     _controller.animateToPage(
@@ -506,6 +535,24 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
 
   @override
   Widget build(BuildContext context) {
+    final uniqueCards = _dedupeByIdentity(widget.cards);
+
+    // If the list shrank after dedupe, clamp the index.
+    final maxIndex = (uniqueCards.length - 1).clamp(0, uniqueCards.length - 1);
+    if (_index > maxIndex) {
+      _index = maxIndex;
+    }
+
+    if (uniqueCards.isEmpty) {
+      return SizedBox(
+        height: widget.height,
+        child: const Center(
+          child: Text('No coins to display',
+              style: TextStyle(color: Colors.white70)),
+        ),
+      );
+    }
+
     return SizedBox(
       height: widget.height,
       child: Stack(
@@ -518,35 +565,35 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
                 ? const BouncingScrollPhysics()
                 : const NeverScrollableScrollPhysics(),
             onPageChanged: (i) => setState(() => _index = i),
-            itemCount: widget.cards.length,
+            itemCount: uniqueCards.length,
             itemBuilder: (_, i) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 0),
-              child: widget.cards[i],
+              child: uniqueCards[i],
             ),
           ),
-          if (widget.showArrows && widget.cards.length > 1) ...[
+          if (widget.showArrows && uniqueCards.length > 1) ...[
             Positioned(
               left: 0,
               child: _NavArrow(
                 enabled: _index > 0,
-                onTap: () => _go(-1),
+                onTap: () => _go(-1, uniqueCards.length - 1),
                 icon: Icons.chevron_left,
               ),
             ),
             Positioned(
               right: 0,
               child: _NavArrow(
-                enabled: _index < widget.cards.length - 1,
-                onTap: () => _go(1),
+                enabled: _index < uniqueCards.length - 1,
+                onTap: () => _go(1, uniqueCards.length - 1),
                 icon: Icons.chevron_right,
               ),
             ),
           ],
-          if (widget.showDots && widget.cards.length > 1)
+          if (widget.showDots && uniqueCards.length > 1)
             Positioned(
               bottom: 8,
               child: Row(
-                children: List.generate(widget.cards.length, (i) {
+                children: List.generate(uniqueCards.length, (i) {
                   final active = i == _index;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -588,13 +635,74 @@ class _NavArrow extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: enabled ? onTap : null,
-          child: SizedBox(
+          child: const SizedBox(
             height: 36,
             width: 36,
-            child: Icon(icon, color: Colors.white),
+            child: Icon(Icons.chevron_left, color: Colors.white),
           ),
         ),
       ),
+    );
+  }
+}
+
+// lib/presentation/main_wallet_dashboard/widgets/main_coins_only.dart
+
+class MainCoinsOnly extends StatelessWidget {
+  const MainCoinsOnly({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<CoinStore>();
+
+    // Only these 7 coins in your desired order
+    const ids = ['BTC', 'ETH', 'SOL', 'TRX', 'USDT', 'BNB', 'XMR'];
+
+    // Build cards only for coins that exist in the store
+    final cards = <Widget>[];
+    for (final id in ids) {
+      final coin = store.getById(id);
+      if (coin == null) continue;
+
+      // dummy sparkline data; swap with real series if you have it
+      const series = [1.0, 1.06, 1.02, 1.12, 1.08, 1.18];
+
+      cards.add(
+        CryptoStatCard(
+          key: ValueKey('card-${coin.id}'),
+          coinId: coin.id,
+          title: coin.name,
+          // Ensures one card per color/icon (even if duplicates are passed accidentally)
+          colorKey: coin.assetPath,
+          // TODO: replace with your live price (e.g., from a price provider)
+          currentPrice: 0.0,
+          monthlyData: series,
+          todayData: series,
+          yearlyData: series,
+        ),
+      );
+    }
+
+    // If none found, show a friendly empty state
+    if (cards.isEmpty) {
+      return const SizedBox(
+        height: 160,
+        child: Center(
+          child: Text(
+            'No main coins available',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
+    return CryptoStatsPager(
+      cards: cards, // exactly and only the 7 cards above
+      viewportPeek: 0.92,
+      height: 340,
+      showArrows: true,
+      showDots: true,
+      scrollable: true,
     );
   }
 }
