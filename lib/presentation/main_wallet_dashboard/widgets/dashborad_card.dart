@@ -281,7 +281,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
     // Responsive dims
     final cardPad = isLarge ? 24.0 : (isTablet ? 20.0 : 16.0);
-    final radius = isLarge ? 24.0 : (isTablet ? 22.0 : 20.0);
+    final radius = isLarge ? 6.0 : (isTablet ? 6.0 : 6.0);
     final iconSize = isLarge ? 40.0 : (isTablet ? 36.0 : 32.0);
     final priceFs = isLarge ? 32.0 : (isTablet ? 30.0 : 28.0);
     final watermarkSize = isLarge ? 200.0 : (isTablet ? 180.0 : 160.0);

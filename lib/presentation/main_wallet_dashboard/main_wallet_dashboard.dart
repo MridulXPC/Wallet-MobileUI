@@ -354,7 +354,7 @@ class MainCoinsOnly extends StatelessWidget {
 
     return CryptoStatsPager(
       cards: cards, // exactly and only the 7 cards above
-      viewportPeek: 0.92,
+      viewportPeek: 0.95,
       height: 340,
       showArrows: false,
       showDots: false,

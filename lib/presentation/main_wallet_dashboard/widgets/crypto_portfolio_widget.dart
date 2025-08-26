@@ -59,39 +59,38 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     if (widget.useAllCoinsFromProvider) {
       final store = context.read<CoinStore>();
 
-      // whitelist: only show these IDs
-      const allowedIds = [
-        "TRX-TRX", // TRX-TRX
-        "BNB-BNB", // BNB on BNB
-        "USDT-TRX", // USDT on TRX
-        "USDT-ETH", // USDT on ETH
-        "XMR-XMR", // XMR-XMR
-        "ETH-ETH", // ETH-ETH
+      // ✅ BTC added
+      const allowedIds = <String>[
+        "BTC",
+        "TRX-TRX",
+        "BNB-BNB",
+        "USDT-TRX",
+        "USDT-ETH",
+        "XMR-XMR",
+        "ETH-ETH",
       ];
 
       final all = store.coins.values
-          .where((c) => allowedIds.contains(c.id)) // filter here
-          .map((c) {
-        return {
-          "id": c.id,
-          "symbol": c.symbol,
-          "name": c.name,
-          "icon": c.assetPath,
-          "balance": "0",
-          "usdValue": "\$0.00",
-          "usdBalance": "0.00",
-          "change24h": "0.00%",
-          "isPositive": true,
-          "enabled": true,
-        };
-      }).toList();
+          .where((c) => allowedIds.contains(c.id))
+          .map((c) => {
+                "id": c.id,
+                "symbol": c.symbol,
+                "name": c.name,
+                "icon": c.assetPath,
+                "balance": "0",
+                "usdValue": "\$0.00",
+                "usdBalance": "0.00",
+                "change24h": "0.00%",
+                "isPositive": true,
+                "enabled": true,
+              })
+          .toList();
 
       _visiblePortfolio = all.where((x) => x["enabled"] != false).toList();
     } else {
       _visiblePortfolio =
           widget.portfolio.where((x) => x["enabled"] != false).toList();
     }
-
     if (mounted) setState(() {});
   }
 

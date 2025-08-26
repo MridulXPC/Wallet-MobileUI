@@ -436,7 +436,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   // Convenience getters from Provider
   bool get isLightningSelected => selectedCoinId == 'BTC-LN';
-  Coin? get _selectedCoin => context.read<CoinStore>().getById(selectedCoinId);
 
   Map<String, String> _currentDetails() {
     return _dummyDetails[selectedCoinId] ??
@@ -559,7 +558,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     const SizedBox(height: 16),
                     _buildAvailableReservedRow(details),
                     const SizedBox(height: 24),
-                    _buildActionButtons(),
+                    _buildActionButtons(context),
                     const SizedBox(height: 24),
                     _buildTransactionsSection(),
                   ],
@@ -986,7 +985,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(BuildContext context) {
     if (isLightningSelected) {
       // Only Send, Receive, Scan for Lightning
       return Padding(
@@ -994,9 +993,23 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _buildActionButton('Send', Icons.send, () {}),
-            _buildActionButton('Receive', Icons.arrow_downward, () {}),
-            _buildActionButton('Scan', Icons.qr_code_scanner, () {}),
+            _buildActionButton('Send', Icons.send, () {
+              Navigator.pushNamed(context, AppRoutes.sendCrypto);
+            }),
+            _buildActionButton('Receive', Icons.arrow_downward, () {
+              Navigator.pushNamed(
+                context,
+                AppRoutes.receiveCrypto,
+                // arguments: {
+                //   'coinId': 'BTC-LN', // or your current coinId
+                //   // 'title': 'Your invoice to receive BTC',
+                //   // 'addressOrInvoice': '<optional current invoice>',
+                // },
+              );
+            }),
+            _buildActionButton('Scan', Icons.qr_code_scanner, () {
+              // Navigator.pushNamed(context, AppRoutes.scanQr); // if you have one
+            }),
           ],
         ),
       );
@@ -1007,11 +1020,27 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildActionButton('Send', Icons.send, () {}),
-            _buildActionButton('Swap', Icons.swap_horiz, () {}),
-            _buildActionButton('Receive', Icons.arrow_downward, () {}),
-            _buildActionButton('Charge', Icons.credit_card, () {}),
-            _buildActionButton('Scan', Icons.qr_code_scanner, () {}),
+            _buildActionButton('Send', Icons.send, () {
+              Navigator.pushNamed(context, AppRoutes.sendCrypto);
+            }),
+            _buildActionButton('Swap', Icons.swap_horiz, () {
+              Navigator.pushNamed(context, AppRoutes.swapScreen);
+            }),
+            _buildActionButton('Receive', Icons.arrow_downward, () {
+              Navigator.pushNamed(
+                context,
+                AppRoutes.receiveCrypto,
+                // arguments: {
+                //   'coinId': currentCoinId, // whatever coin is selected
+                // },
+              );
+            }),
+            _buildActionButton('Charge', Icons.credit_card, () {
+              // Navigator.pushNamed(context, AppRoutes.charge); // your route
+            }),
+            _buildActionButton('Scan', Icons.qr_code_scanner, () {
+              // Navigator.pushNamed(context, AppRoutes.scanQr);
+            }),
           ],
         ),
       );

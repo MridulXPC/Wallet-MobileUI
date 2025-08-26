@@ -52,12 +52,12 @@ class CoinStore extends ChangeNotifier {
         assetPath: "assets/currencyicons/usdt.png"),
     "USDT-ETH": const Coin(
         id: "USDT-ETH",
-        name: "Tether (ETH)",
+        name: "Tether",
         symbol: "USDT",
         assetPath: "assets/currencyicons/usdtoneth.png"),
     "USDT-TRX": const Coin(
         id: "USDT-TRX",
-        name: "Tether (TRX)",
+        name: "Tether",
         symbol: "USDT",
         assetPath: "assets/currencyicons/usdtontrx.png"),
     "XMR": const Coin(
@@ -67,27 +67,27 @@ class CoinStore extends ChangeNotifier {
         assetPath: "assets/currencyicons/xmr.png"),
     "XMR-XMR": const Coin(
         id: "XMR-XMR",
-        name: "Monero (XMR)",
+        name: "Monero",
         symbol: "XMR",
         assetPath: "assets/currencyicons/xmronxmr.png"),
     "BNB-BNB": const Coin(
         id: "BNB-BNB",
-        name: "BNB (BNB Chain)",
+        name: "BNB",
         symbol: "BNB",
         assetPath: "assets/currencyicons/bnbonbnb.png"),
     "ETH-ETH": const Coin(
         id: "ETH-ETH",
-        name: "ETH (Ethereum)",
+        name: "ETH",
         symbol: "ETH",
         assetPath: "assets/currencyicons/ethoneth.png"),
     "SOL-SOL": const Coin(
         id: "SOL-SOL",
-        name: "SOL (Solana)",
+        name: "SOL",
         symbol: "SOL",
         assetPath: "assets/currencyicons/solonsol.png"),
     "TRX-TRX": const Coin(
         id: "TRX-TRX",
-        name: "TRX (Tron)",
+        name: "TRX",
         symbol: "TRX",
         assetPath: "assets/currencyicons/trxontrx.png"),
   };
