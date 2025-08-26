@@ -68,7 +68,6 @@ class _SwapScreenState extends State<SwapScreen> {
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
-                    color: selected ? Colors.white : Colors.white24,
                     width: 1.0,
                   ),
                   foregroundColor: Colors.white,
@@ -76,8 +75,6 @@ class _SwapScreenState extends State<SwapScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(22),
                   ),
-                  backgroundColor:
-                      selected ? Colors.white10 : Colors.transparent,
                 ),
                 onPressed: () => select(value),
                 child: Text(label,
@@ -419,7 +416,7 @@ class _SwapScreenState extends State<SwapScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3D4A),
+                    // color: const Color(0xFF3A3D4A),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
