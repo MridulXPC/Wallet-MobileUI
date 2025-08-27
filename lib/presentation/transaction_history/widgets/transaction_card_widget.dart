@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-
 import '../../../core/app_export.dart';
 
 class TransactionCardWidget extends StatelessWidget {
-  final Map<String, dynamic> transaction;
-  final VoidCallback onTap;
-  final Function(String) onSwipeAction;
-
   const TransactionCardWidget({
     super.key,
     required this.transaction,
@@ -15,300 +10,156 @@ class TransactionCardWidget extends StatelessWidget {
     required this.onSwipeAction,
   });
 
+  final Map<String, dynamic> transaction;
+  final VoidCallback onTap;
+  final void Function(String action) onSwipeAction;
+
   @override
   Widget build(BuildContext context) {
-    final String type = transaction['type'] as String;
-    final String status = transaction['status'] as String;
-    final DateTime timestamp = transaction['timestamp'] as DateTime;
+    final type = (transaction['type'] ?? '').toString().toLowerCase();
+    final asset = (transaction['asset'] ?? '').toString();
+    final amount = (transaction['amount'] ?? '').toString();
+    final fiatAmount = (transaction['fiatAmount'] ?? '').toString();
+    final ts = transaction['timestamp'] as DateTime?;
+    final status = (transaction['status'] ?? '').toString();
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
-      child: Dismissible(
-        key: Key(transaction['id'] as String),
-        direction: DismissDirection.startToEnd,
-        background: _buildSwipeBackground(),
-        confirmDismiss: (direction) async {
-          _showSwipeActions(context);
-          return false;
-        },
-        child: Card(
+    final _TypeVisual visual = _typeVisual(type);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 0.8.h),
+        padding: EdgeInsets.symmetric(vertical: 1.6.h, horizontal: 3.w),
+        decoration: BoxDecoration(
           color: AppTheme.darkTheme.colorScheme.surface,
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: EdgeInsets.all(4.w),
-              child: Row(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // ---- Icon Circle ----
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: visual.bg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(visual.icon, color: visual.fg, size: 22),
+            ),
+            SizedBox(width: 3.w),
+
+            // ---- Details ----
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Asset Icon with Transaction Type Indicator
-                  Stack(
+                  // Amount + fiat
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        width: 12.w,
-                        height: 12.w,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.darkTheme.colorScheme.surface,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6.w),
-                          child: CustomImageWidget(
-                            imageUrl: transaction['assetIcon'] as String,
-                            width: 12.w,
-                            height: 12.w,
-                            fit: BoxFit.cover,
-                          ),
+                      Text(
+                        "$amount $asset",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 5.w,
-                          height: 5.w,
-                          decoration: BoxDecoration(
-                            color: _getTypeColor(type),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppTheme.darkTheme.colorScheme.surface,
-                              width: 1,
-                            ),
-                          ),
-                          child: CustomIconWidget(
-                            iconName: _getTypeIcon(type),
-                            color: Colors.white,
-                            size: 12,
-                          ),
+                      Text(
+                        fiatAmount,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
+                  SizedBox(height: 0.6.h),
 
-                  SizedBox(width: 4.w),
-
-                  // Transaction Details
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
+                  // Type + time + status pill
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _labelFor(type),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (ts != null)
                             Text(
-                              _getTransactionTitle(type),
-                              style: AppTheme.darkTheme.textTheme.titleMedium
-                                  ?.copyWith(
+                              _timeAgo(ts),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 12,
+                              ),
+                            ),
+                          SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _statusColor(status).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: _statusColor(status),
+                                fontSize: 10.sp,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            Text(
-                              '${_getAmountPrefix(type)}${transaction['amount']} ${transaction['asset']}',
-                              style: AppTheme.darkTheme.textTheme.titleMedium
-                                  ?.copyWith(
-                                color: _getAmountColor(type),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        SizedBox(height: 1.h),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatTimestamp(timestamp),
-                              style: AppTheme.darkTheme.textTheme.bodySmall
-                                  ?.copyWith(
-                                color: AppTheme.darkTheme.colorScheme.onSurface
-                                    .withValues(alpha: 0.6),
-                              ),
-                            ),
-                            Text(
-                              transaction['fiatAmount'] as String,
-                              style: AppTheme.darkTheme.textTheme.bodySmall
-                                  ?.copyWith(
-                                color: AppTheme.darkTheme.colorScheme.onSurface
-                                    .withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        SizedBox(height: 1.h),
-
-                        // Status Indicator
-                        Row(
-                          children: [
-                            _buildStatusIndicator(status),
-                            SizedBox(width: 2.w),
-                            Text(
-                              _getStatusText(status),
-                              style: AppTheme.darkTheme.textTheme.bodySmall
-                                  ?.copyWith(
-                                color: _getStatusColor(status),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Spacer(),
-                            if (status == 'confirmed')
-                              Text(
-                                '${transaction['confirmations']} confirmations',
-                                style: AppTheme.darkTheme.textTheme.bodySmall
-                                    ?.copyWith(
-                                  color: AppTheme
-                                      .darkTheme.colorScheme.onSurface
-                                      .withValues(alpha: 0.5),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildSwipeBackground() {
-    return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
-      decoration: BoxDecoration(
-        color: AppTheme.info.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: EdgeInsets.only(left: 6.w),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CustomIconWidget(
-                iconName: 'more_horiz',
-                color: AppTheme.info,
-                size: 24,
-              ),
-              SizedBox(width: 2.w),
-              Text(
-                'Actions',
-                style: TextStyle(
-                  color: AppTheme.info,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14.sp,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSwipeActions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: AppTheme.darkTheme.colorScheme.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 10.w,
-              height: 0.5.h,
-              margin: EdgeInsets.symmetric(vertical: 2.h),
-              decoration: BoxDecoration(
-                color: AppTheme.darkTheme.colorScheme.onSurface
-                    .withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
+            // Menu
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: Colors.white.withOpacity(0.7)),
+              color: AppTheme.darkTheme.colorScheme.surface,
+              onSelected: onSwipeAction,
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'details', child: Text('Details')),
+                const PopupMenuItem(value: 'share', child: Text('Share')),
+                const PopupMenuItem(value: 'note', child: Text('Add note')),
+              ],
             ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'visibility',
-                color: AppTheme.info,
-                size: 24,
-              ),
-              title: Text(
-                'View Details',
-                style: AppTheme.darkTheme.textTheme.bodyLarge,
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                onSwipeAction('details');
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'share',
-                color: AppTheme.info,
-                size: 24,
-              ),
-              title: Text(
-                'Share',
-                style: AppTheme.darkTheme.textTheme.bodyLarge,
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                onSwipeAction('share');
-              },
-            ),
-            ListTile(
-              leading: CustomIconWidget(
-                iconName: 'note_add',
-                color: AppTheme.info,
-                size: 24,
-              ),
-              title: Text(
-                'Add Note',
-                style: AppTheme.darkTheme.textTheme.bodyLarge,
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                onSwipeAction('note');
-              },
-            ),
-            SizedBox(height: 2.h),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusIndicator(String status) {
-    if (status == 'pending') {
-      return SizedBox(
-        width: 4.w,
-        height: 4.w,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: AppTheme.warning,
-        ),
-      );
-    } else {
-      return CustomIconWidget(
-        iconName: 'check_circle',
-        color: AppTheme.success,
-        size: 16,
-      );
-    }
+  // -------- Helpers --------
+  String _timeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
   }
 
-  String _getTransactionTitle(String type) {
+  String _labelFor(String type) {
     switch (type) {
       case 'send':
         return 'Sent';
@@ -323,98 +174,43 @@ class TransactionCardWidget extends StatelessWidget {
     }
   }
 
-  String _getTypeIcon(String type) {
-    switch (type) {
-      case 'send':
-        return 'arrow_upward';
-      case 'receive':
-        return 'arrow_downward';
-      case 'buy':
-        return 'add';
-      case 'sell':
-        return 'remove';
-      default:
-        return 'swap_horiz';
-    }
-  }
-
-  Color _getTypeColor(String type) {
-    switch (type) {
-      case 'send':
-        return AppTheme.error;
-      case 'receive':
-        return AppTheme.success;
-      case 'buy':
-        return AppTheme.info;
-      case 'sell':
-        return AppTheme.warning;
-      default:
-        return AppTheme.darkTheme.colorScheme.onSurface;
-    }
-  }
-
-  String _getAmountPrefix(String type) {
-    switch (type) {
-      case 'send':
-      case 'sell':
-        return '-';
-      case 'receive':
-      case 'buy':
-        return '+';
-      default:
-        return '';
-    }
-  }
-
-  Color _getAmountColor(String type) {
-    switch (type) {
-      case 'send':
-      case 'sell':
-        return AppTheme.error;
-      case 'receive':
-      case 'buy':
-        return AppTheme.success;
-      default:
-        return AppTheme.darkTheme.colorScheme.onSurface;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'pending':
-        return 'Pending';
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
       case 'confirmed':
-        return 'Confirmed';
-      case 'failed':
-        return 'Failed';
-      default:
-        return 'Unknown';
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
+        return Colors.green;
       case 'pending':
-        return AppTheme.warning;
-      case 'confirmed':
-        return AppTheme.success;
+        return Colors.orange;
       case 'failed':
-        return AppTheme.error;
+        return Colors.red;
       default:
-        return AppTheme.darkTheme.colorScheme.onSurface;
+        return Colors.grey;
     }
   }
 
-  String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
-
-    if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else {
-      return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
+  _TypeVisual _typeVisual(String type) {
+    switch (type) {
+      case 'send':
+        return _TypeVisual(
+            Icons.call_made, Colors.red.withOpacity(0.15), Colors.red);
+      case 'receive':
+        return _TypeVisual(
+            Icons.call_received, Colors.green.withOpacity(0.15), Colors.green);
+      case 'buy':
+        return _TypeVisual(
+            Icons.shopping_cart, Colors.blue.withOpacity(0.15), Colors.blue);
+      case 'sell':
+        return _TypeVisual(
+            Icons.sell_outlined, Colors.amber.withOpacity(0.15), Colors.amber);
+      default:
+        return _TypeVisual(Icons.swap_horiz, Colors.purple.withOpacity(0.15),
+            Colors.purpleAccent);
     }
   }
+}
+
+class _TypeVisual {
+  final IconData icon;
+  final Color bg;
+  final Color fg;
+  const _TypeVisual(this.icon, this.bg, this.fg);
 }

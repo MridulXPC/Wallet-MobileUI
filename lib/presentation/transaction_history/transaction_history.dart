@@ -1,3 +1,4 @@
+// lib/presentation/transaction_history/transaction_history.dart
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
@@ -7,7 +8,19 @@ import './widgets/transaction_card_widget.dart';
 import './widgets/transaction_detail_modal_widget.dart';
 
 class TransactionHistory extends StatefulWidget {
-  const TransactionHistory({super.key});
+  /// Limit the screen to only these types (e.g. ['buy','sell','swap']).
+  /// If null/empty, all types are shown.
+  final List<String>? onlyTypes;
+
+  const TransactionHistory({super.key, this.onlyTypes});
+
+  /// Convenience: use this when pushing from the Activity card
+  /// to show only Buy/Sell/Swap.
+  static Route<void> routeForActivity() => MaterialPageRoute(
+        builder: (_) => const TransactionHistory(
+          onlyTypes: ['buy', 'sell', 'swap'],
+        ),
+      );
 
   @override
   State<TransactionHistory> createState() => _TransactionHistoryState();
@@ -17,22 +30,24 @@ class _TransactionHistoryState extends State<TransactionHistory>
     with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
   bool _isSearchExpanded = false;
   bool _isLoading = false;
+
   List<String> _activeFilters = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
   List<Map<String, dynamic>> _allTransactions = [];
+  List<String>? _onlyTypesFromArgs;
 
-  // Mock transaction data
+  // Mock transaction data (added a couple of SWAP rows)
   final List<Map<String, dynamic>> _mockTransactions = [
     {
       "id": "tx_001",
       "type": "receive",
       "asset": "BTC",
-      "assetIcon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
       "amount": "0.00234567",
       "fiatAmount": "\$156.78",
-      "timestamp": DateTime.now().subtract(Duration(minutes: 30)),
+      "timestamp": DateTime.now().subtract(const Duration(minutes: 30)),
       "status": "confirmed",
       "hash": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
       "fromAddress": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
@@ -45,14 +60,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
       "id": "tx_002",
       "type": "send",
       "asset": "ETH",
-      "assetIcon": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
       "amount": "0.5",
       "fiatAmount": "\$1,234.50",
-      "timestamp": DateTime.now().subtract(Duration(hours: 2)),
+      "timestamp": DateTime.now().subtract(const Duration(hours: 2)),
       "status": "confirmed",
       "hash": "0x742d35cc6e4c4e0c4e4e4e4e4e4e4e4e4e4e4e4e",
-      "fromAddress": "0x742d35cc6e4c4e0c4e4e4e4e4e4e4e4e4e4e4e4e",
-      "toAddress": "0x8ba1f109551bD432803012645Hac136c22C501e5",
+      "fromAddress": "0x742d35...",
+      "toAddress": "0x8ba1f1095...",
       "fee": "0.002",
       "confirmations": 12,
       "note": "Payment for services"
@@ -61,14 +75,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
       "id": "tx_003",
       "type": "buy",
       "asset": "BTC",
-      "assetIcon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
       "amount": "0.01",
       "fiatAmount": "\$670.00",
-      "timestamp": DateTime.now().subtract(Duration(hours: 5)),
+      "timestamp": DateTime.now().subtract(const Duration(hours: 5)),
       "status": "pending",
       "hash": "pending",
       "fromAddress": "Coinbase Exchange",
-      "toAddress": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+      "toAddress": "bc1qw508d6qejx...",
       "fee": "0.00",
       "confirmations": 0,
       "note": ""
@@ -77,13 +90,12 @@ class _TransactionHistoryState extends State<TransactionHistory>
       "id": "tx_004",
       "type": "sell",
       "asset": "ETH",
-      "assetIcon": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
       "amount": "1.0",
       "fiatAmount": "\$2,469.00",
-      "timestamp": DateTime.now().subtract(Duration(days: 1)),
+      "timestamp": DateTime.now().subtract(const Duration(days: 1)),
       "status": "confirmed",
-      "hash": "0x8ba1f109551bD432803012645Hac136c22C501e5",
-      "fromAddress": "0x742d35cc6e4c4e0c4e4e4e4e4e4e4e4e4e4e4e4e",
+      "hash": "0x8ba1f109...",
+      "fromAddress": "0x742d35...",
       "toAddress": "Binance Exchange",
       "fee": "0.003",
       "confirmations": 25,
@@ -93,14 +105,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
       "id": "tx_005",
       "type": "receive",
       "asset": "USDT",
-      "assetIcon": "https://cryptologos.cc/logos/tether-usdt-logo.png",
       "amount": "500.00",
       "fiatAmount": "\$500.00",
-      "timestamp": DateTime.now().subtract(Duration(days: 2)),
+      "timestamp": DateTime.now().subtract(const Duration(days: 2)),
       "status": "confirmed",
-      "hash": "0x9cb2f109551bD432803012645Hac136c22C501e6",
-      "fromAddress": "0x8ba1f109551bD432803012645Hac136c22C501e5",
-      "toAddress": "0x742d35cc6e4c4e0c4e4e4e4e4e4e4e4e4e4e4e4e",
+      "hash": "0x9cb2f10...",
+      "fromAddress": "0x8ba1f109...",
+      "toAddress": "0x742d35...",
       "fee": "0.00",
       "confirmations": 50,
       "note": "Freelance payment"
@@ -109,18 +120,49 @@ class _TransactionHistoryState extends State<TransactionHistory>
       "id": "tx_006",
       "type": "send",
       "asset": "BTC",
-      "assetIcon": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
       "amount": "0.005",
       "fiatAmount": "\$335.00",
-      "timestamp": DateTime.now().subtract(Duration(days: 3)),
+      "timestamp": DateTime.now().subtract(const Duration(days: 3)),
       "status": "confirmed",
-      "hash": "1B2zP1eP5QGefi2DMPTfTL5SLmv7DivfNb",
-      "fromAddress": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
-      "toAddress": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+      "hash": "1B2zP1eP...",
+      "fromAddress": "bc1qw508d6qejx...",
+      "toAddress": "bc1qxy2kgdygjr...",
       "fee": "0.00000567",
       "confirmations": 100,
       "note": "Gift to friend"
-    }
+    },
+    // NEW: swap examples
+    {
+      "id": "tx_007",
+      "type": "swap",
+      "asset": "BTC",
+      "amount": "0.002",
+      "fiatAmount": "\$134.00",
+      "timestamp":
+          DateTime.now().subtract(const Duration(hours: 3, minutes: 10)),
+      "status": "confirmed",
+      "hash": "swap_0x001",
+      "fromAddress": "ETH",
+      "toAddress": "BTC",
+      "fee": "0.000001",
+      "confirmations": 22,
+      "note": "ETH → BTC"
+    },
+    {
+      "id": "tx_008",
+      "type": "swap",
+      "asset": "USDT",
+      "amount": "250",
+      "fiatAmount": "\$250.00",
+      "timestamp": DateTime.now().subtract(const Duration(days: 1, hours: 4)),
+      "status": "confirmed",
+      "hash": "swap_0x002",
+      "fromAddress": "BTC",
+      "toAddress": "USDT",
+      "fee": "15 TRX",
+      "confirmations": 18,
+      "note": "BTC → USDT"
+    },
   ];
 
   @override
@@ -132,10 +174,43 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Allow passing types via Navigator arguments too.
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    _onlyTypesFromArgs = args?['onlyTypes'] != null
+        ? List<String>.from(args!['onlyTypes'] as List)
+        : null;
+
+    // If either widget.onlyTypes or args.onlyTypes is set, apply it.
+    final initial = widget.onlyTypes ?? _onlyTypesFromArgs;
+    if (initial != null && initial.isNotEmpty) {
+      _applyInitialTypeFilter(initial.map((e) => e.toLowerCase()).toList());
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // ---------------- internal ----------------
+
+  void _applyInitialTypeFilter(List<String> allowedTypes) {
+    setState(() {
+      _activeFilters = allowedTypes
+          .map((t) => t[0].toUpperCase() + t.substring(1)) // for chips display
+          .toList();
+
+      _filteredTransactions = _allTransactions
+          .where((t) => allowedTypes.contains(
+                (t['type'] ?? '').toString().toLowerCase(),
+              ))
+          .toList();
+    });
   }
 
   void _onScroll() {
@@ -146,20 +221,12 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   void _loadMoreTransactions() {
-    if (!_isLoading) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // Simulate loading more data
-      Future.delayed(Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      });
-    }
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    });
   }
 
   void _toggleSearch() {
@@ -173,19 +240,17 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   void _filterTransactions(String query) {
+    final q = query.toLowerCase();
     setState(() {
-      if (query.isEmpty) {
-        _filteredTransactions = List.from(_allTransactions);
+      final base = _applyActiveFilters(_allTransactions);
+      if (q.isEmpty) {
+        _filteredTransactions = base;
       } else {
-        _filteredTransactions = _allTransactions.where((transaction) {
-          final hash = (transaction['hash'] as String).toLowerCase();
-          final amount = (transaction['amount'] as String).toLowerCase();
-          final address = (transaction['toAddress'] as String).toLowerCase();
-          final searchQuery = query.toLowerCase();
-
-          return hash.contains(searchQuery) ||
-              amount.contains(searchQuery) ||
-              address.contains(searchQuery);
+        _filteredTransactions = base.where((t) {
+          final hash = (t['hash'] ?? '').toString().toLowerCase();
+          final amount = (t['amount'] ?? '').toString().toLowerCase();
+          final address = (t['toAddress'] ?? '').toString().toLowerCase();
+          return hash.contains(q) || amount.contains(q) || address.contains(q);
         }).toList();
       }
     });
@@ -198,9 +263,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
       backgroundColor: Colors.transparent,
       builder: (context) => FilterBottomSheetWidget(
         onFiltersApplied: (filters) {
-          setState(() {
-            _activeFilters = filters;
-          });
+          setState(() => _activeFilters = filters);
           _applyFilters();
         },
         activeFilters: _activeFilters,
@@ -210,39 +273,24 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   void _applyFilters() {
     setState(() {
-      _filteredTransactions = _allTransactions.where((transaction) {
-        if (_activeFilters.isEmpty) return true;
-
-        bool matchesFilter = true;
-
-        for (String filter in _activeFilters) {
-          if (filter == 'Send' && transaction['type'] != 'send') {
-            matchesFilter = false;
-            break;
-          }
-          if (filter == 'Receive' && transaction['type'] != 'receive') {
-            matchesFilter = false;
-            break;
-          }
-          if (filter == 'Buy' && transaction['type'] != 'buy') {
-            matchesFilter = false;
-            break;
-          }
-          if (filter == 'Sell' && transaction['type'] != 'sell') {
-            matchesFilter = false;
-            break;
-          }
-        }
-
-        return matchesFilter;
-      }).toList();
+      _filteredTransactions =
+          _applyActiveFilters(_allTransactions); // base on all
     });
   }
 
+  List<Map<String, dynamic>> _applyActiveFilters(
+      List<Map<String, dynamic>> source) {
+    if (_activeFilters.isEmpty) return List.from(source);
+    final want = _activeFilters
+        .map((f) => f.toLowerCase())
+        .toSet(); // e.g. {send, receive, buy, sell, swap}
+    return source
+        .where((t) => want.contains((t['type'] ?? '').toString().toLowerCase()))
+        .toList();
+  }
+
   void _removeFilter(String filter) {
-    setState(() {
-      _activeFilters.remove(filter);
-    });
+    setState(() => _activeFilters.remove(filter));
     _applyFilters();
   }
 
@@ -258,58 +306,43 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   Future<void> _refreshTransactions() async {
-    // Simulate refresh
-    await Future.delayed(Duration(seconds: 1));
+    await Future.delayed(const Duration(seconds: 1));
     setState(() {
-      _filteredTransactions = List.from(_allTransactions);
+      _filteredTransactions =
+          _applyActiveFilters(_allTransactions); // respect active filters
     });
   }
 
   List<Map<String, dynamic>> _groupTransactionsByDate() {
-    Map<String, List<Map<String, dynamic>>> grouped = {};
-
-    for (var transaction in _filteredTransactions) {
-      DateTime date = transaction['timestamp'] as DateTime;
-      String dateKey = _getDateKey(date);
-
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
-      }
-      grouped[dateKey]!.add(transaction);
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (var t in _filteredTransactions) {
+      final date = t['timestamp'] as DateTime;
+      final key = _dateKey(date);
+      grouped.putIfAbsent(key, () => []).add(t);
     }
-
-    List<Map<String, dynamic>> result = [];
-    grouped.forEach((dateKey, transactions) {
-      result.add({
-        'type': 'header',
-        'title': dateKey,
-      });
-      result.addAll(transactions.map((t) => {...t, 'type': 'transaction'}));
+    final result = <Map<String, dynamic>>[];
+    grouped.forEach((k, txs) {
+      result.add({'type': 'header', 'title': k});
+      result.addAll(txs.map((t) => {...t, 'type': 'transaction'}));
     });
-
     return result;
   }
 
-  String _getDateKey(DateTime date) {
-    DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
-    DateTime yesterday = today.subtract(Duration(days: 1));
-    DateTime transactionDate = DateTime(date.year, date.month, date.day);
+  String _dateKey(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final d = DateTime(date.year, date.month, date.day);
 
-    if (transactionDate == today) {
-      return 'Today';
-    } else if (transactionDate == yesterday) {
-      return 'Yesterday';
-    } else if (now.difference(date).inDays <= 7) {
-      return 'This Week';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
+    if (d == today) return 'Today';
+    if (d == yesterday) return 'Yesterday';
+    if (now.difference(date).inDays <= 7) return 'This Week';
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final groupedTransactions = _groupTransactionsByDate();
+    final grouped = _groupTransactionsByDate();
 
     return Scaffold(
       backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
@@ -324,64 +357,60 @@ class _TransactionHistoryState extends State<TransactionHistory>
             size: 24,
           ),
         ),
-        title: Text(
-          'Transaction History',
-          style: AppTheme.darkTheme.textTheme.titleLarge,
-        ),
+        title: Text('Transaction History',
+            style: AppTheme.darkTheme.textTheme.titleLarge),
         actions: [
-          IconButton(
-            onPressed: _toggleSearch,
-            icon: CustomIconWidget(
-              iconName: _isSearchExpanded ? 'close' : 'search',
-              color: AppTheme.darkTheme.colorScheme.onSurface,
-              size: 24,
-            ),
-          ),
-          IconButton(
-            onPressed: _showFilterBottomSheet,
-            icon: Stack(
-              children: [
-                CustomIconWidget(
-                  iconName: 'filter_list',
-                  color: AppTheme.darkTheme.colorScheme.onSurface,
-                  size: 24,
-                ),
-                if (_activeFilters.isNotEmpty)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: EdgeInsets.all(1.w),
-                      decoration: BoxDecoration(
-                        color: AppTheme.info,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: BoxConstraints(
-                        minWidth: 4.w,
-                        minHeight: 4.w,
-                      ),
-                      child: Text(
-                        '${_activeFilters.length}',
-                        style: TextStyle(
-                          color: AppTheme.onPrimary,
-                          fontSize: 8.sp,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(width: 2.w),
+          // IconButton(
+          //   onPressed: _toggleSearch,
+          //   icon: CustomIconWidget(
+          //     iconName: _isSearchExpanded ? 'close' : 'search',
+          //     color: AppTheme.darkTheme.colorScheme.onSurface,
+          //     size: 24,
+          //   ),
+          // ),
+          // IconButton(
+          //   onPressed: _showFilterBottomSheet,
+          //   icon: Stack(
+          //     children: [
+          //       CustomIconWidget(
+          //         iconName: 'filter_list',
+          //         color: AppTheme.darkTheme.colorScheme.onSurface,
+          //         size: 24,
+          //       ),
+          //       if (_activeFilters.isNotEmpty)
+          //         Positioned(
+          //           right: 0,
+          //           top: 0,
+          //           child: Container(
+          //             padding: EdgeInsets.all(1.w),
+          //             decoration: BoxDecoration(
+          //               color: AppTheme.info,
+          //               shape: BoxShape.circle,
+          //             ),
+          //             constraints:
+          //                 BoxConstraints(minWidth: 4.w, minHeight: 4.w),
+          //             child: Text(
+          //               '${_activeFilters.length}',
+          //               style: TextStyle(
+          //                 color: AppTheme.onPrimary,
+          //                 fontSize: 8.sp,
+          //                 fontWeight: FontWeight.bold,
+          //               ),
+          //               textAlign: TextAlign.center,
+          //             ),
+          //           ),
+          //         ),
+          //     ],
+          //   ),
+          // ),
+          // SizedBox(width: 2.w),
         ],
       ),
       body: Column(
         children: [
           // Search Bar
           AnimatedContainer(
-            duration: Duration(milliseconds: 300),
+            duration: const Duration(milliseconds: 300),
             height: _isSearchExpanded ? 12.h : 0,
             child: _isSearchExpanded
                 ? Container(
@@ -417,10 +446,10 @@ class _TransactionHistoryState extends State<TransactionHistory>
                       ),
                     ),
                   )
-                : SizedBox.shrink(),
+                : const SizedBox.shrink(),
           ),
 
-          // Active Filters
+          // Active Filters (chips)
           if (_activeFilters.isNotEmpty)
             Container(
               height: 8.h,
@@ -436,9 +465,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
                       label: Text(
                         filter,
                         style: TextStyle(
-                          color: AppTheme.onPrimary,
-                          fontSize: 12.sp,
-                        ),
+                            color: AppTheme.onPrimary, fontSize: 12.sp),
                       ),
                       backgroundColor: AppTheme.info,
                       deleteIcon: CustomIconWidget(
@@ -464,15 +491,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: EdgeInsets.symmetric(horizontal: 4.w),
-                      itemCount:
-                          groupedTransactions.length + (_isLoading ? 1 : 0),
+                      itemCount: grouped.length + (_isLoading ? 1 : 0),
                       itemBuilder: (context, index) {
-                        if (index == groupedTransactions.length) {
+                        if (index == grouped.length) {
                           return _buildLoadingIndicator();
                         }
 
-                        final item = groupedTransactions[index];
-
+                        final item = grouped[index];
                         if (item['type'] == 'header') {
                           return _buildDateHeader(item['title'] as String);
                         } else {

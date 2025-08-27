@@ -34,9 +34,9 @@ class ActionButtonsGridWidget extends StatelessWidget {
         route: AppRoutes.swapScreen,
       ),
       _ActionButton(
-        title: "Bridge",
-        icon: Icons.compare_arrows,
-        route: "/bridge-cryptocurrency",
+        title: "Activity",
+        icon: Icons.history,
+        route: AppRoutes.transactionHistory,
       ),
     ];
 
