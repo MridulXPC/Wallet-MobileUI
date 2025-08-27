@@ -280,7 +280,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final isLarge = screenWidth > 900;
 
     // Responsive dims
-    final cardPad = isLarge ? 24.0 : (isTablet ? 20.0 : 16.0);
+    final cardPad = isLarge ? 10.0 : (isTablet ? 8.0 : 12.0);
     final radius = isLarge ? 6.0 : (isTablet ? 6.0 : 6.0);
     final iconSize = isLarge ? 40.0 : (isTablet ? 36.0 : 32.0);
     final priceFs = isLarge ? 32.0 : (isTablet ? 30.0 : 28.0);
@@ -291,7 +291,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final watermarkCacheW = (watermarkSize * dpr).round();
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 6, horizontal: hMargin),
+      margin: EdgeInsets.symmetric(vertical: 20, horizontal: hMargin),
       padding: EdgeInsets.all(cardPad),
       decoration: BoxDecoration(
         boxShadow: [

@@ -574,7 +574,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   Widget _buildHeader(Coin? coin, Map<String, String> details) {
     final iconPath = coin?.assetPath;
     final symbol = coin?.symbol ?? selectedCoinId;
-    final name = coin?.name ?? selectedCoinId;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
@@ -848,6 +847,49 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
+// === USD toggle state ===
+  bool _showAllInUsd = false; // global toggle
+  final Set<String> _usdPerTx = <String>{}; // per-transaction toggles
+
+// Get a USD price for a coin key like 'BTC', 'ETH', 'USDT-TRX', 'BTC-LN'
+  double _priceForCoinUsd(String coinKey) {
+    // Normalize coin family (BTC-LN -> BTC, USDT-TRX -> USDT, etc.)
+    String family = coinKey;
+    if (family.contains('-')) family = family.split('-').first;
+
+    // Try our dummy details first (they store price strings)
+    final details = _dummyDetails[coinKey] ?? _dummyDetails[family];
+    if (details != null) {
+      final p = double.tryParse((details['price'] ?? '0').replaceAll(',', ''));
+      if (p != null && p > 0) return p;
+    }
+
+    // Fallbacks per family if needed
+    switch (family) {
+      case 'BTC':
+        return 43825.67;
+      case 'ETH':
+        return 2641.25;
+      case 'SOL':
+        return 148.12;
+      case 'TRX':
+        return 0.13;
+      case 'USDT':
+        return 1.0;
+      case 'BNB':
+        return 575.42;
+      case 'XMR':
+        return 165.50;
+      default:
+        return 0.0;
+    }
+  }
+
+  String _formatUsd(double usd) {
+    // Simple formatter with 2 decimals
+    return '\$${usd.toStringAsFixed(2)}';
+  }
+
   Widget _buildActionIcons() {
     if (selectedCoinId.startsWith('USDT')) {
       return Row(
@@ -1087,6 +1129,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Section header with tabs
+        // Section header with tabs + global $ button
         Row(
           children: [
             Container(
@@ -1098,9 +1141,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               child: const Text(
                 'Transactions',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500),
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
             const SizedBox(width: 24),
@@ -1109,9 +1153,41 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               child: const Text(
                 'Refundables',
                 style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500),
+                  color: Color(0xFF6B7280),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const Spacer(),
+            // ==== Global USD toggle button ====
+            Tooltip(
+              message:
+                  _showAllInUsd ? 'Show native amounts' : 'Show all in USD',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => setState(() => _showAllInUsd = !_showAllInUsd),
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2D3A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _showAllInUsd
+                          ? Colors.green
+                          : const Color(0xFF3A3D4A),
+                    ),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons
+                          .currency_exchange, // or Icons.attach_money, Icons.payments_outlined
+                      color: _showAllInUsd ? Colors.green : Colors.white,
+                      size: 14,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -1151,6 +1227,21 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildTransactionItem(Map<String, dynamic> transaction) {
+    final String txId = (transaction['id'] ?? '').toString();
+    final String coinKey =
+        (transaction['coin'] ?? '').toString(); // e.g. BTC, BTC-LN, USDT-TRX
+    final bool showUsd = _showAllInUsd || _usdPerTx.contains(txId);
+
+    // amount (string -> double)
+    final double amount =
+        double.tryParse((transaction['amount'] ?? '0').toString()) ?? 0.0;
+
+    // USD conversion
+    final double priceUsd = _priceForCoinUsd(coinKey);
+    final String amountLabel = showUsd
+        ? _formatUsd(amount * priceUsd)
+        : '${transaction['amount']} ${_getCoinSymbol(coinKey)}';
+
     return InkWell(
       onTap: () => _navigateToTransactionDetails(transaction),
       splashColor: const Color(0xFF2A2D3A).withOpacity(0.3),
@@ -1182,6 +1273,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Left: status+type
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1204,6 +1296,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                           ),
                         ],
                       ),
+
+                      // Right: time + amount + per-tx $ button
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -1215,13 +1309,60 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            '${transaction['amount']} ${_getCoinSymbol(transaction['coin'])}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                amountLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // === Per-transaction USD toggle ===
+                              Tooltip(
+                                message: _usdPerTx.contains(txId)
+                                    ? 'Show native amount'
+                                    : 'Show this in USD',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    setState(() {
+                                      if (_usdPerTx.contains(txId)) {
+                                        _usdPerTx.remove(txId);
+                                      } else {
+                                        _usdPerTx.add(txId);
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2A2D3A),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _usdPerTx.contains(txId)
+                                            ? Colors.green
+                                            : const Color(0xFF3A3D4A),
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        Icons
+                                            .monetization_on_outlined, // or Icons.attach_money
+                                        color: _usdPerTx.contains(txId)
+                                            ? Colors.green
+                                            : Colors.white,
+                                        size: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
