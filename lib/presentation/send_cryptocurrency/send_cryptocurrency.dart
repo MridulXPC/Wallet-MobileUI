@@ -496,9 +496,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     final isTablet = screenWidth > 600;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1D29),
+      backgroundColor: Color(0xFF0B0D1A),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1D29),
+        backgroundColor: Color(0xFF0B0D1A),
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),

@@ -64,8 +64,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         "BTC",
         "TRX-TRX",
         "BNB-BNB",
-        "USDT-TRX",
-        "USDT-ETH",
+        "USDT",
         "XMR-XMR",
         "ETH-ETH",
       ];
