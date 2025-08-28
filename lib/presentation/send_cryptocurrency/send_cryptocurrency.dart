@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
@@ -198,7 +199,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   };
 
   final Map<String, double> _dummyBalances = const {
-    'BTC': 0.0,
+    'BTC': 500.0,
     'BTC-LN': 0.0,
     'ETH': 0.0,
     'BNB': 0.0,
@@ -268,6 +269,44 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   void _calculateUSDValue() {
     final amount = double.tryParse(_currentAmount) ?? 0.0;
     _usdValue = amount * _selectedAssetPrice;
+  }
+
+// Add this method to your _SendCryptocurrencyState class
+  void _onNextPressed() {
+    if (_currentAmount == '0' || double.tryParse(_currentAmount) == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter an amount greater than 0'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final amount = double.tryParse(_currentAmount) ?? 0.0;
+    if (amount > _selectedAssetBalance) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Insufficient balance'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SendConfirmationScreen(
+          amount: _currentAmount,
+          assetSymbol: _selectedAssetSymbol,
+          assetName: _selectedAsset,
+          assetIconPath: _selectedAssetIconPath,
+          assetPrice: _selectedAssetPrice,
+          usdValue: _usdValue,
+        ),
+      ),
+    );
   }
 
   // ---------- Selector & state updates ----------
@@ -502,7 +541,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 16),
         ),
         title: Text(
           'Insert Amount',
@@ -751,9 +790,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
+                          onPressed:
+                              _onNextPressed, // Changed from Navigator.of(context).pop()
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
