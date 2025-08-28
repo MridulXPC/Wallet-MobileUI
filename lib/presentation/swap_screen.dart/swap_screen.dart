@@ -441,7 +441,7 @@ class _SwapScreenState extends State<SwapScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.white24),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Text('MAX',
                       style: TextStyle(color: Colors.white70, fontSize: 12)),

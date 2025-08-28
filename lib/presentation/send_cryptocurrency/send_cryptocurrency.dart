@@ -358,124 +358,137 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               return matchesSearch && matchesChip;
             }).toList();
 
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.85,
-              decoration: const BoxDecoration(
-                color: Color(0xFF2A2D3A),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Handle bar
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 10),
-                      height: 4,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[600],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-
-                    // Title
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text(
-                        'Select Asset',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+            return ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.85,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomRight,
+                    stops: [0.0, 0.55, 1.0],
+                    colors: [
+                      Color.fromARGB(255, 6, 11, 33),
+                      Color.fromARGB(255, 0, 0, 0),
+                      Color.fromARGB(255, 0, 12, 56),
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    children: [
+                      // Handle bar
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        height: 4,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                    ),
 
-                    // Search field
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: TextField(
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Search symbol, name, or network',
-                          hintStyle: const TextStyle(color: Colors.white54),
-                          prefixIcon:
-                              const Icon(Icons.search, color: Colors.white54),
-                          filled: true,
-                          fillColor: const Color(0xFF1F2431),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
+                      // Title
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'Select Asset',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        onChanged: (v) => setModalState(() => search = v),
                       ),
-                    ),
 
-                    const SizedBox(height: 10),
+                      // Search field
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: TextField(
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Search symbol, name, or network',
+                            hintStyle: const TextStyle(color: Colors.white54),
+                            prefixIcon:
+                                const Icon(Icons.search, color: Colors.white54),
+                            filled: true,
+                            fillColor: Color(0xFF1F2431),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onChanged: (v) => setModalState(() => search = v),
+                        ),
+                      ),
 
-                    // Filter chips
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: chips
-                            .map(
-                              (f) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 6),
-                                child: ChoiceChip(
-                                  label: Text(f),
-                                  selected: chip == f,
-                                  onSelected: (_) =>
-                                      setModalState(() => chip = f),
-                                  selectedColor: Colors.blue,
-                                  labelStyle: TextStyle(
-                                    color: chip == f
-                                        ? Colors.white
-                                        : Colors.white70,
+                      const SizedBox(height: 10),
+
+                      // Filter chips
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: chips
+                              .map(
+                                (f) => Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6),
+                                  child: ChoiceChip(
+                                    label: Text(f),
+                                    selected: chip == f,
+                                    onSelected: (_) =>
+                                        setModalState(() => chip = f),
+                                    selectedColor: Colors.blue,
+                                    labelStyle: TextStyle(
+                                      color: chip == f
+                                          ? Colors.white
+                                          : Colors.white70,
+                                    ),
+                                    backgroundColor: const Color(0xFF1F2431),
                                   ),
-                                  backgroundColor: const Color(0xFF1F2431),
                                 ),
-                              ),
-                            )
-                            .toList(),
+                              )
+                              .toList(),
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                    // Optimized list view
-                    Expanded(
-                      child: ListView.builder(
-                        physics: const ClampingScrollPhysics(),
-                        cacheExtent: 500,
-                        itemExtent: 72,
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final coin = filtered[i];
-                          final price = _dummyPrices[coin.symbol] ??
-                              _dummyPrices[coin.id] ??
-                              1.0;
-                          final balance = _dummyBalances[coin.symbol] ??
-                              _dummyBalances[coin.id] ??
-                              0.0;
+                      // Optimized list view
+                      Expanded(
+                        child: ListView.builder(
+                          physics: const ClampingScrollPhysics(),
+                          cacheExtent: 500,
+                          itemExtent: 72,
+                          itemCount: filtered.length,
+                          itemBuilder: (context, i) {
+                            final coin = filtered[i];
+                            final price = _dummyPrices[coin.symbol] ??
+                                _dummyPrices[coin.id] ??
+                                1.0;
+                            final balance = _dummyBalances[coin.symbol] ??
+                                _dummyBalances[coin.id] ??
+                                0.0;
 
-                          return OptimizedAssetListTile(
-                            coin: coin,
-                            price: price,
-                            balance: balance,
-                            onTap: () {
-                              _onAssetSelected(coin);
-                              Navigator.pop(context);
-                            },
-                          );
-                        },
+                            return OptimizedAssetListTile(
+                              coin: coin,
+                              price: price,
+                              balance: balance,
+                              onTap: () {
+                                _onAssetSelected(coin);
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 20),
-                  ],
+                      const SizedBox(height: 20),
+                    ],
+                  ),
                 ),
               ),
             );

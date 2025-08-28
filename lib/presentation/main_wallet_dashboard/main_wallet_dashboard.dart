@@ -258,6 +258,12 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     },
   ];
 
+  void _openActivities() {
+    // you'll define this next
+    Navigator.of(context, rootNavigator: true)
+        .pushNamed(AppRoutes.transactionHistory);
+  }
+
   static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   @override
@@ -280,9 +286,11 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VaultHeaderCard(
-                  totalValue: _totalValue,
-                  vaultName: _vaultName,
-                  onTap: _showWalletOptionsSheet,
+                  totalValue: '\$12,340.55',
+                  vaultName: 'Main Vault',
+                  onTap: () {}, // optional card tap
+                  onChangeWallet: _showWalletOptionsSheet, // opens your sheet
+                  onActivities: _openActivities,
                 ),
 
                 // ✅ Crypto stats pager pulling iconPath from CoinStore by coinId

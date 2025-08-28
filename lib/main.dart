@@ -51,14 +51,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // (Optional) Precache coin icons right after first frame to avoid flicker.
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   final store = context.read<CoinStore>();
-    //   for (final c in store.coins.values) {
-    //     precacheImage(AssetImage(c.assetPath), context);
-    //   }
-    // });
-
     return Sizer(
       builder: (context, orientation, deviceType) {
         return MaterialApp(
