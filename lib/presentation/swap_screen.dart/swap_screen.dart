@@ -95,9 +95,17 @@ class _SwapScreenState extends State<SwapScreen> {
                   Container(
                     width: 46,
                     height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(24),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomRight,
+                        stops: [0.0, 0.55, 1.0],
+                        colors: [
+                          Color.fromARGB(255, 6, 11, 33),
+                          Color.fromARGB(255, 0, 0, 0),
+                          Color.fromARGB(255, 0, 12, 56),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -234,93 +242,115 @@ class _SwapScreenState extends State<SwapScreen> {
           }).toList();
 
           return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 6),
-                  const Text('Select Crypto',
-                      style: TextStyle(color: Colors.white, fontSize: 18)),
-                  const SizedBox(height: 12),
-                  Row(
+            child: ClipRect(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomRight,
+                    stops: [0.0, 0.55, 1.0],
+                    colors: [
+                      Color.fromARGB(255, 6, 11, 33),
+                      Color.fromARGB(255, 0, 0, 0),
+                      Color.fromARGB(255, 0, 12, 56),
+                    ],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Search symbol, name, or network',
-                            hintStyle: const TextStyle(color: Colors.white54),
-                            prefixIcon:
-                                const Icon(Icons.search, color: Colors.white54),
-                            filled: true,
-                            fillColor: const Color(0xFF2A2D3A),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide.none,
+                      const SizedBox(height: 6),
+                      const Text('Select Crypto',
+                          style: TextStyle(color: Colors.white, fontSize: 18)),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'Search symbol, name, or network',
+                                hintStyle:
+                                    const TextStyle(color: Colors.white54),
+                                prefixIcon: const Icon(Icons.search,
+                                    color: Colors.white54),
+                                filled: true,
+                                fillColor: const Color(0xFF2A2D3A),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onChanged: (v) =>
+                                  setModalState(() => _search = v),
                             ),
                           ),
-                          onChanged: (v) => setModalState(() => _search = v),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: chips.map((filter) {
+                            final isSelected = _chipFilter == filter;
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: ChoiceChip(
+                                label: Text(filter),
+                                selected: isSelected,
+                                onSelected: (_) =>
+                                    setModalState(() => _chipFilter = filter),
+                                selectedColor: Colors.blue,
+                                labelStyle: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.white70,
+                                ),
+                                backgroundColor: const Color(0xFF2A2D3A),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 440,
+                        child: ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (context, i) {
+                            final c = filtered[i];
+                            return ListTile(
+                              leading: _coinAvatar(c.assetPath, c.symbol),
+                              title: Text(c.symbol,
+                                  style: const TextStyle(color: Colors.white)),
+                              subtitle: Text(c.name,
+                                  style:
+                                      const TextStyle(color: Colors.white70)),
+                              trailing: Text(
+                                _networkHint(c.id),
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 12),
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                setState(() {
+                                  if (isFrom) {
+                                    fromCoinId = c.id;
+                                  } else {
+                                    toCoinId = c.id;
+                                  }
+                                });
+                              },
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: chips.map((filter) {
-                        final isSelected = _chipFilter == filter;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: ChoiceChip(
-                            label: Text(filter),
-                            selected: isSelected,
-                            onSelected: (_) =>
-                                setModalState(() => _chipFilter = filter),
-                            selectedColor: Colors.blue,
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.white : Colors.white70,
-                            ),
-                            backgroundColor: const Color(0xFF2A2D3A),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 440,
-                    child: ListView.builder(
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final c = filtered[i];
-                        return ListTile(
-                          leading: _coinAvatar(c.assetPath, c.symbol),
-                          title: Text(c.symbol,
-                              style: const TextStyle(color: Colors.white)),
-                          subtitle: Text(c.name,
-                              style: const TextStyle(color: Colors.white70)),
-                          trailing: Text(
-                            _networkHint(c.id),
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 12),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            setState(() {
-                              if (isFrom) {
-                                fromCoinId = c.id;
-                              } else {
-                                toCoinId = c.id;
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           );

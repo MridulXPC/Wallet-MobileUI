@@ -160,7 +160,25 @@ class OptimizedAssetListTile extends StatelessWidget {
 }
 
 class SendCryptocurrency extends StatefulWidget {
-  const SendCryptocurrency({super.key});
+  /// Screen title (defaults to "Insert Amount")
+  final String title;
+
+  /// Preselect a coin/network by its CoinStore id (e.g. "BTC-LN", "BTC", "USDT-TRX")
+  final String? initialCoinId;
+
+  /// Optional button label (defaults to "Next")
+  final String? buttonLabel;
+
+  /// If true, behaves as a "Charge" screen (we'll hook next step later)
+  final bool isChargeMode;
+
+  const SendCryptocurrency({
+    super.key,
+    this.title = 'Insert Amount',
+    this.initialCoinId,
+    this.buttonLabel,
+    this.isChargeMode = false,
+  });
 
   @override
   State<SendCryptocurrency> createState() => _SendCryptocurrencyState();
@@ -294,6 +312,27 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       return;
     }
 
+    // 👉 If this screen is opened as "Charge" (invoice flow), pause here.
+    if (widget.isChargeMode) {
+      // We’ll wire invoice generation next; for now, just pass data forward or show a toast.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Charge: $_currentAmount $_selectedAssetSymbol  (next step: generate invoice)',
+          ),
+          backgroundColor: Colors.blueGrey,
+        ),
+      );
+      // Example if you already have a route for invoice creation:
+      // Navigator.pushNamed(context, AppRoutes.createLightningInvoice, arguments: {
+      //   'coinId': _selectedAssetSymbol, // should be BTC-LN
+      //   'amount': _currentAmount,
+      //   'usdValue': _usdValue,
+      // });
+      return;
+    }
+
+    // Default SEND flow (unchanged)
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -514,11 +553,11 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   }
 
   @override
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
     if (!_isImagesPreloaded) {
-      // Preload all coin images for better performance
       final coins = context.read<CoinStore>().coins.values.toList();
       final imagePaths = coins.map((coin) => coin.assetPath).toList();
       ImageCacheManager.preloadImages(imagePaths, context);
@@ -528,11 +567,24 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     // Initialize selection from Provider the first time
     final coins = context.read<CoinStore>().coins.values.toList()
       ..sort((a, b) => a.symbol.compareTo(b.symbol));
+
     if (coins.isNotEmpty) {
-      final initial = coins.firstWhere(
-        (c) => c.symbol == _selectedAssetSymbol,
-        orElse: () => coins.first,
-      );
+      Coin initial;
+
+      if (widget.initialCoinId != null && widget.initialCoinId!.isNotEmpty) {
+        // Try to find by id (e.g. "BTC-LN")
+        initial = coins.firstWhere(
+          (c) => c.id == widget.initialCoinId,
+          orElse: () => coins.first,
+        );
+      } else {
+        // Fallback to your previous default by symbol
+        initial = coins.firstWhere(
+          (c) => c.symbol == _selectedAssetSymbol,
+          orElse: () => coins.first,
+        );
+      }
+
       _onAssetSelected(initial);
     }
   }
@@ -557,7 +609,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 16),
         ),
         title: Text(
-          'Insert Amount',
+          widget.title, // <-- was hardcoded "Insert Amount"
           style: TextStyle(
             color: Colors.white,
             fontSize: isTablet ? 20 : 18,
@@ -814,7 +866,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                             ),
                           ),
                           child: Text(
-                            'Next',
+                            widget.buttonLabel ?? 'Next',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: isSmallScreen ? 16 : 18,

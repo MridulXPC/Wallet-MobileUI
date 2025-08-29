@@ -1,4 +1,5 @@
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
+import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -1039,15 +1040,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               Navigator.pushNamed(context, AppRoutes.sendCrypto);
             }),
             _buildActionButton('Receive', Icons.arrow_downward, () {
-              Navigator.pushNamed(
-                context,
-                AppRoutes.receiveCrypto,
-                // arguments: {
-                //   'coinId': 'BTC-LN', // or your current coinId
-                //   // 'title': 'Your invoice to receive BTC',
-                //   // 'addressOrInvoice': '<optional current invoice>',
-                // },
-              );
+              _showLightningReceiveOptions(); // 👈 new
             }),
             _buildActionButton('Scan', Icons.qr_code_scanner, () {
               // Navigator.pushNamed(context, AppRoutes.scanQr); // if you have one
@@ -1087,6 +1080,162 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         ),
       );
     }
+  }
+
+  void _showLightningReceiveOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: false,
+      builder: (_) {
+        return ClipRect(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomRight,
+                stops: [0.0, 0.55, 1.0],
+                colors: [
+                  Color.fromARGB(255, 6, 11, 33),
+                  Color.fromARGB(255, 0, 0, 0),
+                  Color.fromARGB(255, 0, 12, 56),
+                ],
+              ),
+            ),
+            padding: EdgeInsets.only(
+              left: 12,
+              right: 12,
+              top: 8,
+              bottom: MediaQuery.of(context).padding.bottom + 12,
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // grabber
+                  Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12, top: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2D3A),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+
+                  _receiveOptionTile(
+                    icon: Icons.receipt_long,
+                    iconBg: const Color(0xFF2A2D3A),
+                    title: 'Receive via Invoice',
+                    subtitle: 'Create a Lightning invoice to get paid',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onLightningInvoiceReceive();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _receiveOptionTile(
+                    icon: Icons.currency_bitcoin,
+                    iconBg: const Color(0xFF2A2D3A),
+                    title: 'Receive via BTC mainnet',
+                    subtitle: 'Use on-chain address (SegWit / Taproot)',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _onLightningMainnetReceive();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _receiveOptionTile({
+    required IconData icon,
+    required Color iconBg,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            color: Color(0xFF6B7280), fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// TODO hooks — you’ll tell me what to do next.
+  /// For now these just navigate with arguments you can catch on your receive screen.
+  void _onLightningInvoiceReceive() {
+    // Example: open your receive screen in "lightning-invoice" mode
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SendCryptocurrency(
+          title: 'Charge', // 👈 changes app bar title
+          initialCoinId: 'BTC-LN', // 👈 preselect Lightning
+          buttonLabel: 'Next', // (optional)
+          isChargeMode: true, // 👈 toggles invoice flow branch
+        ),
+      ),
+    );
+  }
+
+  void _onLightningMainnetReceive() {
+    // Example: switch to BTC (on-chain) and open regular receive
+    setState(() {
+      selectedCoinId = 'BTC';
+      _isCardFlipped = false;
+      _flipController.reset();
+      _lightningState = 'sync';
+      _isLightningComplete = false;
+    });
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.receiveCrypto,
+      arguments: {
+        'coinId': 'BTC',
+        'mode': 'onchain',
+      },
+    );
   }
 
   Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
@@ -1148,17 +1297,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               ),
             ),
             const SizedBox(width: 24),
-            Container(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: const Text(
-                'Refundables',
-                style: TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
+
             const Spacer(),
             // ==== Global USD toggle button ====
             Tooltip(
@@ -1520,124 +1659,126 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1D29),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 10, bottom: 20),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3A3D4A),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        builder: (context, scrollController) => ClipRect(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomRight,
+                stops: [0.0, 0.55, 1.0],
+                colors: [
+                  Color.fromARGB(255, 6, 11, 33),
+                  Color.fromARGB(255, 0, 0, 0),
+                  Color.fromARGB(255, 0, 12, 56),
+                ],
               ),
-
-              // Header
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Text(
-                      'Select Cryptocurrency',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ],
+            ),
+            child: Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 20),
+                  width: 40,
+                  height: 4,
                 ),
-              ),
 
-              const SizedBox(height: 20),
-
-              // Coin list (from provider)
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: coins.length,
-                  itemBuilder: (context, index) {
-                    final c = coins[index];
-                    final details = _dummyDetails[c.id] ??
-                        {
-                          'price': '0.00',
-                          'balance': '0.00',
-                          'usdBalance': '0.00'
-                        };
-
-                    final isSelected = selectedCoinId == c.id;
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        tileColor: isSelected
-                            ? const Color(0xFF2A2D3A)
-                            : const Color(0xFF1F2329),
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF3A3D4A),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Center(
-                            child: (c.assetPath.isNotEmpty)
-                                ? Image.asset(c.assetPath,
-                                    width: 22, height: 22)
-                                : const Icon(Icons.currency_bitcoin,
-                                    color: Colors.white, size: 18),
-                          ),
-                        ),
-                        title: Text(
-                          c.symbol,
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w500),
-                        ),
-                        subtitle: Text(
-                          c.name,
-                          style: const TextStyle(
-                              color: Color(0xFF6B7280), fontSize: 12),
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${details['balance']} ${c.symbol}',
-                              style: const TextStyle(
-                                  color: Color(0xFF6B7280), fontSize: 12),
-                            ),
-                          ],
-                        ),
-                        onTap: () {
-                          setState(() {
-                            selectedCoinId = c.id;
-                            _isCardFlipped = false;
-                            _flipController.reset();
-
-                            // Reset Lightning state appropriately
-                            _lightningState = 'sync';
-                            _isLightningComplete = false;
-                          });
-                          _startLightningTimer();
-                          Navigator.pop(context);
-                        },
+                // Header
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Select Cryptocurrency',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 20),
+
+                // Coin list (from provider)
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: coins.length,
+                    itemBuilder: (context, index) {
+                      final c = coins[index];
+                      final details = _dummyDetails[c.id] ??
+                          {
+                            'price': '0.00',
+                            'balance': '0.00',
+                            'usdBalance': '0.00'
+                          };
+
+                      final isSelected = selectedCoinId == c.id;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          tileColor: isSelected
+                              ? const Color(0xFF2A2D3A)
+                              : const Color(0xFF1F2329),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: (c.assetPath.isNotEmpty)
+                                  ? Image.asset(c.assetPath,
+                                      width: 22, height: 22)
+                                  : const Icon(Icons.currency_bitcoin,
+                                      color: Colors.white, size: 18),
+                            ),
+                          ),
+                          title: Text(
+                            c.symbol,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500),
+                          ),
+                          subtitle: Text(
+                            c.name,
+                            style: const TextStyle(
+                                color: Color(0xFF6B7280), fontSize: 12),
+                          ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${details['balance']} ${c.symbol}',
+                                style: const TextStyle(
+                                    color: Color(0xFF6B7280), fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          onTap: () {
+                            setState(() {
+                              selectedCoinId = c.id;
+                              _isCardFlipped = false;
+                              _flipController.reset();
+
+                              // Reset Lightning state appropriately
+                              _lightningState = 'sync';
+                              _isLightningComplete = false;
+                            });
+                            _startLightningTimer();
+                            Navigator.pop(context);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

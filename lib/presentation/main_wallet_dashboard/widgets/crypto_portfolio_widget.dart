@@ -354,9 +354,17 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
     return SafeArea(
       child: Container(
         height: MediaQuery.of(context).size.height,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomRight,
+            stops: [0.0, 0.55, 1.0],
+            colors: [
+              Color.fromARGB(255, 6, 11, 33),
+              Color.fromARGB(255, 0, 0, 0),
+              Color.fromARGB(255, 0, 12, 56),
+            ],
+          ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
