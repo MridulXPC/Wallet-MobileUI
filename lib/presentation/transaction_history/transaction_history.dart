@@ -345,9 +345,9 @@ class _TransactionHistoryState extends State<TransactionHistory>
     final grouped = _groupTransactionsByDate();
 
     return Scaffold(
-      backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
+      backgroundColor: Color(0xFF0B0D1A),
       appBar: AppBar(
-        backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
+        backgroundColor: Color(0xFF0B0D1A),
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),

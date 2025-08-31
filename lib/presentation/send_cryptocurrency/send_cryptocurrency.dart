@@ -1,3 +1,4 @@
+import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
@@ -314,21 +315,26 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
     // 👉 If this screen is opened as "Charge" (invoice flow), pause here.
     if (widget.isChargeMode) {
-      // We’ll wire invoice generation next; for now, just pass data forward or show a toast.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Charge: $_currentAmount $_selectedAssetSymbol  (next step: generate invoice)',
+      final isLn = (widget.initialCoinId ?? _selectedAssetSymbol)
+          .toUpperCase()
+          .contains('BTC-LN');
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReceiveQRbtclightning(
+            title: 'Charge',
+            accountLabel: isLn ? 'LN - Main Account' : 'Main Account',
+            coinName: _selectedAsset, // e.g. "Bitcoin"
+            iconAsset: _selectedAssetIconPath, // coin icon
+            isLightning: isLn, // shows purple Lightning pill
+            amount: _currentAmount, // the amount user typed
+            symbol: _selectedAssetSymbol, // e.g. "BTC"
+            fiatValue: _usdValue, // computed USD
+            qrData: _currentAmount, // 🔥 QR encodes only the amount
           ),
-          backgroundColor: Colors.blueGrey,
         ),
       );
-      // Example if you already have a route for invoice creation:
-      // Navigator.pushNamed(context, AppRoutes.createLightningInvoice, arguments: {
-      //   'coinId': _selectedAssetSymbol, // should be BTC-LN
-      //   'amount': _currentAmount,
-      //   'usdValue': _usdValue,
-      // });
       return;
     }
 

@@ -1073,9 +1073,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
             _buildActionButton('Charge', Icons.credit_card, () {
               // Navigator.pushNamed(context, AppRoutes.charge); // your route
             }),
-            _buildActionButton('Scan', Icons.qr_code_scanner, () {
-              // Navigator.pushNamed(context, AppRoutes.scanQr);
-            }),
           ],
         ),
       );

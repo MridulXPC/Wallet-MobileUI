@@ -62,11 +62,11 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
       // ✅ BTC added
       const allowedIds = <String>[
         "BTC",
-        "TRX-TRX",
-        "BNB-BNB",
+        "TRX",
+        "BNB",
         "USDT",
-        "XMR-XMR",
-        "ETH-ETH",
+        "XMR",
+        "ETH",
       ];
 
       final all = store.coins.values

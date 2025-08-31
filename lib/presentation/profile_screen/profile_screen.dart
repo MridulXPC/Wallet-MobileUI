@@ -171,58 +171,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
 
             // Level card
-            Container(
-              height: 100,
-              decoration: BoxDecoration(
-                color: _card,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Stack(
-                children: [
-                  // Left text
-                  const Positioned(
-                    left: 16,
-                    top: 16,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Lvl. 0',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700)),
-                        SizedBox(height: 4),
-                        Text('Earned 0 points',
-                            style: TextStyle(color: _faint, fontSize: 14)),
-                      ],
-                    ),
-                  ),
-                  // Right decorative coin/art (placeholder)
-                  Positioned.fill(
-                    right: 0,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        width: 150,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [Color(0x00171B2B), _card],
-                          ),
-                        ),
-                        child: const Align(
-                          alignment: Alignment.center,
-                          child: Icon(Icons.monetization_on_rounded,
-                              color: Colors.white, size: 68),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
 
             // 2 x 2 grid of setting cards
             Row(

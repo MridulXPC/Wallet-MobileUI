@@ -279,61 +279,62 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
   Widget _buildDarkAppBar() {
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: SizedBox(
+        height: 56,
+        child: Stack(
           children: [
-            // back
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: const Icon(Icons.arrow_back_ios,
-                  color: Colors.white, size: 18),
-            ),
-            // token title with icon
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    iconPath,
-                    width: 28,
-                    height: 28,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.currency_bitcoin,
-                      color: Colors.orange,
-                    ),
-                  ),
+            // ← Back button (left)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white,
+                  size: 18,
                 ),
-                SizedBox(width: 2.w),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      sym,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                splashRadius: 20,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+
+            // Centered token title with icon
+            Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      iconPath,
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.currency_bitcoin,
+                        color: Colors.orange,
                       ),
                     ),
-                    Text(
-                      'COIN | $name',
-                      style: const TextStyle(color: greyColor, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            // menu / bookmark
-            GestureDetector(
-              onTap: _toggleBookmark,
-              child: Icon(
-                isBookmarked ? Icons.bookmark : Icons.more_vert,
-                color: Colors.white,
-                size: 20,
+                  ),
+                  SizedBox(width: 2.w),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        sym,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'COIN | $name',
+                        style: const TextStyle(color: greyColor, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -489,8 +490,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
     List<Map<String, dynamic>> rows;
     if (sym.toUpperCase() == 'USDT') {
+      final usdt = store.getById('USDT');
       final usdtEth = store.getById('USDT-ETH');
       final usdtTrx = store.getById('USDT-TRX');
+
       rows = [
         _variantRow(
           id: 'USDT-ETH',
@@ -507,6 +510,64 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           iconPath: usdtTrx?.assetPath,
           fallbackIcon: Icons.monetization_on,
           fallbackColor: Colors.green,
+        ),
+        // 🔥 New Gas Free row
+        _variantRow(
+          id: 'USDT-GASFREE', // <— variant id
+          name: 'USDT (Gas Free)', // title
+          network: 'USDT', // shows as the network line
+          iconPath: usdt?.assetPath, // use base USDT icon
+          fallbackIcon: Icons.local_gas_station,
+          fallbackColor: Colors.green,
+          borderColor: Colors.green, // <— custom green border for this row
+        ),
+      ];
+    } else if (sym.toUpperCase() == 'SOL') {
+      final solSol = store.getById('SOL-SOL');
+      rows = [
+        _variantRow(
+          id: 'SOL-SOL',
+          name: 'Solana',
+          network: 'Solana Network',
+          iconPath: solSol?.assetPath,
+          fallbackIcon: Icons.currency_bitcoin,
+          fallbackColor: Colors.orange,
+        ),
+      ];
+    } else if (sym.toUpperCase() == 'TRX') {
+      final trxTrx = store.getById('TRX-TRX');
+      rows = [
+        _variantRow(
+          id: 'TRX-TRX',
+          name: 'Tron',
+          network: 'Tron Network',
+          iconPath: trxTrx?.assetPath,
+          fallbackIcon: Icons.currency_bitcoin,
+          fallbackColor: Colors.orange,
+        ),
+      ];
+    } else if (sym.toUpperCase() == 'XMR') {
+      final xmrXmr = store.getById('XMR-XMR');
+      rows = [
+        _variantRow(
+          id: 'XMR-XMR',
+          name: 'Monero',
+          network: 'Monero Network',
+          iconPath: xmrXmr?.assetPath,
+          fallbackIcon: Icons.currency_bitcoin,
+          fallbackColor: Colors.orange,
+        ),
+      ];
+    } else if (sym.toUpperCase() == 'ETH') {
+      final ethEth = store.getById('ETH-ETH');
+      rows = [
+        _variantRow(
+          id: 'ETH-ETH',
+          name: 'Ethereum',
+          network: 'Ethereum Network',
+          iconPath: ethEth?.assetPath,
+          fallbackIcon: Icons.currency_bitcoin,
+          fallbackColor: Colors.blue,
         ),
       ];
     } else if (sym.toUpperCase() == 'BTC') {
@@ -532,13 +593,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       ];
     } else {
       // Other coins → single card using its own id (sym)
-      final coin = store.getById(sym);
+
+      final bnbbnb = store.getById('BNB-BNB');
       rows = [
         _variantRow(
-          id: sym,
-          name: name,
-          network: _getDefaultNetwork(sym),
-          iconPath: coin?.assetPath ?? iconPath,
+          id: 'BNB',
+          name: 'BNB-BNB',
+          network: 'BNB Chain',
+          iconPath: bnbbnb?.assetPath,
           fallbackIcon: Icons.currency_bitcoin,
           fallbackColor: Colors.orange,
         ),
@@ -546,97 +608,100 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
 
     // Render cards
-    return rows
-        .map(
-          (v) => Container(
-            margin: EdgeInsets.only(bottom: 2.h),
-            padding: EdgeInsets.all(3.w),
-            decoration: BoxDecoration(
-              color: cardBackground,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: (v['icon'] as String?)?.isNotEmpty == true
-                      ? Image.asset(
-                          v['icon'],
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            v['fallbackIcon'],
-                            color: v['iconColor'],
-                            size: 32,
-                          ),
-                        )
-                      : Icon(
-                          v['fallbackIcon'],
-                          color: v['iconColor'],
-                          size: 32,
-                        ),
-                ),
-                SizedBox(width: 3.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // title + balance
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            v['name'],
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            _getVariantBalance(v['id']),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+    return rows.map<Widget>((v) {
+      final bool isGasFree = (v['id'] == 'USDT-GASFREE');
+      final Color outline = isGasFree
+          ? (v['borderColor'] as Color? ?? const Color(0xFF22C55E))
+          : Colors.white.withOpacity(0.1);
+
+      return Container(
+        margin: EdgeInsets.only(bottom: 2.h),
+        padding: EdgeInsets.all(3.w),
+        decoration: BoxDecoration(
+          color: cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: outline,
+            width: isGasFree ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: (v['icon'] as String?)?.isNotEmpty == true
+                  ? Image.asset(
+                      v['icon'],
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Icon(
+                        v['fallbackIcon'],
+                        color: v['iconColor'],
+                        size: 32,
                       ),
-                      SizedBox(height: 0.5.h),
-                      // network + fiat value
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            v['network'],
-                            style: const TextStyle(
-                              color: greyColor,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            _getVariantFiatValue(v['id']),
-                            style: const TextStyle(
-                              color: greyColor,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+                    )
+                  : Icon(
+                      v['fallbackIcon'],
+                      color: v['iconColor'],
+                      size: 32,
+                    ),
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // title + balance
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        v['name'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        _getVariantBalance(v['id']),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  SizedBox(height: 0.5.h),
+                  // network + fiat value
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        v['network'],
+                        style: const TextStyle(
+                          color: greyColor,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        _getVariantFiatValue(v['id']),
+                        style: const TextStyle(
+                          color: greyColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        )
-        .toList();
+          ],
+        ),
+      );
+    }).toList();
   }
 
   Map<String, dynamic> _variantRow({
@@ -646,6 +711,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     required IconData fallbackIcon,
     required Color fallbackColor,
     String? iconPath,
+    Color? borderColor,
   }) {
     return {
       'id': id,
@@ -654,6 +720,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       'icon': iconPath ?? '',
       'fallbackIcon': fallbackIcon,
       'iconColor': fallbackColor,
+      'borderColor': borderColor, // <— new
     };
   }
 
@@ -1071,7 +1138,7 @@ class ActionButtonsGridtoken extends StatelessWidget {
       _ActionButton("Send", Icons.send, "/send"),
       _ActionButton("Receive", Icons.download, "/receive"),
       _ActionButton("Swap", Icons.swap_horiz, "/swap"),
-      _ActionButton("Bridge", Icons.compare_arrows, "/bridge"),
+      _ActionButton("Activity", Icons.history, "/activity", enabled: false),
     ];
 
     return Container(

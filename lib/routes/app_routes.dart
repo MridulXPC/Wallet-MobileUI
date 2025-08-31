@@ -2,6 +2,7 @@ import 'package:cryptowallet/presentation/profile_screen/GeneralSettingsScreen.d
 import 'package:cryptowallet/presentation/profile_screen/SecuritySettingsScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/TechSupportScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/WalletSettingsScreen.dart';
+import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/walletscreen/wallet_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -36,6 +37,7 @@ class AppRoutes {
 
   // Wallet
   static const String receiveCrypto = '/receive';
+  static const String receiveBTCLightning = '/receive-btc-lightning';
   static const String sendCrypto = '/send';
   static const String transactionHistory = '/transactions';
   static const String tokenDetail = '/token-details';
@@ -67,15 +69,103 @@ class AppRoutes {
     techSupportScreen: (context) => const TechSupportScreen(),
 
     // Wallet Features
+// Helper: turn "BTC-LN" -> "BTC"
     receiveCrypto: (context) {
       final args = ModalRoute.of(context)?.settings.arguments;
-      String title = 'Your address to receive XRP';
+
+      // defaults
       String address = '';
+      String? coinId; // e.g. "BTC", "BTC-LN"
+      String? mode; // "onchain" | "invoice" | "ln" | "lightning"
+      String? titleOverride; // optional explicit title
+      int? initialSats;
+
       if (args is Map) {
-        title = (args['title'] as String?) ?? title;
-        address = (args['address'] as String?) ?? address;
+        address = (args['address'] as String?) ?? '';
+        coinId = args['coinId'] as String?;
+        mode = args['mode'] as String?;
+        titleOverride = args['title'] as String?;
+        initialSats = (args['initialSats'] as int?) ?? (args['sats'] as int?);
       }
-      return ReceiveQR(title: title, address: address);
+
+      // Normalize coin id & symbol
+      final id = (coinId ?? 'BTC').toUpperCase(); // "BTC-LN" -> "BTC-LN"
+      final symbol = id.split('-').first; // "BTC-LN" -> "BTC"
+
+      // Normalize mode; default by coin
+      late final String normalizedMode;
+      if (mode != null) {
+        final m = mode!.toLowerCase();
+        normalizedMode = (m == 'invoice' || m == 'ln' || m == 'lightning')
+            ? 'invoice'
+            : 'onchain';
+      } else {
+        normalizedMode = id.startsWith('BTC-LN') ? 'invoice' : 'onchain';
+      }
+
+      // Title
+      final computedTitle = titleOverride ??
+          (normalizedMode == 'invoice'
+              ? 'Set amount to receive $symbol'
+              : 'Your address to receive $symbol');
+
+      // Optional min sats for BTC on-chain
+      final int? minSats =
+          (normalizedMode == 'onchain' && symbol == 'BTC') ? 25000 : null;
+
+      return ReceiveQR(
+        title: "Your address to receive BTC",
+        address: "bc1pht4p7c7gxqjlpkf28t3n...04uvww6jlq5n373aqt8amed",
+        coinId: "BTC",
+        mode: "onchain",
+        initialSats: 0,
+        minSats: 25000,
+      );
+    },
+
+    receiveBTCLightning: (context) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+
+      // Safe map extraction
+      final Map<String, dynamic> args =
+          (raw is Map) ? Map<String, dynamic>.from(raw) : const {};
+
+      // ---- Back-compat (old) ----
+      // If someone still passes { title, address }, we’ll treat `address` as the QR data.
+      final String? legacyAddress = args['address'] as String?;
+
+      // ---- New fields (for the Charge / invoice flow) ----
+      final String title = (args['title'] as String?) ?? 'Charge';
+      final String accountLabel =
+          (args['accountLabel'] as String?) ?? 'LN - Main Account';
+      final String coinName = (args['coinName'] as String?) ?? 'Bitcoin';
+      final String iconAsset =
+          (args['iconAsset'] as String?) ?? 'assets/currencyicons/bitcoin.png';
+      final bool isLightning = (args['isLightning'] as bool?) ?? true;
+
+      final String amount = (args['amount'] as String?) ?? '0';
+      final String symbol = (args['symbol'] as String?) ?? 'BTC';
+      final double fiatValue = (args['fiatValue'] is num)
+          ? (args['fiatValue'] as num).toDouble()
+          : 0.0;
+
+      // What to encode in the QR. In the new flow this should be the amount (or LN invoice later).
+      final String qrData = (args['qrData'] as String?) ??
+          legacyAddress // fallback to legacy
+          ??
+          amount; // final fallback
+
+      return ReceiveQRbtclightning(
+        title: title,
+        accountLabel: accountLabel,
+        coinName: coinName,
+        iconAsset: iconAsset,
+        isLightning: isLightning,
+        amount: amount,
+        symbol: symbol,
+        fiatValue: fiatValue,
+        qrData: qrData,
+      );
     },
 
     sendCrypto: (context) => const SendCryptocurrency(),
