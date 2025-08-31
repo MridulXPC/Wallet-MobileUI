@@ -46,12 +46,42 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (args != null) {
       setState(() => tokenData = args);
     }
+    _applyInitialTabFromArgs(); // <- NEW: jump to requested tab, e.g., History (1)
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+// add inside _TokenDetailScreenState
+  int? _extractInitialTabFromArgs() {
+    final argsAny = ModalRoute.of(context)?.settings.arguments;
+    // Support both: a Map {'initialTab': 1} and a typed args object with .initialTab
+    try {
+      if (argsAny is Map<String, dynamic>) {
+        return argsAny['initialTab'] as int?;
+      } else {
+        final dynamic d = argsAny;
+        return d?.initialTab as int?;
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _applyInitialTabFromArgs() {
+    final idx = _extractInitialTabFromArgs();
+    if (idx != null &&
+        idx >= 0 &&
+        idx < tabs.length &&
+        idx != _tabController.index) {
+      // defer until after first build to avoid setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tabController.animateTo(idx);
+      });
+    }
   }
 
   // --------- Dummy transactions (by coin symbol) -------------
@@ -226,7 +256,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Expanded(child: const ActionButtonsGridtoken()),
+                          Expanded(
+                            child: ActionButtonsGridtoken(
+                              // <— remove `const` because we pass a callback
+                              onActivityTap: () => _tabController.animateTo(1),
+                            ),
+                          ),
                           SizedBox(width: 3.w),
                         ],
                       ),
@@ -1125,11 +1160,13 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 class ActionButtonsGridtoken extends StatelessWidget {
   final bool isLarge;
   final bool isTablet;
+  final VoidCallback? onActivityTap; // <- NEW
 
   const ActionButtonsGridtoken({
     super.key,
     this.isLarge = false,
     this.isTablet = false,
+    this.onActivityTap, // <- NEW
   });
 
   @override
@@ -1138,7 +1175,14 @@ class ActionButtonsGridtoken extends StatelessWidget {
       _ActionButton("Send", Icons.send, "/send"),
       _ActionButton("Receive", Icons.download, "/receive"),
       _ActionButton("Swap", Icons.swap_horiz, "/swap"),
-      _ActionButton("Activity", Icons.history, "/activity", enabled: false),
+      // Activity stays on this screen: just switch tab
+      _ActionButton(
+        "Activity",
+        Icons.history,
+        "", // route unused for this one
+        enabled: true,
+        onTap: onActivityTap, // <- NEW
+      ),
     ];
 
     return Container(
@@ -1164,6 +1208,7 @@ class ActionButtonsGridtoken extends StatelessWidget {
             icon: b.icon,
             route: b.route,
             enabled: b.enabled,
+            onTap: b.onTap, // <- NEW
           );
         }).toList(),
       ),
@@ -1176,12 +1221,17 @@ class ActionButtonsGridtoken extends StatelessWidget {
     required IconData icon,
     required String route,
     bool enabled = true,
+    VoidCallback? onTap, // <- NEW
   }) {
     final Color activeColor = const Color(0xFF2E5BFF);
     final Color disabledColor = Colors.grey.shade400;
 
     return GestureDetector(
-      onTap: enabled ? () => Navigator.pushNamed(context, route) : null,
+      onTap: enabled
+          ? (onTap ??
+              () =>
+                  Navigator.pushNamed(context, route)) // <- prefer custom onTap
+          : null,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1205,6 +1255,16 @@ class _ActionButton {
   final String title;
   final IconData icon;
   final String route;
+  final Object? arguments;
   final bool enabled;
-  _ActionButton(this.title, this.icon, this.route, {this.enabled = true});
+  final VoidCallback? onTap;
+
+  _ActionButton(
+    this.title,
+    this.icon,
+    this.route, {
+    this.arguments,
+    this.enabled = true,
+    this.onTap,
+  });
 }

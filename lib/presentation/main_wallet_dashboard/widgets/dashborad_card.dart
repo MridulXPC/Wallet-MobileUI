@@ -5,12 +5,17 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cryptowallet/coin_store.dart';
-
+import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
+import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
+
+import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
+import 'package:cryptowallet/services/auth_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 class CryptoStatCard extends StatefulWidget {
@@ -270,6 +275,115 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     return all.reduce(math.max) * 1.02;
   }
 
+  Future<void> _openQRScanner() async {
+    final status = await Permission.camera.request();
+
+    if (status.isGranted) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QRScannerScreen(
+            onScan: (code) async {
+              // Handle the scanned session id
+              try {
+                // Prefer pulling from storage/service
+                String? token = await AuthService.getStoredToken();
+
+                // fallback hardcoded token for dev if needed:
+                token ??=
+                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
+
+                if (token == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          '❌ Authentication required. Please login first.'),
+                    ),
+                  );
+                  Navigator.pop(context);
+                  return;
+                }
+
+                final result = await AuthService.authorizeWebSession(
+                  sessionId: code,
+                  token: token,
+                );
+
+                if (!mounted) return;
+                if (result.success) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SessionInfoScreen(sessionId: code),
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          result.message ?? '❌ Failed to authorize session'),
+                    ),
+                  );
+                  Navigator.pop(context);
+                }
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content:
+                          Text('❌ An error occurred during authorization')),
+                );
+                Navigator.pop(context);
+              }
+            },
+          ),
+        ),
+      );
+    } else if (status.isPermanentlyDenied) {
+      openAppSettings();
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Camera permission is required.')),
+      );
+    }
+  }
+
+  // ---- Open Send screen with USD prefill ----
+  void _openSendWithUsd(double usd) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SendCryptocurrency(
+          title: 'Insert Amount',
+          initialCoinId: widget.coinId, // preselect same coin as the card
+          startInUsd: true, // USD tab selected
+          initialUsd: usd, // prefill amount
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration({required double radius, String? assetPath}) {
+    return BoxDecoration(
+      gradient: _gradient(),
+      borderRadius: BorderRadius.circular(radius),
+      image: (assetPath == null)
+          ? null
+          : DecorationImage(
+              image: AssetImage(assetPath),
+              fit: BoxFit.scaleDown,
+              alignment: const Alignment(1.2, -1.2),
+              colorFilter: ColorFilter.mode(
+                _dominantColor.withOpacity(0.70),
+                BlendMode.srcATop,
+              ),
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final coin = context.watch<CoinStore>().getById(widget.coinId);
@@ -289,25 +403,16 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final cacheW = (iconSize * dpr).round();
     final cacheH = (iconSize * dpr).round();
     final watermarkCacheW = (watermarkSize * dpr).round();
+    final assetPath = context.select<CoinStore, String?>(
+      (s) => s.getById(widget.coinId)?.assetPath,
+    );
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 20, horizontal: hMargin),
+      margin: EdgeInsets.symmetric(vertical: 11, horizontal: hMargin),
       padding: EdgeInsets.all(cardPad),
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: _dominantColor.withOpacity(0.28),
-            blurRadius: isLarge ? 12 : 8,
-            offset: Offset(isLarge ? 6 : 4, isLarge ? 8 : 6),
-          ),
-          const BoxShadow(
-            color: Color.fromARGB(31, 0, 0, 0),
-            blurRadius: 8,
-            offset: Offset(8, 10),
-          ),
-        ],
-        gradient: _gradient(),
-        borderRadius: BorderRadius.circular(radius),
+      decoration: _cardDecoration(
+        radius: radius,
+        assetPath: assetPath,
       ),
       child: Stack(
         children: [
@@ -360,10 +465,14 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                       ),
                     ),
                   ),
-                  Icon(
-                    Icons.qr_code_scanner,
-                    color: Colors.white,
-                    size: isLarge ? 24 : (isTablet ? 22 : 20),
+                  IconButton(
+                    icon: Icon(
+                      Icons.qr_code_scanner,
+                      color: Colors.white,
+                      size: isLarge ? 24 : (isTablet ? 22 : 20),
+                    ),
+                    onPressed: _openQRScanner,
+                    tooltip: 'Scan',
                   ),
                 ],
               ),
@@ -434,17 +543,33 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
               ),
               SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
 
+              // Amount chips → open Send with USD prefill
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
+                children: [
                   Expanded(
-                      child: _AmountButton(amount: '\$100', isLarge: false)),
-                  SizedBox(width: 8),
+                    child: _AmountButton(
+                      amount: '\$100',
+                      isLarge: false,
+                      onTap: () => _openSendWithUsd(100),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
-                      child: _AmountButton(amount: '\$200', isLarge: false)),
-                  SizedBox(width: 8),
+                    child: _AmountButton(
+                      amount: '\$200',
+                      isLarge: false,
+                      onTap: () => _openSendWithUsd(200),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
-                      child: _AmountButton(amount: '\$500', isLarge: false)),
+                    child: _AmountButton(
+                      amount: '\$500',
+                      isLarge: false,
+                      onTap: () => _openSendWithUsd(500),
+                    ),
+                  ),
                 ],
               ),
               SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
@@ -453,6 +578,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
               ActionButtonsGridWidget(
                 isLarge: isLarge,
                 isTablet: isTablet,
+                coinId: widget.coinId, // <-- IMPORTANT
               ),
             ],
           ),
@@ -650,35 +776,41 @@ class _NavArrow extends StatelessWidget {
 class _AmountButton extends StatelessWidget {
   final String amount;
   final bool isLarge;
+  final VoidCallback? onTap; // NEW
 
   const _AmountButton({
     required this.amount,
     required this.isLarge,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width > 600;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        vertical: isLarge ? 12 : 10,
-        horizontal: isLarge ? 10 : 10,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(isLarge ? 12 : 10),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.3),
-          width: 1,
+    return InkWell(
+      borderRadius: BorderRadius.circular(isLarge ? 12 : 10),
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          vertical: isLarge ? 12 : 10,
+          horizontal: isLarge ? 10 : 10,
         ),
-      ),
-      child: Center(
-        child: Text(
-          amount,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: isTablet ? 14 : 12,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(isLarge ? 12 : 10),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            amount,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: isTablet ? 14 : 12,
+            ),
           ),
         ),
       ),

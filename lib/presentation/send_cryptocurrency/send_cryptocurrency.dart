@@ -1,3 +1,4 @@
+// lib/presentation/send_cryptocurrency/SendCryptocurrency.dart
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:flutter/material.dart';
@@ -173,12 +174,20 @@ class SendCryptocurrency extends StatefulWidget {
   /// If true, behaves as a "Charge" screen (we'll hook next step later)
   final bool isChargeMode;
 
+  /// NEW: prefill USD amount (when opening from amount chips)
+  final double? initialUsd;
+
+  /// NEW: open with USD tab selected
+  final bool startInUsd;
+
   const SendCryptocurrency({
     super.key,
     this.title = 'Insert Amount',
     this.initialCoinId,
     this.buttonLabel,
     this.isChargeMode = false,
+    this.initialUsd, // NEW
+    this.startInUsd = false, // NEW
   });
 
   @override
@@ -275,24 +284,36 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   void _onPercentagePressed(double percentage) {
     setState(() {
-      final amt = _selectedAssetBalance * percentage;
-      _currentAmount = amt
-          .toStringAsFixed(8)
-          .replaceAll(RegExp(r'0*$'), '')
-          .replaceAll(RegExp(r'\.$'), '');
+      if (_isCryptoSelected) {
+        final amt = _selectedAssetBalance * percentage; // crypto amount
+        _currentAmount = amt
+            .toStringAsFixed(8)
+            .replaceAll(RegExp(r'0*$'), '')
+            .replaceAll(RegExp(r'\.$'), '');
+      } else {
+        final usd = _selectedAssetBalance *
+            _selectedAssetPrice *
+            percentage; // USD amount
+        _currentAmount = usd.toStringAsFixed(2);
+      }
       if (_currentAmount.isEmpty) _currentAmount = '0';
       _calculateUSDValue();
     });
   }
 
   void _calculateUSDValue() {
-    final amount = double.tryParse(_currentAmount) ?? 0.0;
-    _usdValue = amount * _selectedAssetPrice;
+    final val = double.tryParse(_currentAmount) ?? 0.0;
+    // If crypto tab is selected, amount is crypto → convert to USD. If USD tab selected, amount is already USD.
+    _usdValue = _isCryptoSelected ? val * _selectedAssetPrice : val;
   }
 
-// Add this method to your _SendCryptocurrencyState class
+  // Add this method to your _SendCryptocurrencyState class
   void _onNextPressed() {
-    if (_currentAmount == '0' || double.tryParse(_currentAmount) == 0) {
+    final entered = double.tryParse(_currentAmount) ?? 0.0;
+    final amountCrypto =
+        _isCryptoSelected ? entered : (entered / _selectedAssetPrice);
+
+    if (amountCrypto <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter an amount greater than 0'),
@@ -302,8 +323,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       return;
     }
 
-    final amount = double.tryParse(_currentAmount) ?? 0.0;
-    if (amount > _selectedAssetBalance) {
+    if (amountCrypto > _selectedAssetBalance) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Insufficient balance'),
@@ -313,7 +333,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       return;
     }
 
-    // 👉 If this screen is opened as "Charge" (invoice flow), pause here.
+    final amountCryptoStr = amountCrypto
+        .toStringAsFixed(8)
+        .replaceAll(RegExp(r'0*$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
+
+    // 👉 If this screen is opened as "Charge" (invoice flow)
     if (widget.isChargeMode) {
       final isLn = (widget.initialCoinId ?? _selectedAssetSymbol)
           .toUpperCase()
@@ -328,27 +353,27 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             coinName: _selectedAsset, // e.g. "Bitcoin"
             iconAsset: _selectedAssetIconPath, // coin icon
             isLightning: isLn, // shows purple Lightning pill
-            amount: _currentAmount, // the amount user typed
+            amount: amountCryptoStr, // crypto amount
             symbol: _selectedAssetSymbol, // e.g. "BTC"
-            fiatValue: _usdValue, // computed USD
-            qrData: _currentAmount, // 🔥 QR encodes only the amount
+            fiatValue: amountCrypto * _selectedAssetPrice,
+            qrData: amountCryptoStr, // 🔥 QR encodes crypto amount
           ),
         ),
       );
       return;
     }
 
-    // Default SEND flow (unchanged)
+    // Default SEND flow
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => SendConfirmationScreen(
-          amount: _currentAmount,
+          amount: amountCryptoStr, // crypto amount
           assetSymbol: _selectedAssetSymbol,
           assetName: _selectedAsset,
           assetIconPath: _selectedAssetIconPath,
           assetPrice: _selectedAssetPrice,
-          usdValue: _usdValue,
+          usdValue: amountCrypto * _selectedAssetPrice,
         ),
       ),
     );
@@ -555,10 +580,10 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   void _toggleCurrency() {
     setState(() {
       _isCryptoSelected = !_isCryptoSelected;
+      _calculateUSDValue();
     });
   }
 
-  @override
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -592,6 +617,24 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       }
 
       _onAssetSelected(initial);
+
+      // Apply prefill/selection from navigation
+      if (widget.startInUsd) {
+        _isCryptoSelected = false; // show USD tab
+      }
+      if (widget.initialUsd != null) {
+        if (_isCryptoSelected) {
+          // convert USD → crypto text
+          final crypto = widget.initialUsd! / _selectedAssetPrice;
+          _currentAmount = crypto
+              .toStringAsFixed(8)
+              .replaceAll(RegExp(r'0*$'), '')
+              .replaceAll(RegExp(r'\.$'), '');
+        } else {
+          _currentAmount = widget.initialUsd!.toStringAsFixed(2);
+        }
+      }
+      _calculateUSDValue();
     }
   }
 
@@ -605,17 +648,22 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     final isSmallScreen = screenHeight < 0.6 * screenWidth;
     final isTablet = screenWidth > 600;
 
+    // compute secondary line conversion when needed
+    final double primaryVal = double.tryParse(_currentAmount) ?? 0.0;
+    final double cryptoAmt =
+        _isCryptoSelected ? primaryVal : (primaryVal / _selectedAssetPrice);
+
     return Scaffold(
-      backgroundColor: Color(0xFF0B0D1A),
+      backgroundColor: const Color(0xFF0B0D1A),
       appBar: AppBar(
-        backgroundColor: Color(0xFF0B0D1A),
+        backgroundColor: const Color(0xFF0B0D1A),
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 16),
         ),
         title: Text(
-          widget.title, // <-- was hardcoded "Insert Amount"
+          widget.title,
           style: TextStyle(
             color: Colors.white,
             fontSize: isTablet ? 20 : 18,
@@ -779,16 +827,18 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                       // Amount Display
                       Column(
                         children: [
-                          Text(
+                          const Text(
                             'Amount',
                             style: TextStyle(
-                              color: const Color(0xFF9CA3AF),
-                              fontSize: isSmallScreen ? 14 : 14,
+                              color: Color(0xFF9CA3AF),
+                              fontSize: 14,
                             ),
                           ),
                           SizedBox(height: 0.5.h),
                           Text(
-                            _currentAmount,
+                            _isCryptoSelected
+                                ? _currentAmount
+                                : '\$$_currentAmount',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 28,
@@ -799,7 +849,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                           SizedBox(height: 0.5.h),
                           Text(
-                            '≈ \$${_usdValue.toStringAsFixed(2)} USD',
+                            _isCryptoSelected
+                                ? '≈ \$${_usdValue.toStringAsFixed(2)} USD'
+                                : '≈ ${cryptoAmt.toStringAsFixed(8)} $_selectedAssetSymbol',
                             style: TextStyle(
                               color: const Color(0xFF9CA3AF),
                               fontSize: isSmallScreen ? 14 : 16,
@@ -861,8 +913,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ElevatedButton(
-                          onPressed:
-                              _onNextPressed, // Changed from Navigator.of(context).pop()
+                          onPressed: _onNextPressed,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,

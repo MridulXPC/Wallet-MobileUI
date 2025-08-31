@@ -1,9 +1,11 @@
+import 'package:cryptowallet/presentation/Explore/explore_screen.dart';
 import 'package:cryptowallet/presentation/profile_screen/GeneralSettingsScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/SecuritySettingsScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/TechSupportScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/adressbook.dart';
 
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
+import 'package:cryptowallet/presentation/swap_screen.dart/swaphistory.dart';
 import 'package:cryptowallet/presentation/walletscreen/wallet_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -35,7 +37,8 @@ class AppRoutes {
   static const String biometricAuthScreen = '/biometric-auth';
   static const String appLockScreen = '/app-lock';
   static const String dashboardScreen = '/main-dashboard';
-  static const String swaphistory = '/';
+  static const String swaphistory = '/swap-history';
+  static const String explorescreen = '/explore-screen';
 
   // Wallet
   static const String receiveCrypto = '/receive';
@@ -67,10 +70,12 @@ class AppRoutes {
     appLockScreen: (context) => const AppLockScreen(),
     dashboardScreen: (context) => const WalletHomeScreen(),
     generalSettingsScreen: (context) => const GeneralSettingsScreen(),
+    explorescreen: (context) => const ExploreScreen(),
 
     addressbook: (context) => const AddressBookScreen(),
     securitysettingscreen: (context) => const SecuritySettingsScreen(),
     techSupportScreen: (context) => const TechSupportScreen(),
+    swaphistory: (context) => const SwapHistoryScreen(),
 
     // Wallet Features
 // Helper: turn "BTC-LN" -> "BTC"

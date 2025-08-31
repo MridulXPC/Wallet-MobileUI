@@ -1,22 +1,27 @@
-// Updated ActionButtonsGridWidget with full-width alignment to match container layout
-
+// lib/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-
 import '../../../core/app_export.dart';
+import '../../../../coin_store.dart';
 
 class ActionButtonsGridWidget extends StatelessWidget {
   final bool isLarge;
   final bool isTablet;
+  final String coinId; // <-- NEW: jis coin ki card hai
 
   const ActionButtonsGridWidget({
     super.key,
+    required this.coinId, // <-- REQUIRED
     this.isLarge = false,
     this.isTablet = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final store = context.watch<CoinStore>();
+    final coin = store.getById(coinId);
+
     final List<_ActionButton> actionButtons = [
       _ActionButton(
         title: "Send",
@@ -36,7 +41,16 @@ class ActionButtonsGridWidget extends StatelessWidget {
       _ActionButton(
         title: "Activity",
         icon: Icons.history,
-        route: AppRoutes.transactionHistory,
+        route: AppRoutes.tokenDetail,
+        // 👉 TokenDetail ko History tab par le jao + coin context bhejo
+        arguments: {
+          'initialTab': 1, // History tab
+          'symbol': coin?.symbol, // e.g. BTC
+          'name': coin?.name, // e.g. Bitcoin
+          'icon': coin?.assetPath, // icon path from CoinStore
+          // zarurat ho to price/extra fields bhi bhej sakte ho:
+          // 'price':  widget.currentPrice  <-- (agar is widget ko pass karna chaho)
+        },
       ),
     ];
 
@@ -53,6 +67,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
                 title: button.title,
                 icon: button.icon,
                 route: button.route,
+                arguments: button.arguments, // <-- forward args
               ),
             ),
           );
@@ -66,11 +81,12 @@ class ActionButtonsGridWidget extends StatelessWidget {
     required String title,
     required IconData icon,
     required String route,
+    Object? arguments, // <-- NEW
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => Navigator.pushNamed(context, route),
+        onTap: () => Navigator.pushNamed(context, route, arguments: arguments),
         borderRadius: BorderRadius.circular(6),
         child: Container(
           decoration: BoxDecoration(
@@ -82,11 +98,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                color: Colors.white,
-                size: 24,
-              ),
+              Icon(icon, color: Colors.white, size: 24),
               SizedBox(height: 6),
               Text(
                 title,
@@ -111,6 +123,11 @@ class _ActionButton {
   final String title;
   final IconData icon;
   final String route;
-
-  _ActionButton({required this.title, required this.icon, required this.route});
+  final Object? arguments; // <-- NEW
+  _ActionButton({
+    required this.title,
+    required this.icon,
+    required this.route,
+    this.arguments,
+  });
 }
