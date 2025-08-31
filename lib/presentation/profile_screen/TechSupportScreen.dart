@@ -75,67 +75,6 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
               // TODO: open about
             },
           ),
-          const SizedBox(height: 24),
-          const _SectionHeader('User Experience'),
-          const SizedBox(height: 8),
-          _SettingCard(
-            leadingIcon: Icons.favorite_outline,
-            title: 'Feature Suggestion',
-            subtitle: 'Help us to improve Klever Wallet',
-            onTap: () {
-              // TODO: feature suggestion flow
-            },
-          ),
-          const SizedBox(height: 12),
-          _SettingCard(
-            leadingIcon: Icons.wb_sunny_outlined,
-            title: 'Enable staking beta',
-            subtitle: '',
-            trailing: Switch.adaptive(
-              value: stakingBeta,
-              activeColor: Colors.white,
-              activeTrackColor: const Color(0xFF5660FF),
-              onChanged: (val) => setState(() => stakingBeta = val),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const _SectionHeader('Community'),
-          const SizedBox(height: 8),
-          _SettingCard(
-            leadingIcon: Icons.camera_alt_outlined,
-            title: 'Instagram',
-            subtitle: '',
-            onTap: () {
-              // TODO: launch instagram link
-            },
-          ),
-          const SizedBox(height: 12),
-          _SettingCard(
-            leadingIcon: Icons.play_circle_outline,
-            title: 'YouTube',
-            subtitle: '',
-            onTap: () {
-              // TODO: launch youtube link
-            },
-          ),
-          const SizedBox(height: 12),
-          _SettingCard(
-            leadingIcon: Icons.work_outline,
-            title: 'LinkedIn',
-            subtitle: '',
-            onTap: () {
-              // TODO: launch linkedin link
-            },
-          ),
-          const SizedBox(height: 12),
-          _SettingCard(
-            leadingIcon: Icons.facebook_outlined,
-            title: 'Facebook',
-            subtitle: '',
-            onTap: () {
-              // TODO: launch facebook link
-            },
-          ),
         ],
       ),
     );

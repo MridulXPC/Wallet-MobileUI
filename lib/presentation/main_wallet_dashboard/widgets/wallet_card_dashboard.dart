@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 
-class VaultHeaderCard extends StatelessWidget {
+class VaultHeaderCard extends StatefulWidget {
   final String totalValue;
   final String vaultName;
   final VoidCallback onTap;
@@ -10,6 +10,7 @@ class VaultHeaderCard extends StatelessWidget {
   final VoidCallback? onActivities; // optional
 
   const VaultHeaderCard({
+    super.key,
     required this.totalValue,
     required this.vaultName,
     required this.onTap,
@@ -18,9 +19,18 @@ class VaultHeaderCard extends StatelessWidget {
   });
 
   @override
+  State<VaultHeaderCard> createState() => _VaultHeaderCardState();
+}
+
+class _VaultHeaderCardState extends State<VaultHeaderCard> {
+  bool _hidden = false;
+
+  @override
   Widget build(BuildContext context) {
+    final masked = _hidden ? '•••••••' : widget.totalValue;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: ClipRRect(
@@ -61,29 +71,48 @@ class VaultHeaderCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Total Portfolio Value",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white.withOpacity(0.7),
-                              fontWeight: FontWeight.w500,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                "Total Portfolio Value",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              _EyeButton(
+                                hidden: _hidden,
+                                onPressed: () =>
+                                    setState(() => _hidden = !_hidden),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            totalValue,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black26,
-                                  offset: Offset(0, 1),
-                                  blurRadius: 3,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  masked,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black26,
+                                        offset: Offset(0, 1),
+                                        blurRadius: 3,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                           ),
                         ],
                       ),
@@ -91,9 +120,9 @@ class VaultHeaderCard extends StatelessWidget {
 
                     // Right: 3-dots menu
                     _VaultMenuButton(
-                      title: vaultName,
-                      onChangeWallet: onChangeWallet,
-                      onActivities: onActivities,
+                      title: widget.vaultName,
+                      onChangeWallet: widget.onChangeWallet,
+                      onActivities: widget.onActivities,
                       navContext: context, // <-- pass parent context
                     ),
                   ],
@@ -108,7 +137,7 @@ class VaultHeaderCard extends StatelessWidget {
 }
 
 // Alternative Dark Theme Version
-class VaultHeaderCardDark extends StatelessWidget {
+class VaultHeaderCardDark extends StatefulWidget {
   final String totalValue;
   final String vaultName;
   final VoidCallback onTap;
@@ -116,6 +145,7 @@ class VaultHeaderCardDark extends StatelessWidget {
   final VoidCallback? onActivities; // optional
 
   const VaultHeaderCardDark({
+    super.key,
     required this.totalValue,
     required this.vaultName,
     required this.onTap,
@@ -124,9 +154,18 @@ class VaultHeaderCardDark extends StatelessWidget {
   });
 
   @override
+  State<VaultHeaderCardDark> createState() => _VaultHeaderCardDarkState();
+}
+
+class _VaultHeaderCardDarkState extends State<VaultHeaderCardDark> {
+  bool _hidden = false;
+
+  @override
   Widget build(BuildContext context) {
+    final masked = _hidden ? '•••••••' : widget.totalValue;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: ClipRRect(
@@ -176,13 +215,27 @@ class VaultHeaderCardDark extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            totalValue,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  masked,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _EyeButton(
+                                hidden: _hidden,
+                                onPressed: () =>
+                                    setState(() => _hidden = !_hidden),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -190,15 +243,45 @@ class VaultHeaderCardDark extends StatelessWidget {
 
                     // Right: 3-dots menu
                     _VaultMenuButton(
-                      title: vaultName,
-                      onChangeWallet: onChangeWallet,
-                      onActivities: onActivities,
-                      navContext: context, // <-- pass parent context
+                      title: widget.vaultName,
+                      onChangeWallet: widget.onChangeWallet,
+                      onActivities: widget.onActivities,
+                      navContext: context,
                     ),
                   ],
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Reusable small eye/eye-off button (keeps tap target comfy)
+class _EyeButton extends StatelessWidget {
+  final bool hidden;
+  final VoidCallback onPressed;
+
+  const _EyeButton({
+    required this.hidden,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 18,
+        child: Padding(
+          padding: const EdgeInsets.all(4.0),
+          child: Icon(
+            hidden ? Icons.visibility_off : Icons.visibility,
+            size: 20,
+            color: Colors.white70,
           ),
         ),
       ),
@@ -237,8 +320,6 @@ class _VaultMenuButton extends StatelessWidget {
             onChangeWallet();
             break;
           case 'activities':
-            // Ensure we navigate after the popup fully closes,
-            // and use the root navigator to avoid nested navs.
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (onActivities != null) {
                 onActivities!();

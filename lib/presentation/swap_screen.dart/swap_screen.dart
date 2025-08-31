@@ -575,7 +575,14 @@ class _SwapScreenState extends State<SwapScreen> {
           const SizedBox(width: 8),
           const Icon(Icons.refresh, color: Colors.white70),
           const SizedBox(width: 8),
-          const Icon(Icons.history, color: Colors.white70),
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white70),
+            onPressed: () {
+              Navigator.of(context, rootNavigator: true).pushNamed(
+                  AppRoutes.swaphistory); // <- adjust name if different
+            },
+          ),
+
           const SizedBox(width: 16),
         ],
       ),

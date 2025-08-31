@@ -188,11 +188,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _HubSquareCard(
-                    icon: Icons.account_balance_wallet_outlined,
-                    title: 'Wallet\nSettings',
+                    icon: Icons.contact_page_outlined,
+                    title: 'Address Book',
                     onTap: () {
-                      Navigator.pushNamed(
-                          context, AppRoutes.walletSettingsScreen);
+                      Navigator.pushNamed(context, AppRoutes.addressbook);
                     },
                   ),
                 ),

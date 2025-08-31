@@ -1,7 +1,8 @@
 import 'package:cryptowallet/presentation/profile_screen/GeneralSettingsScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/SecuritySettingsScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/TechSupportScreen.dart';
-import 'package:cryptowallet/presentation/profile_screen/WalletSettingsScreen.dart';
+import 'package:cryptowallet/presentation/profile_screen/adressbook.dart';
+
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/walletscreen/wallet_screen.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String biometricAuthScreen = '/biometric-auth';
   static const String appLockScreen = '/app-lock';
   static const String dashboardScreen = '/main-dashboard';
+  static const String swaphistory = '/';
 
   // Wallet
   static const String receiveCrypto = '/receive';
@@ -51,6 +53,7 @@ class AppRoutes {
   static const String walletSettingsScreen = '/wallet-settings';
   static const String securitysettingscreen = '/security-settings';
   static const String techSupportScreen = '/tech-support';
+  static const String addressbook = '/address-book';
 
   // Routes map
   static final Map<String, WidgetBuilder> routes = {
@@ -64,7 +67,8 @@ class AppRoutes {
     appLockScreen: (context) => const AppLockScreen(),
     dashboardScreen: (context) => const WalletHomeScreen(),
     generalSettingsScreen: (context) => const GeneralSettingsScreen(),
-    walletSettingsScreen: (context) => const WalletSettingsScreen(),
+
+    addressbook: (context) => const AddressBookScreen(),
     securitysettingscreen: (context) => const SecuritySettingsScreen(),
     techSupportScreen: (context) => const TechSupportScreen(),
 
@@ -74,18 +78,14 @@ class AppRoutes {
       final args = ModalRoute.of(context)?.settings.arguments;
 
       // defaults
-      String address = '';
       String? coinId; // e.g. "BTC", "BTC-LN"
       String? mode; // "onchain" | "invoice" | "ln" | "lightning"
       String? titleOverride; // optional explicit title
-      int? initialSats;
 
       if (args is Map) {
-        address = (args['address'] as String?) ?? '';
         coinId = args['coinId'] as String?;
         mode = args['mode'] as String?;
         titleOverride = args['title'] as String?;
-        initialSats = (args['initialSats'] as int?) ?? (args['sats'] as int?);
       }
 
       // Normalize coin id & symbol
