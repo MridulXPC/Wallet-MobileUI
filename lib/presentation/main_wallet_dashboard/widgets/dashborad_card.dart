@@ -8,9 +8,9 @@ import 'package:cryptowallet/coin_store.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
-
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/services/auth_service.dart';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
@@ -91,13 +91,17 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Precache current coin icon
+    // Precache small icon for the current coin (fast first paint)
     final coin = context.read<CoinStore>().getById(widget.coinId);
     final assetPath = coin?.assetPath;
     final provider = _getAssetProvider(widget.coinId, assetPath);
     if (provider != null) {
       precacheImage(provider, context);
     }
+
+    // Precache BIG, soft watermark (card background)
+    final bg = context.read<CoinStore>().cardAssetFor(widget.coinId);
+    if (bg != null) precacheImage(AssetImage(bg), context);
   }
 
   @override
@@ -106,13 +110,15 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     if (oldWidget.coinId != widget.coinId ||
         oldWidget.title != widget.title ||
         oldWidget.colorKey != widget.colorKey) {
-      // Precache icon for the new coin
       final coin = context.read<CoinStore>().getById(widget.coinId);
       final assetPath = coin?.assetPath;
       final provider = _getAssetProvider(widget.coinId, assetPath);
       if (provider != null) {
         precacheImage(provider, context);
       }
+      final bg = context.read<CoinStore>().cardAssetFor(widget.coinId);
+      if (bg != null) precacheImage(AssetImage(bg), context);
+
       _resolveDominantColor();
     }
   }
@@ -125,7 +131,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
   void _resolveDominantColor() {
     _debounce?.cancel();
-    // Small debounce to collapse rapid page changes
     _debounce = Timer(const Duration(milliseconds: 40), _extractDominantColor);
   }
 
@@ -137,7 +142,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
     final cacheKey = _colorCacheKey(assetPath: assetPath, nameOrId: nameOrId);
 
-    // 1) If cached, use it immediately
     final cached = _dominantColorCache[cacheKey];
     if (cached != null) {
       if (!mounted) return;
@@ -148,30 +152,23 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       return;
     }
 
-    // 2) If no icon, keep the good fallback we set in initState — also cache it
     if (assetPath == null || assetPath.isEmpty) {
       _dominantColorCache[cacheKey] = _dominantColor;
       return;
     }
 
     try {
-      // 3) Load bytes (assets are instant after first read), then decode small
       final ByteData data = await rootBundle.load(assetPath);
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode icon to tiny size — super fast
-      final ui.Codec codec = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: 48,
-        targetHeight: 48,
-      );
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes,
+          targetWidth: 48, targetHeight: 48);
       final ui.FrameInfo frame = await codec.getNextFrame();
       final ui.Image img = frame.image;
       final ByteData? rgba =
           await img.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (rgba == null) throw StateError('rgba null');
 
-      // 4) Compute dominant color off the UI thread
       final int rgb = await compute(
           _dominantColorFromRgbaIsolate, rgba.buffer.asUint8List());
 
@@ -183,7 +180,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       });
       _dominantColorCache[cacheKey] = color;
     } catch (_) {
-      // Keep fallback and cache it
       _dominantColorCache[cacheKey] = _dominantColor;
     }
   }
@@ -191,7 +187,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   static int _dominantColorFromRgbaIsolate(Uint8List pixels) {
     // Returns 0xRRGGBB
     final Map<int, int> counts = {};
-    // sample roughly every 4th pixel (16 bytes/px RGBA => step 16*4 = 64)
     for (int i = 0; i + 3 < pixels.length; i += 64) {
       final int r = pixels[i];
       final int g = pixels[i + 1];
@@ -205,15 +200,11 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       final int key = (r << 16) | (g << 8) | b;
       counts[key] = (counts[key] ?? 0) + 1;
     }
-    if (counts.isEmpty) {
-      // mid-blue default if nothing suitable
-      return 0x1A73E8;
-    }
+    if (counts.isEmpty) return 0x1A73E8;
     return counts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
   }
 
   Color _fallbackColor(String nameOrSymbol) {
-    // Per-coin deterministic fallbacks to avoid repeated default color.
     const fallback = Color(0xFF1A73E8);
     const map = <String, Color>{
       'Bitcoin': Color(0xFFF7931A),
@@ -254,27 +245,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     );
   }
 
-  List<FlSpot> _spots(List<double> prices) =>
-      List.generate(prices.length, (i) => FlSpot(i.toDouble(), prices[i]));
-
-  double _minY() {
-    final all = [
-      ...widget.monthlyData,
-      ...widget.todayData,
-      ...widget.yearlyData
-    ];
-    return all.reduce(math.min) * 0.98;
-  }
-
-  double _maxY() {
-    final all = [
-      ...widget.monthlyData,
-      ...widget.todayData,
-      ...widget.yearlyData
-    ];
-    return all.reduce(math.max) * 1.02;
-  }
-
   Future<void> _openQRScanner() async {
     final status = await Permission.camera.request();
 
@@ -285,12 +255,8 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         MaterialPageRoute(
           builder: (_) => QRScannerScreen(
             onScan: (code) async {
-              // Handle the scanned session id
               try {
-                // Prefer pulling from storage/service
                 String? token = await AuthService.getStoredToken();
-
-                // fallback hardcoded token for dev if needed:
                 token ??=
                     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
 
@@ -328,7 +294,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
                   );
                   Navigator.pop(context);
                 }
-              } catch (e) {
+              } catch (_) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -366,18 +332,22 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     );
   }
 
+  // Diagonal helper: true => topRight -> bottomLeft, false => opposite
+  Alignment _diag({bool topRightToBottomLeft = true, double k = 1.15}) =>
+      topRightToBottomLeft ? Alignment(-k, k) : Alignment(k, -k);
+
   BoxDecoration _cardDecoration({required double radius, String? assetPath}) {
     return BoxDecoration(
       gradient: _gradient(),
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: BorderRadius.circular(radius), // radius = 6
       image: (assetPath == null)
           ? null
           : DecorationImage(
               image: AssetImage(assetPath),
-              fit: BoxFit.scaleDown,
-              alignment: const Alignment(1.2, -1.2),
+              fit: BoxFit.contain,
+              alignment: _diag(topRightToBottomLeft: true, k: 1.2),
               colorFilter: ColorFilter.mode(
-                _dominantColor.withOpacity(0.70),
+                _dominantColor.withOpacity(0.55), // soft watermark
                 BlendMode.srcATop,
               ),
             ),
@@ -393,194 +363,161 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     final isTablet = screenWidth > 600;
     final isLarge = screenWidth > 900;
 
+    // Auto-compact if device is short or text scale is large
+    final textScale = MediaQuery.of(context).textScaleFactor;
+    final compact = MediaQuery.of(context).size.height < 600 || textScale > 1.1;
+    SizedBox gap(double tight, double roomy) =>
+        SizedBox(height: compact ? tight : roomy);
+
     // Responsive dims
-    final cardPad = isLarge ? 10.0 : (isTablet ? 8.0 : 12.0);
-    final radius = isLarge ? 6.0 : (isTablet ? 6.0 : 6.0);
+    final cardPadH = compact ? 10.0 : 12.0;
+    final radius = 6.0;
     final iconSize = isLarge ? 40.0 : (isTablet ? 36.0 : 32.0);
     final priceFs = isLarge ? 32.0 : (isTablet ? 30.0 : 28.0);
-    final watermarkSize = isLarge ? 200.0 : (isTablet ? 180.0 : 160.0);
     final hMargin = (screenWidth * 0.02).clamp(8.0, 20.0);
     final cacheW = (iconSize * dpr).round();
     final cacheH = (iconSize * dpr).round();
-    final watermarkCacheW = (watermarkSize * dpr).round();
-    final assetPath = context.select<CoinStore, String?>(
-      (s) => s.getById(widget.coinId)?.assetPath,
+
+    final cardAssetPath = context.select<CoinStore, String?>(
+      (s) => s.cardAssetFor(widget.coinId),
     );
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 11, horizontal: hMargin),
-      padding: EdgeInsets.all(cardPad),
-      decoration: _cardDecoration(
-        radius: radius,
-        assetPath: assetPath,
-      ),
-      child: Stack(
+      margin:
+          EdgeInsets.symmetric(vertical: compact ? 0 : 0, horizontal: hMargin),
+      padding: EdgeInsets.symmetric(vertical: 0, horizontal: cardPadH),
+      decoration: _cardDecoration(radius: radius, assetPath: cardAssetPath),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned(
-            right: -watermarkSize * 0.3,
-            top: -watermarkSize * 0.2,
-            child: Selector<CoinStore, String?>(
-              selector: (_, s) => s.getById(widget.coinId)?.assetPath,
-              builder: (context, assetPath, _) {
-                final provider = _getAssetProvider(widget.coinId, assetPath);
-                if (provider == null) {
-                  return Icon(
-                    Icons.currency_bitcoin,
-                    color: _dominantColor.withOpacity(0.0),
-                    size: watermarkSize,
-                  );
-                }
-                return ColorFiltered(
-                  colorFilter: ColorFilter.mode(
-                    _dominantColor.withOpacity(0.12), // subtle tint
-                    BlendMode.srcIn,
-                  ),
-                  child: Image.asset(
-                    assetPath!,
-                    width: watermarkSize,
-                    height: watermarkSize,
-                    fit: BoxFit.contain,
-                    cacheWidth: watermarkCacheW,
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // ===== Main content
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Header row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Top row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      '$title price',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+              Flexible(
+                child: Text(
+                  '$title price',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
+                    fontWeight: FontWeight.w500,
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.qr_code_scanner,
-                      color: Colors.white,
-                      size: isLarge ? 24 : (isTablet ? 22 : 20),
-                    ),
-                    onPressed: _openQRScanner,
-                    tooltip: 'Scan',
-                  ),
-                ],
-              ),
-              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
-
-              // Price row with icon (Selector to avoid full rebuilds)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Selector<CoinStore, String?>(
-                    selector: (_, s) => s.getById(widget.coinId)?.assetPath,
-                    builder: (context, assetPath, _) {
-                      final provider =
-                          _getAssetProvider(widget.coinId, assetPath);
-                      if (provider == null) {
-                        return Icon(Icons.currency_bitcoin,
-                            color: Colors.white, size: iconSize);
-                      }
-                      return Image.asset(
-                        assetPath!,
-                        width: iconSize,
-                        height: iconSize,
-                        gaplessPlayback: true,
-                        filterQuality: FilterQuality.low,
-                        cacheWidth: cacheW,
-                        cacheHeight: cacheH,
-                      );
-                    },
-                  ),
-                  SizedBox(width: isLarge ? 12 : (isTablet ? 10 : 8)),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '\$${widget.currentPrice.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: priceFs,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              SizedBox(height: isLarge ? 8 : (isTablet ? 6 : 4)),
-
-              // Dummy change
-              Text(
-                '▲74.99% (+\$51,176.67)',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
-                  fontWeight: FontWeight.w400,
                 ),
               ),
-              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
-
-              Text(
-                'Start investing – buy your first $title now!',
-                style: TextStyle(
+              IconButton(
+                icon: Icon(
+                  Icons.qr_code_scanner,
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: isLarge ? 14 : (isTablet ? 17 : 14),
                 ),
-              ),
-              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
-
-              // Amount chips → open Send with USD prefill
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: _AmountButton(
-                      amount: '\$100',
-                      isLarge: false,
-                      onTap: () => _openSendWithUsd(100),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _AmountButton(
-                      amount: '\$200',
-                      isLarge: false,
-                      onTap: () => _openSendWithUsd(200),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _AmountButton(
-                      amount: '\$500',
-                      isLarge: false,
-                      onTap: () => _openSendWithUsd(500),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: isLarge ? 12 : (isTablet ? 10 : 8)),
-
-              // Actions row
-              ActionButtonsGridWidget(
-                isLarge: isLarge,
-                isTablet: isTablet,
-                coinId: widget.coinId, // <-- IMPORTANT
+                onPressed: _openQRScanner,
+                tooltip: 'Scan',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(), // tighter icon tap area
               ),
             ],
+          ),
+
+          // Price row with small coin icon
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Selector<CoinStore, String?>(
+                selector: (_, s) => s.getById(widget.coinId)?.assetPath,
+                builder: (context, assetPath, _) {
+                  final provider = _getAssetProvider(widget.coinId, assetPath);
+                  if (provider == null) {
+                    return Icon(Icons.currency_bitcoin,
+                        color: Colors.white, size: iconSize);
+                  }
+                  return Image.asset(
+                    assetPath!,
+                    width: iconSize,
+                    height: iconSize,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.low,
+                    cacheWidth: cacheW,
+                    cacheHeight: cacheH,
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '\$${widget.currentPrice.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: priceFs,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          gap(4, 6),
+
+          // Change line (dummy)
+          Text(
+            '▲74.99% (+\$51,176.67)',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isLarge ? 16 : (isTablet ? 15 : 14),
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          gap(8, 10),
+
+          // CTA line
+          Text(
+            'Start investing – buy your first $title now!',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: isLarge ? 14 : (isTablet ? 17 : 14),
+            ),
+          ),
+          gap(8, 10),
+
+          // Amount chips → open Send with USD prefill
+          Row(
+            children: [
+              Expanded(
+                child: _AmountButton(
+                  amount: '\$100',
+                  isLarge: false,
+                  onTap: () => _openSendWithUsd(100),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _AmountButton(
+                  amount: '\$200',
+                  isLarge: false,
+                  onTap: () => _openSendWithUsd(200),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _AmountButton(
+                  amount: '\$500',
+                  isLarge: false,
+                  onTap: () => _openSendWithUsd(500),
+                ),
+              ),
+            ],
+          ),
+
+          // (No extra spacer here — avoids bottom overflow)
+
+          // Actions row
+          gap(8, 10),
+          ActionButtonsGridWidget(
+            isLarge: isLarge,
+            isTablet: isTablet,
+            coinId: widget.coinId,
           ),
         ],
       ),
@@ -593,7 +530,7 @@ class CryptoStatsPager extends StatefulWidget {
     super.key,
     required this.cards,
     this.viewportPeek = 0.95,
-    this.height = 340,
+    this.height = 360, // ↑ was 340 — a little taller to prevent overflow
     this.showArrows = true,
     this.showDots = true,
     this.scrollable = true,
@@ -623,15 +560,12 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
   }
 
   Object _identityFor(Widget w) {
-    // Prefer color-based dedupe when possible.
     if (w is CryptoStatCard) {
       if (w.colorKey != null && w.colorKey!.isNotEmpty) {
         return 'color:${w.colorKey}';
       }
-      // Fallback: dedupe by coin id if no colorKey provided.
       return 'coin:${w.coinId}';
     }
-    // Otherwise, try key; else type+toStringShort.
     final k = w.key;
     if (k is ValueKey) {
       return k.value ?? '${w.runtimeType}-${w.toStringShort()}';
@@ -664,7 +598,6 @@ class _CryptoStatsPagerState extends State<CryptoStatsPager> {
   Widget build(BuildContext context) {
     final uniqueCards = _dedupeByIdentity(widget.cards);
 
-    // If the list shrank after dedupe, clamp the index.
     final maxIndex = (uniqueCards.length - 1).clamp(0, uniqueCards.length - 1);
     if (_index > maxIndex) {
       _index = maxIndex;
@@ -762,10 +695,10 @@ class _NavArrow extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: enabled ? onTap : null,
-          child: const SizedBox(
+          child: SizedBox(
             height: 36,
             width: 36,
-            child: Icon(Icons.chevron_left, color: Colors.white),
+            child: Icon(icon, color: Colors.white),
           ),
         ),
       ),
@@ -776,7 +709,7 @@ class _NavArrow extends StatelessWidget {
 class _AmountButton extends StatelessWidget {
   final String amount;
   final bool isLarge;
-  final VoidCallback? onTap; // NEW
+  final VoidCallback? onTap;
 
   const _AmountButton({
     required this.amount,
