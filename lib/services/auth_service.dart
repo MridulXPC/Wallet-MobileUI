@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:cryptowallet/models/token_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -80,16 +81,23 @@ class AuthService {
 
       switch (method.toUpperCase()) {
         case 'GET':
-          response = await _client.get(uri, headers: defaultHeaders).timeout(_timeout);
+          response =
+              await _client.get(uri, headers: defaultHeaders).timeout(_timeout);
           break;
         case 'POST':
-          response = await _client.post(uri, headers: defaultHeaders, body: jsonBody).timeout(_timeout);
+          response = await _client
+              .post(uri, headers: defaultHeaders, body: jsonBody)
+              .timeout(_timeout);
           break;
         case 'PUT':
-          response = await _client.put(uri, headers: defaultHeaders, body: jsonBody).timeout(_timeout);
+          response = await _client
+              .put(uri, headers: defaultHeaders, body: jsonBody)
+              .timeout(_timeout);
           break;
         case 'DELETE':
-          response = await _client.delete(uri, headers: defaultHeaders).timeout(_timeout);
+          response = await _client
+              .delete(uri, headers: defaultHeaders)
+              .timeout(_timeout);
           break;
         default:
           throw ApiException('Unsupported HTTP method: $method');
@@ -110,10 +118,10 @@ class AuthService {
   /// Handle API response
   static Map<String, dynamic> _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
-    
+
     try {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      
+
       if (statusCode >= 200 && statusCode < 300) {
         return data;
       } else {
@@ -205,7 +213,7 @@ class AuthService {
     try {
       // Use provided token or get from storage
       token ??= await getStoredToken();
-      
+
       if (token == null) {
         throw const ApiException('No authentication token available');
       }
@@ -223,7 +231,7 @@ class AuthService {
 
       final data = _handleResponse(response);
       print("✅ Web session authorized successfully");
-      
+
       return AuthResponse.success(data: data);
     } on ApiException {
       rethrow;
@@ -241,7 +249,7 @@ class AuthService {
     try {
       // Use provided token or get from storage
       token ??= await getStoredToken();
-      
+
       if (token == null) {
         throw const ApiException('No authentication token available');
       }
@@ -259,7 +267,7 @@ class AuthService {
 
       final data = _handleResponse(response);
       print("✅ Recovery phrase submitted successfully");
-      
+
       return AuthResponse.success(data: data);
     } on ApiException {
       rethrow;
@@ -289,9 +297,10 @@ class AuthService {
       print("📦 Login response: ${response.body}");
 
       final data = _handleResponse(response);
-      
+
       // Handle nested token structure
-      final token = data['result']?['token'] as String? ?? data['token'] as String?;
+      final token =
+          data['result']?['token'] as String? ?? data['token'] as String?;
 
       if (token != null) {
         await _saveToken(token);
@@ -312,7 +321,7 @@ class AuthService {
   static Future<void> logout() async {
     try {
       await clearToken();
-      
+
       // Clear other stored data if needed
       final prefs = await SharedPreferences.getInstance();
       await Future.wait([
@@ -320,7 +329,7 @@ class AuthService {
         prefs.remove('session_id'),
         prefs.remove('use_biometrics'),
       ]);
-      
+
       print("✅ User logged out successfully");
     } catch (e) {
       print("❌ Logout error: $e");
@@ -376,6 +385,50 @@ class AuthService {
     } catch (e) {
       print("🚨 Token refresh error: $e");
       return AuthResponse.failure('Token refresh failed: $e');
+    }
+  }
+
+  /// Get available tokens for the current vault/user.
+  ///
+  /// - Endpoint: GET /api/token/get-tokens
+  /// - Auth: Optional Bearer token (if your backend requires it).
+  /// - Returns: List<VaultToken>
+  ///
+  /// Throws [ApiException] on network/format/server errors.
+  static Future<List<VaultToken>> fetchTokens({String? token}) async {
+    try {
+      // Use provided token or previously stored token
+      token ??= await getStoredToken();
+
+      print("📤 Fetching tokens from /api/token/get-tokens");
+
+      final response = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/token/get-tokens',
+        token: token, // safe to send even if null; _makeRequest checks it
+      );
+
+      print("📦 Tokens response: ${response.body}");
+
+      final data = _handleResponse(response);
+
+      // Expected shape:
+      // { "success": true, "data": [ { ...token }, ... ] }
+      final List<dynamic> list = (data['data'] as List?) ?? const [];
+
+      final tokens = list
+          .whereType<Map<String, dynamic>>()
+          .map((e) => VaultToken.fromJson(e))
+          .toList();
+
+      print("✅ Tokens fetched: ${tokens.length}");
+      return tokens;
+    } on ApiException {
+      // Re-throw typed API errors to preserve status/message upstream
+      rethrow;
+    } catch (e) {
+      print("🚨 fetchTokens error: $e");
+      throw ApiException('Failed to fetch tokens: $e');
     }
   }
 }

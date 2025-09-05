@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cryptowallet/coin_store.dart'; // ✅ Provider source of truth
+import 'package:cryptowallet/stores/coin_store.dart'; // ✅ Provider source of truth
 
 // 1. IMAGE CACHE MANAGER
 class ImageCacheManager {

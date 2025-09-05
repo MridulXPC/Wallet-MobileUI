@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cryptowallet/coin_store.dart'; // <-- uses your CoinStore for icons
+import 'package:cryptowallet/stores/coin_store.dart'; // <-- uses your CoinStore for icons
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});

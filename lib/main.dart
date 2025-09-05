@@ -1,5 +1,6 @@
 // lib/main.dart
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/stores/wallet_store.dart'; // ✅ NEW
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,9 +23,14 @@ void main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(
-    // ✅ Provide CoinStore globally so any screen can read coin icons/names
-    ChangeNotifierProvider(
-      create: (_) => CoinStore(),
+    // ✅ Provide CoinStore + WalletStore globally
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CoinStore()),
+        ChangeNotifierProvider(
+            create: (_) =>
+                WalletStore()..load()), // loads saved wallets + active wallet
+      ],
       child: const MyApp(),
     ),
   );
@@ -35,14 +41,8 @@ Future<String> determineNextRoute() async {
   final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
   final hasPassword = prefs.getString('wallet_password') != null;
 
-  if (isFirstLaunch) {
-    return AppRoutes.welcomeScreen;
-  }
-
-  if (hasPassword) {
-    return AppRoutes.appLockScreen;
-  }
-
+  if (isFirstLaunch) return AppRoutes.welcomeScreen;
+  if (hasPassword) return AppRoutes.appLockScreen;
   return AppRoutes.welcomeScreen;
 }
 
@@ -57,22 +57,23 @@ class MyApp extends StatelessWidget {
           title: 'CryptoWallet',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            textTheme: GoogleFonts
-                .interTextTheme(), // applies Inter to all text styles
+            // applies Inter to all text styles
+            textTheme: GoogleFonts.interTextTheme(),
           ),
           builder: (context, child) {
             final base = Theme.of(context).textTheme;
             return MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: const TextScaler.linear(1.0)),
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(1.0),
+              ),
               child: DefaultTextStyle.merge(
                 style: GoogleFonts.interTextTheme(base).bodyMedium!,
                 child: child!,
               ),
             );
           },
-
-          initialRoute: AppRoutes.splashScreen, // Always start with splash
+          // Always start with splash; it can route using your app logic
+          initialRoute: AppRoutes.splashScreen,
           routes: AppRoutes.routes,
         );
       },

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 import '../../../core/app_export.dart';
-import '../../../../coin_store.dart';
+import '../../../stores/coin_store.dart';
 
 class ActionButtonsGridWidget extends StatelessWidget {
   final bool isLarge;

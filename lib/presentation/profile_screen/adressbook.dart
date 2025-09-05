@@ -1,5 +1,5 @@
 // lib/screens/address_book_screen.dart
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

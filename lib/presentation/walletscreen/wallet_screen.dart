@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:provider/provider.dart';
 
 // ✅ Pull coin metadata (name, symbol, icon) from Provider
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 
 class WalletInfoScreen extends StatefulWidget {
   const WalletInfoScreen({Key? key}) : super(key: key);

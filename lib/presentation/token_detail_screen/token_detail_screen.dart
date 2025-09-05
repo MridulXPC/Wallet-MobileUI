@@ -1,5 +1,5 @@
 // lib/presentation/token_detail/token_detail_screen.dart
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';

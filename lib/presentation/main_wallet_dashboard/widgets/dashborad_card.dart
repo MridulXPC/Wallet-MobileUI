@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';

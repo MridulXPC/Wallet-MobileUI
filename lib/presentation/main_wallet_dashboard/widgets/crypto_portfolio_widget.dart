@@ -1,5 +1,6 @@
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
+import 'package:cryptowallet/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,26 +8,20 @@ import 'package:provider/provider.dart';
 Future<void> precacheCoinIcons(BuildContext context) async {
   final store = context.read<CoinStore>();
   for (final coin in store.coins.values) {
-    final provider = AssetImage(coin.assetPath);
     try {
-      await precacheImage(provider, context);
-    } catch (_) {
-      // ignore missing assets
-    }
+      await precacheImage(AssetImage(coin.assetPath), context);
+    } catch (_) {}
   }
 }
 
-/// Portfolio list widget (optimized)
+/// Portfolio list widget (icons strictly from CoinStore base symbol; no overlays/combo PNGs)
 class CryptoPortfolioWidget extends StatefulWidget {
-  /// If true (default), the widget ignores [portfolio] and builds rows from CoinStore (all coins).
-  /// Set to false if you want to pass a custom subset via [portfolio].
-  final bool useAllCoinsFromProvider;
-
-  final List<Map<String, dynamic>> portfolio;
+  final bool fetchFromApi; // always true in your flow, but keep configurable
+  final List<Map<String, dynamic>> portfolio; // optional manual list
 
   const CryptoPortfolioWidget({
     super.key,
-    this.useAllCoinsFromProvider = true,
+    this.fetchFromApi = true,
     this.portfolio = const [],
   });
 
@@ -36,80 +31,113 @@ class CryptoPortfolioWidget extends StatefulWidget {
 
 class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     with AutomaticKeepAliveClientMixin {
-  late List<Map<String, dynamic>> _visiblePortfolio;
+  static const String _fallbackAsset = 'assets/icons/placeholder.png';
+
+  List<Map<String, dynamic>> _visible = [];
+  bool _loading = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _refreshFromSource();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (widget.useAllCoinsFromProvider) {
-      _refreshFromSource();
-    }
+    _refresh();
   }
 
   @override
   bool get wantKeepAlive => true;
 
-  void _refreshFromSource() {
-    if (widget.useAllCoinsFromProvider) {
+  // --- Always resolve a single, base-symbol asset from CoinStore ---
+  String _baseSymbolFor(String symbol, String chain) {
+    final s = symbol.toUpperCase();
+    final c = chain.toUpperCase();
+
+    // Normalize API symbols to a base symbol (no network in the icon)
+    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
+    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON')))
+      return 'USDT';
+
+    // Everything else: just the base
+    return s; // BTC, ETH, BNB, SOL, TRX, XMR, etc.
+  }
+
+  String _assetFromStoreByBase(CoinStore store, String baseSymbol) {
+    // Force base symbol icon only (never the network-specific id)
+    return store.getById(baseSymbol)?.assetPath ?? _fallbackAsset;
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
       final store = context.read<CoinStore>();
 
-      // ✅ BTC added
-      const allowedIds = <String>[
-        "BTC",
-        "TRX",
-        "BNB",
-        "USDT",
-        "XMR",
-        "ETH",
-      ];
+      if (widget.fetchFromApi) {
+        final tokens = await AuthService.fetchTokens(); // List<VaultToken>
 
-      final all = store.coins.values
-          .where((c) => allowedIds.contains(c.id))
-          .map((c) => {
-                "id": c.id,
-                "symbol": c.symbol,
-                "name": c.name,
-                "icon": c.assetPath,
-                "balance": "0",
-                "usdValue": "\$0.00",
-                "usdBalance": "0.00",
-                "change24h": "0.00%",
-                "isPositive": true,
-                "enabled": true,
-              })
-          .toList();
+        _visible = tokens.map((t) {
+          final base = _baseSymbolFor(t.symbol, t.chain);
+          final iconAsset = _assetFromStoreByBase(store, base);
 
-      _visiblePortfolio = all.where((x) => x["enabled"] != false).toList();
-    } else {
-      _visiblePortfolio =
-          widget.portfolio.where((x) => x["enabled"] != false).toList();
+          // Name: prefer CoinStore base name when available; fall back to API
+          final coinName = store.getById(base)?.name ?? t.name;
+
+          return {
+            "id": t.symbol, // keep API symbol for routing if needed
+            "symbol": base, // base symbol used throughout UI
+            "name": coinName,
+            "icon": iconAsset, // ✅ single image from CoinStore
+            "balance": t.balance, // string like "0.0000"
+            "usdValue": "\$${t.value.toString()}",
+            "usdBalance": t.value.toStringAsFixed(2),
+            "change24h": "0.00%", // placeholder unless backend provides it
+            "isPositive": true, // placeholder
+            "enabled": true,
+            "chain": t.chain,
+            "contractAddress": t.contractAddress,
+            "_id": t.id,
+          };
+        }).toList();
+      } else {
+        // Purely use provided portfolio but ensure icon = base icon
+        _visible = widget.portfolio.map((m) {
+          final base = (m["symbol"] ?? m["id"] ?? "").toString().toUpperCase();
+          final iconAsset = _assetFromStoreByBase(store, base);
+          return {
+            ...m,
+            "symbol": base,
+            "icon": iconAsset, // enforce base icon
+          };
+        }).toList();
+      }
+
+      _visible = _visible.where((x) => x["enabled"] != false).toList();
+    } catch (e) {
+      _error = e.toString();
+      _visible = const [];
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
-    if (mounted) setState(() {});
   }
 
   void _openTokenFilterSheet() {
-    final sourceList = widget.useAllCoinsFromProvider
-        ? List<Map<String, dynamic>>.from(_visiblePortfolio)
-        : List<Map<String, dynamic>>.from(widget.portfolio);
-
+    final initial = List<Map<String, dynamic>>.from(_visible);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => TokenFilterBottomSheet(
-        portfolio: sourceList,
+        portfolio: initial,
         onApplyFilter: (filtered) {
           setState(() {
-            _visiblePortfolio =
-                filtered.where((item) => item["enabled"] != false).toList();
+            _visible = filtered.where((x) => x["enabled"] != false).toList();
           });
         },
+        fallbackAsset: _fallbackAsset,
       ),
     );
   }
@@ -118,8 +146,54 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
   Widget build(BuildContext context) {
     super.build(context);
 
-    if (_visiblePortfolio.isEmpty) {
-      return _buildEmptyState();
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24.0),
+        child: Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24.0),
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+            const SizedBox(height: 8),
+            Text(_error!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              label: const Text('Retry', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_visible.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24.0),
+        child: Column(
+          children: const [
+            Icon(Icons.account_balance_wallet_outlined,
+                size: 56, color: Colors.white70),
+            SizedBox(height: 12),
+            Text('No tokens found',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600)),
+            SizedBox(height: 6),
+            Text('Pull down to refresh and fetch your tokens.',
+                style: TextStyle(color: Colors.white54, fontSize: 14),
+                textAlign: TextAlign.center),
+          ],
+        ),
+      );
     }
 
     return Column(
@@ -128,11 +202,9 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         ListView.separated(
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
-          itemCount: _visiblePortfolio.length,
+          itemCount: _visible.length,
           separatorBuilder: (_, __) => const SizedBox(height: 0),
-          itemBuilder: (context, index) {
-            return _PortfolioRow(crypto: _visiblePortfolio[index]);
-          },
+          itemBuilder: (context, i) => _PortfolioRow(item: _visible[i]),
         ),
         _buildFilterButton(),
       ],
@@ -143,20 +215,20 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // "Tokens" + underline
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tokens',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Container(height: 2, width: 60, color: Colors.white),
+          children: const [
+            Text('Tokens',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            SizedBox(
+                height: 2,
+                width: 60,
+                child: DecoratedBox(
+                    decoration: BoxDecoration(color: Colors.white))),
           ],
         ),
         IconButton(
@@ -174,146 +246,99 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
       child: TextButton.icon(
         onPressed: _openTokenFilterSheet,
         icon: const Icon(Icons.tune, color: Colors.white),
-        label: const Text(
-          'Manage Tokens',
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
-      child: Column(
-        children: const [
-          Icon(Icons.account_balance_wallet_outlined,
-              size: 56, color: Colors.white70),
-          SizedBox(height: 12),
-          Text('Get Started',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600)),
-          SizedBox(height: 6),
-          Text(
-            'Start building your crypto portfolio today',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        label:
+            const Text('Manage Tokens', style: TextStyle(color: Colors.white)),
       ),
     );
   }
 }
 
-/// A single row that rebuilds minimally using [Selector] for icon changes.
-class _PortfolioRow extends StatelessWidget {
-  final Map<String, dynamic> crypto;
-  const _PortfolioRow({required this.crypto});
+/// Single, non-overlapping coin avatar (asset-only).
+class _CoinAvatar extends StatelessWidget {
+  final String assetPath;
+  final double size;
+
+  const _CoinAvatar({super.key, required this.assetPath, this.size = 44});
 
   @override
   Widget build(BuildContext context) {
-    final id = crypto["id"] as String?;
-    final explicitPath = crypto["icon"] as String?;
-    const fallbackAsset = 'assets/icons/placeholder.png';
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Image.asset(assetPath, fit: BoxFit.contain),
+      ),
+    );
+  }
+}
 
-    // Resolve icon path via Selector only if we DON'T have an explicit path in map.
-    final iconPath = explicitPath ??
-        context.select<CoinStore, String>(
-          (s) => id != null
-              ? (s.getById(id)?.assetPath ?? fallbackAsset)
-              : fallbackAsset,
-        );
+/// One row item — strictly base-symbol icon.
+class _PortfolioRow extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _PortfolioRow({required this.item});
 
-    final isPositive = crypto["isPositive"] ?? true;
+  @override
+  Widget build(BuildContext context) {
+    final String icon =
+        (item["icon"] as String?) ?? 'assets/icons/placeholder.png';
+    final isPositive = item["isPositive"] ?? true;
     final changeColor = isPositive ? Colors.green : Colors.red;
 
     return InkWell(
-      key: ValueKey(crypto["id"] ?? crypto["symbol"]),
+      key: ValueKey(item["id"] ?? item["symbol"]),
       onTap: () {
-        Navigator.pushNamed(
-          context,
-          AppRoutes.tokenDetail, // <-- route name constant
-          arguments: crypto,
-        );
+        Navigator.pushNamed(context, AppRoutes.tokenDetail, arguments: item);
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10.0),
         child: Row(
           children: [
-            // Icon (cheap decode using ResizeImage)
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: Colors.transparent,
-              child: Padding(
-                padding:
-                    const EdgeInsets.all(4), // small padding prevents cutting
-                child: Image.asset(
-                  iconPath,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
+            _CoinAvatar(assetPath: icon, size: 44),
             const SizedBox(width: 12),
-
-            // Name + price/change
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    crypto["name"] ?? crypto["symbol"] ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  Text(item["name"] ?? item["symbol"] ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(
-                        crypto["usdValue"] ?? '\$0.00',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
-                      ),
+                      Text(item["usdValue"] ?? '\$0.00',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12)),
                       const SizedBox(width: 6),
                       Icon(
-                        isPositive
-                            ? Icons.arrow_drop_up
-                            : Icons.arrow_drop_down,
-                        color: changeColor,
-                        size: 18,
-                      ),
-                      Text(
-                        crypto["change24h"] ?? "0.00%",
-                        style: TextStyle(color: changeColor, fontSize: 12),
-                      ),
+                          isPositive
+                              ? Icons.arrow_drop_up
+                              : Icons.arrow_drop_down,
+                          color: changeColor,
+                          size: 18),
+                      Text(item["change24h"] ?? "0.00%",
+                          style: TextStyle(color: changeColor, fontSize: 12)),
                     ],
                   ),
                 ],
               ),
             ),
-
-            // Balances
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  crypto["balance"] ?? "0.00",
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700),
-                ),
+                Text(item["balance"]?.toString() ?? "0.00",
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
-                Text(
-                  '≈ \$${crypto["usdBalance"] ?? "0.00"}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
+                Text('≈ \$${item["usdBalance"] ?? "0.00"}',
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 12)),
               ],
             ),
           ],
@@ -325,12 +350,14 @@ class _PortfolioRow extends StatelessWidget {
 
 class TokenFilterBottomSheet extends StatefulWidget {
   final List<Map<String, dynamic>> portfolio;
-  final Function(List<Map<String, dynamic>>) onApplyFilter;
+  final void Function(List<Map<String, dynamic>>) onApplyFilter;
+  final String fallbackAsset;
 
   const TokenFilterBottomSheet({
     super.key,
     required this.portfolio,
     required this.onApplyFilter,
+    required this.fallbackAsset,
   });
 
   @override
@@ -349,8 +376,6 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bg = const Color(0xFF1A1D29);
-
     return SafeArea(
       child: Container(
         height: MediaQuery.of(context).size.height,
@@ -409,11 +434,8 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                         hintStyle: TextStyle(color: Colors.white54),
                         border: InputBorder.none,
                       ),
-                      onChanged: (value) {
-                        setState(() {
-                          searchQuery = value.toLowerCase();
-                        });
-                      },
+                      onChanged: (value) =>
+                          setState(() => searchQuery = value.toLowerCase()),
                     ),
                   ),
                 ],
@@ -438,39 +460,22 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                     return const SizedBox.shrink();
                   }
 
-                  final iconPath = token["icon"] as String?;
+                  final iconPath =
+                      (token["icon"] as String?) ?? widget.fallbackAsset;
                   final String title = token["name"] ?? token["symbol"] ?? '';
 
                   return SwitchListTile(
                     value: token["enabled"] ?? true,
                     onChanged: (val) {
-                      setState(() {
-                        filteredList[index]["enabled"] = val;
-                      });
+                      setState(() => filteredList[index]["enabled"] = val);
                     },
                     contentPadding: EdgeInsets.zero,
                     title: Text(title,
                         style: const TextStyle(color: Colors.white)),
-                    subtitle: Text(
-                      token["subtitle"] ?? token["usdValue"] ?? '',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    secondary: (iconPath != null && iconPath.isNotEmpty)
-                        ? CircleAvatar(
-                            radius: 16,
-                            backgroundColor: const Color(0xFF2A2D3A),
-                            foregroundImage: ResizeImage(
-                              AssetImage(iconPath),
-                              width:
-                                  (32 * MediaQuery.of(context).devicePixelRatio)
-                                      .round(),
-                            ),
-                            onForegroundImageError: (_, __) {},
-                            child: const Icon(Icons.currency_bitcoin,
-                                color: Colors.white, size: 16),
-                          )
-                        : const Icon(Icons.currency_bitcoin,
-                            color: Colors.white),
+                    subtitle: Text(token["usdValue"]?.toString() ?? '',
+                        style: const TextStyle(color: Colors.grey)),
+                    // ✅ single base icon
+                    secondary: _CoinAvatar(assetPath: iconPath, size: 32),
                     activeColor: Colors.blueAccent,
                     inactiveThumbColor: Colors.white,
                     inactiveTrackColor: Colors.grey,
@@ -493,15 +498,12 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A73E8),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                        borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    "Apply Filter",
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w700),
-                  ),
+                  child: const Text("Apply Filter",
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
               ),
             ),

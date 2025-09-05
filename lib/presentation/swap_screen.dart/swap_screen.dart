@@ -4,7 +4,7 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});

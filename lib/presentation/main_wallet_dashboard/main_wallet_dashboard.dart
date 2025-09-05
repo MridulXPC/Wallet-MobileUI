@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:cryptowallet/coin_store.dart';
+import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/dashborad_card.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/wallet_card_dashboard.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart'; // ✅ Provider
@@ -20,9 +21,6 @@ class WalletHomeScreen extends StatefulWidget {
 
 class _WalletHomeScreenState extends State<WalletHomeScreen> {
   int _selectedIndex = 0;
-
-  final String _vaultName = 'Main Vault';
-  final String _totalValue = '\$500.00';
 
   void _onItemTapped(int index) {
     if (index == 1) {
@@ -73,31 +71,135 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   }
 
   void _showWalletOptionsSheet() {
+    final store = context.read<WalletStore>();
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // allow gradient to be visible
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet),
-                title: const Text('My Vaults'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
+        return Container(
+          // gradient + rounded top corners
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomRight,
+              stops: [0.0, 0.55, 1.0],
+              colors: [
+                Color.fromARGB(255, 6, 11, 33),
+                Color.fromARGB(255, 0, 0, 0),
+                Color.fromARGB(255, 0, 12, 56),
+              ],
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                12 + MediaQuery.of(context).viewInsets.bottom,
               ),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: const Text('Create New Wallet'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 6),
+                  // drag handle
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white38,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text(
+                    'Wallets',
+                    style: TextStyle(
+                      color: Colors.white, // title in white
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // list of wallets
+                  Flexible(
+                    child: Consumer<WalletStore>(
+                      builder: (_, s, __) {
+                        final items = s.wallets;
+                        if (items.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              'No wallets yet',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          );
+                        }
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: items.length,
+                          itemBuilder: (_, i) {
+                            final w = items[i];
+                            final isActive = s.activeWalletId == w.id;
+                            return ListTile(
+                              leading: Icon(
+                                isActive
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: Colors.white,
+                              ),
+                              title: Text(
+                                w.name,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                'Created: ${w.createdAt.toLocal().toString().split(".").first}',
+                                style: const TextStyle(color: Colors.white60),
+                              ),
+                              onTap: () async {
+                                await s.setActive(w.id);
+                                if (context.mounted) Navigator.pop(context);
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+
+                  const Divider(height: 20, color: Colors.white24),
+
+                  // Create New Wallet -> generate BIP39 seed -> call backend -> store locally
+                  ListTile(
+                    leading: const Icon(Icons.add, color: Colors.white),
+                    title: const Text(
+                      'Create New Wallet',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        final w = await store.createAndSendToBackend();
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Created ${w.name}')),
+                        );
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Failed: $e')),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
