@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cryptowallet/services/auth_service.dart';
+import 'package:cryptowallet/services/api_service.dart';
 
 class Wallet {
   final String id; // local id

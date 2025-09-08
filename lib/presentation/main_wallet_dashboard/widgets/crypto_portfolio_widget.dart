@@ -1,6 +1,6 @@
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
-import 'package:cryptowallet/services/auth_service.dart';
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

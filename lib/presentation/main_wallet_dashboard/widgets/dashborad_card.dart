@@ -9,7 +9,7 @@ import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
-import 'package:cryptowallet/services/auth_service.dart';
+import 'package:cryptowallet/services/api_service.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart' show compute;

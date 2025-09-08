@@ -1,5 +1,5 @@
 import 'package:cryptowallet/core/app_export.dart';
-import 'package:cryptowallet/services/auth_service.dart';
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:flutter/services.dart';
@@ -86,17 +86,17 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
   bool get _isPasswordValid {
     final password = _passwordController.text;
     return password.length >= 8 &&
-           password.contains(RegExp(r'[A-Z]')) && // Uppercase
-           password.contains(RegExp(r'[a-z]')) && // Lowercase
-           password.contains(RegExp(r'[0-9]'));   // Number
+        password.contains(RegExp(r'[A-Z]')) && // Uppercase
+        password.contains(RegExp(r'[a-z]')) && // Lowercase
+        password.contains(RegExp(r'[0-9]')); // Number
   }
 
   bool get _isFormValid {
     return _passwordController.text.isNotEmpty &&
-           _confirmController.text.isNotEmpty &&
-           _passwordController.text == _confirmController.text &&
-           _isPasswordValid &&
-           _acceptedWarning;
+        _confirmController.text.isNotEmpty &&
+        _passwordController.text == _confirmController.text &&
+        _isPasswordValid &&
+        _acceptedWarning;
   }
 
   String? _validatePassword(String? value) {
@@ -198,7 +198,7 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                
+
                 // Header
                 const Text(
                   'Step 1 of 3',
@@ -216,7 +216,8 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                 const SizedBox(height: 30),
 
                 // Password Field
-                const Text('Create Password', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text('Create Password',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _passwordController,
@@ -229,15 +230,19 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     suffixIcon: IconButton(
-                      icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _showPassword = !_showPassword),
+                      icon: Icon(_showPassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
 
                 // Confirm Password Field
-                const Text('Confirm Password', style: TextStyle(fontWeight: FontWeight.w500)),
+                const Text('Confirm Password',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _confirmController,
@@ -250,8 +255,11 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     suffixIcon: IconButton(
-                      icon: Icon(_showConfirm ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _showConfirm = !_showConfirm),
+                      icon: Icon(_showConfirm
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _showConfirm = !_showConfirm),
                     ),
                   ),
                 ),
@@ -268,12 +276,23 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Password must contain:', style: TextStyle(fontWeight: FontWeight.w500)),
+                        const Text('Password must contain:',
+                            style: TextStyle(fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
-                        _buildRequirement('At least 8 characters', _passwordController.text.length >= 8),
-                        _buildRequirement('One uppercase letter', _passwordController.text.contains(RegExp(r'[A-Z]'))),
-                        _buildRequirement('One lowercase letter', _passwordController.text.contains(RegExp(r'[a-z]'))),
-                        _buildRequirement('One number', _passwordController.text.contains(RegExp(r'[0-9]'))),
+                        _buildRequirement('At least 8 characters',
+                            _passwordController.text.length >= 8),
+                        _buildRequirement(
+                            'One uppercase letter',
+                            _passwordController.text
+                                .contains(RegExp(r'[A-Z]'))),
+                        _buildRequirement(
+                            'One lowercase letter',
+                            _passwordController.text
+                                .contains(RegExp(r'[a-z]'))),
+                        _buildRequirement(
+                            'One number',
+                            _passwordController.text
+                                .contains(RegExp(r'[0-9]'))),
                       ],
                     ),
                   ),
@@ -286,7 +305,8 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                   children: [
                     Checkbox(
                       value: _acceptedWarning,
-                      onChanged: (val) => setState(() => _acceptedWarning = val ?? false),
+                      onChanged: (val) =>
+                          setState(() => _acceptedWarning = val ?? false),
                     ),
                     const Expanded(
                       child: Text(
@@ -311,16 +331,18 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Unlock with Face ID / Biometrics', 
-                                 style: TextStyle(fontWeight: FontWeight.w500)),
-                            Text('Use biometrics for quick access', 
-                                 style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            Text('Unlock with Face ID / Biometrics',
+                                style: TextStyle(fontWeight: FontWeight.w500)),
+                            Text('Use biometrics for quick access',
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 12)),
                           ],
                         ),
                       ),
                       Switch(
                         value: _useBiometrics,
-                        onChanged: (val) => setState(() => _useBiometrics = val),
+                        onChanged: (val) =>
+                            setState(() => _useBiometrics = val),
                       ),
                     ],
                   ),
@@ -332,9 +354,12 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: _isFormValid && !_isLoading ? _handleContinue : null,
+                    onPressed:
+                        _isFormValid && !_isLoading ? _handleContinue : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isFormValid ? Theme.of(context).primaryColor : Colors.grey,
+                      backgroundColor: _isFormValid
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -346,12 +371,14 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text(
                             'Create Password',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                   ),
                 ),
@@ -413,7 +440,7 @@ class Step2SecureWalletScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              
+
               // Security Info
               Container(
                 padding: const EdgeInsets.all(16),
@@ -428,7 +455,8 @@ class Step2SecureWalletScreen extends StatelessWidget {
                     SizedBox(height: 16),
                     Text(
                       "Don't risk losing your funds!",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 8),
@@ -440,9 +468,9 @@ class Step2SecureWalletScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               const Spacer(),
-              
+
               // Buttons
               SizedBox(
                 width: double.infinity,
@@ -460,7 +488,9 @@ class Step2SecureWalletScreen extends StatelessWidget {
                   onPressed: () {
                     // Handle remind me later
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please secure your wallet now for safety')),
+                      const SnackBar(
+                          content:
+                              Text('Please secure your wallet now for safety')),
                     );
                   },
                   child: const Text('Remind Me Later'),
@@ -479,7 +509,8 @@ class Step3RecoveryPhraseScreen extends StatefulWidget {
   const Step3RecoveryPhraseScreen({super.key});
 
   @override
-  State<Step3RecoveryPhraseScreen> createState() => _Step3RecoveryPhraseScreenState();
+  State<Step3RecoveryPhraseScreen> createState() =>
+      _Step3RecoveryPhraseScreenState();
 }
 
 class _Step3RecoveryPhraseScreenState extends State<Step3RecoveryPhraseScreen> {
@@ -496,39 +527,41 @@ class _Step3RecoveryPhraseScreenState extends State<Step3RecoveryPhraseScreen> {
     debugPrint('🔐 Generated Mnemonic: $mnemonic');
   }
 
-Future<void> _handleContinue() async {
-  setState(() => _isLoading = true);
+  Future<void> _handleContinue() async {
+    setState(() => _isLoading = true);
 
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final password = prefs.getString('wallet_password');
-    final token = prefs.getString('jwt_token');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final password = prefs.getString('wallet_password');
+      final token = prefs.getString('jwt_token');
 
-    if (token == null || password == null) {
-      _showSnackBar('❌ Session expired. Please start over.');
-      return;
-    }
+      if (token == null || password == null) {
+        _showSnackBar('❌ Session expired. Please start over.');
+        return;
+      }
 
-    final result = await AuthService.submitRecoveryPhrase(
-      phrase: mnemonic,
-      token: token,
-    );
+      final result = await AuthService.submitRecoveryPhrase(
+        phrase: mnemonic,
+        token: token,
+      );
 
-    if (result.success && mounted) {
-      await prefs.setBool('is_first_launch', false);
-      Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
-    } else {
-      _showSnackBar(result.message ?? '❌ Failed to submit recovery phrase. Please try again.');
-    }
-  } catch (e) {
-    debugPrint('❌ Error: $e');
-    _showSnackBar('❌ An error occurred. Please try again.');
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
+      if (result.success && mounted) {
+        await prefs.setBool('is_first_launch', false);
+        Navigator.pushReplacementNamed(context, AppRoutes.dashboardScreen);
+      } else {
+        _showSnackBar(result.message ??
+            '❌ Failed to submit recovery phrase. Please try again.');
+      }
+    } catch (e) {
+      debugPrint('❌ Error: $e');
+      _showSnackBar('❌ An error occurred. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-}
+
   void _showSnackBar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -562,7 +595,7 @@ Future<void> _handleContinue() async {
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              
+
               // Warning
               Container(
                 padding: const EdgeInsets.all(16),
@@ -591,10 +624,14 @@ Future<void> _handleContinue() async {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () => setState(() => _isPhraseRevealed = !_isPhraseRevealed),
-                    icon: Icon(_isPhraseRevealed ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () =>
+                        setState(() => _isPhraseRevealed = !_isPhraseRevealed),
+                    icon: Icon(_isPhraseRevealed
+                        ? Icons.visibility_off
+                        : Icons.visibility),
                     label: Text(_isPhraseRevealed ? 'Hide' : 'Reveal Phrase'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey.shade200),
                   ),
                   if (_isPhraseRevealed)
                     TextButton.icon(
@@ -621,7 +658,8 @@ Future<void> _handleContinue() async {
                         runSpacing: 8,
                         children: phrases.asMap().entries.map((entry) {
                           return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
                               color: Colors.blue.shade50,
                               borderRadius: BorderRadius.circular(20),
@@ -629,7 +667,8 @@ Future<void> _handleContinue() async {
                             ),
                             child: Text(
                               '${entry.key + 1}. ${entry.value}',
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w500),
                             ),
                           );
                         }).toList(),
@@ -645,22 +684,24 @@ Future<void> _handleContinue() async {
                         ),
                       ),
               ),
-              
+
               const Spacer(),
-              
+
               // Continue Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _isPhraseRevealed && !_isLoading ? _handleContinue : null,
+                  onPressed:
+                      _isPhraseRevealed && !_isLoading ? _handleContinue : null,
                   child: _isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : const Text('Complete Setup'),

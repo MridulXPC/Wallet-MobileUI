@@ -1,25 +1,18 @@
+// lib/presentation/send_cryptocurrency/SendConfirmationScreen.dart
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
+
+import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
-import 'package:intl/intl.dart';
 
 class SendConfirmationScreen extends StatefulWidget {
-  final String amount; // string amount user typed, e.g. "8.15516"
-  final String assetSymbol; // e.g. "TRX"
-  final String assetName;
-  final String assetIconPath;
-  final double assetPrice; // fiat price of 1 unit (for fee estimate display)
-  final double usdValue; // not used here but kept for compatibility
+  /// Pass the flow data from Screen 1 (SendCryptocurrency)
+  final SendFlowData flowData;
 
   const SendConfirmationScreen({
     super.key,
-    required this.amount,
-    required this.assetSymbol,
-    required this.assetName,
-    required this.assetIconPath,
-    required this.assetPrice,
-    required this.usdValue,
+    required this.flowData,
   });
 
   @override
@@ -32,19 +25,45 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
   bool _isAddressValid = false;
   String _addressType = 'Unknown';
 
-  // TODO: replace with your real wallet address (from provider/state)
-  final String _myWalletAddress = 'TAJ6r4Ph2i4JHNs8Pkpysn7wQBnot372GF';
-
   @override
   void initState() {
     super.initState();
+    // prefill if the previous step already had an address (rare)
+    _addressController.text = widget.flowData.toAddress ?? '';
     _addressController.addListener(_validateAddress);
+    _validateAddress();
   }
 
   @override
   void dispose() {
     _addressController.dispose();
     super.dispose();
+  }
+
+  // --------- Helpers ---------
+  String get _assetSymbol => widget.flowData.assetSymbol;
+  String get _assetName => widget.flowData.assetName;
+  double get _assetPrice => widget.flowData.usdValue > 0
+      ? (widget.flowData.usdValue /
+          (double.tryParse(widget.flowData.amount) ?? 1.0)
+              .clamp(0.00000001, double.infinity))
+      : widget.flowData.amount.isNotEmpty
+          ? widget
+              .flowData.usdValue // may be zero; only used for fiat fee approx
+          : 0.0;
+
+  double _calculateNetworkFee() {
+    // Same logic you had, but based on flowData.assetSymbol.
+    switch (_assetSymbol.toUpperCase()) {
+      case 'TRX':
+        return 1.1; // example TRX fee
+      case 'BTC':
+        return 0.0001; // example BTC fee
+      case 'ETH':
+        return 0.002; // example ETH fee
+      default:
+        return 1.0;
+    }
   }
 
   void _validateAddress() {
@@ -54,18 +73,15 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
         _isAddressValid = false;
         _addressType = 'Unknown';
       } else if (address.startsWith('T') && address.length >= 34) {
-        // TRON (basic)
         _isAddressValid = true;
         _addressType = 'TRON Address';
       } else if (address.startsWith('0x') && address.length == 42) {
-        // Ethereum (basic)
         _isAddressValid = true;
         _addressType = 'Ethereum Address';
       } else if ((address.startsWith('1') ||
               address.startsWith('3') ||
               address.startsWith('bc1')) &&
           address.length >= 26) {
-        // Bitcoin (basic)
         _isAddressValid = true;
         _addressType = 'Bitcoin Address';
       } else {
@@ -100,43 +116,6 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
     );
   }
 
-  // ---- NAVIGATE TO CONFIRMATION ----
-  void _proceedToNext() {
-    final to = _addressController.text.trim();
-    final double amount = double.tryParse(widget.amount) ?? 0;
-
-    // Use a dynamic fee based on asset
-    final double fee = _calculateNetworkFee();
-    final double willReceive = (amount - fee).clamp(0, double.infinity);
-
-    final String timeText =
-        DateFormat('dd MMM yyyy HH:mm:ss').format(DateTime.now());
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SendConfirmationView(
-          fromAddress: _myWalletAddress,
-          toAddress: to,
-          timeText: timeText,
-          assetSymbol: widget.assetSymbol, // e.g. TRX
-          amount: amount, // before fees
-          activationFee: fee,
-          willReceive: double.parse(willReceive.toStringAsFixed(5)),
-          feeOption: 'Regular',
-          estimatedNetworkFee: fee,
-          onConfirm: () => _sendTransaction(to, amount),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _sendTransaction(String to, double amount) async {
-    // TODO: integrate your send/broadcast API
-    // final txId = await wallet.send(asset: widget.assetSymbol, to: to, amount: amount);
-    if (mounted) Navigator.pop(context);
-  }
-
   String _formatAddress(String address) {
     if (address.length > 10) {
       return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
@@ -144,23 +123,42 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
     return address;
   }
 
-  double _calculateNetworkFee() {
-    switch (widget.assetSymbol.toUpperCase()) {
-      case 'TRX':
-        return 1.1; // example TRX fee
-      case 'BTC':
-        return 0.0001; // example BTC fee
-      case 'ETH':
-        return 0.002; // example ETH fee
-      default:
-        return 1.0;
+  // ---- NAVIGATE TO REVIEW (Screen 2) ----
+  void _proceedToNext() {
+    final enteredAddress = _addressController.text.trim();
+
+    if (!_isAddressValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid address'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
     }
+
+    // Take the flowData from Screen 1 and attach the entered address
+    final flowDataWithAddress = widget.flowData.copyWith(
+      toAddress: enteredAddress,
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SendConfirmationView(
+          flowData: flowDataWithAddress,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final amountStr = widget.flowData.amount; // crypto amount as string
     final networkFee = _calculateNetworkFee();
-    final fiatFee = networkFee * widget.assetPrice;
+    // If you want to show fiat fee: use explicit price if you have it.
+    // Here we fallback to 0 if price is unknown.
+    final fiatFee = _assetPrice > 0 ? networkFee * _assetPrice : 0.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -203,7 +201,7 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                         ),
                         SizedBox(height: 1.h),
                         Text(
-                          widget.amount,
+                          amountStr,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 28,
@@ -211,7 +209,7 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                           ),
                         ),
                         Text(
-                          widget.assetSymbol,
+                          _assetSymbol,
                           style: const TextStyle(
                             color: Color(0xFF9CA3AF),
                             fontSize: 16,
@@ -407,7 +405,8 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                         ),
                       ),
                       Text(
-                        '${networkFee.toStringAsFixed(4)} ${widget.assetSymbol} ≈ \$${fiatFee.toStringAsFixed(4)}',
+                        '${_calculateNetworkFee().toStringAsFixed(4)} $_assetSymbol'
+                        ' ≈ \$${fiatFee.toStringAsFixed(4)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -433,7 +432,7 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Some of your ${widget.assetSymbol} will be discounted to activate the receiving account',
+                  'Some of your $_assetSymbol will be discounted to activate the receiving account',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10,

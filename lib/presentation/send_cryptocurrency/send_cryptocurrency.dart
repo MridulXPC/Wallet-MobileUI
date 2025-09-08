@@ -1,11 +1,71 @@
 // lib/presentation/send_cryptocurrency/SendCryptocurrency.dart
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
+import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart'; // ← navigate to review screen next
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart'; // ✅ Provider source of truth
+
+/// ----------------------------------------------
+/// Flow model passed across the 3-screen send flow
+/// ----------------------------------------------
+class SendFlowData {
+  final String? userId;
+  final String? walletId;
+
+  /// API fields
+  final String chain; // e.g. "BTC", "ETH" (maps to API "chain")
+  final String amount; // crypto amount as string (API expects string)
+  final String priority; // "yes" | "no"
+  final String? toAddress; // will be filled later
+
+  /// UI helpers
+  final double usdValue;
+  final String assetName;
+  final String assetSymbol;
+  final String assetIconPath;
+
+  const SendFlowData({
+    required this.userId,
+    required this.walletId,
+    required this.chain,
+    required this.amount,
+    required this.priority,
+    required this.usdValue,
+    required this.assetName,
+    required this.assetSymbol,
+    required this.assetIconPath,
+    this.toAddress,
+  });
+
+  SendFlowData copyWith({
+    String? userId,
+    String? walletId,
+    String? chain,
+    String? amount,
+    String? priority,
+    double? usdValue,
+    String? assetName,
+    String? assetSymbol,
+    String? assetIconPath,
+    String? toAddress,
+  }) {
+    return SendFlowData(
+      userId: userId ?? this.userId,
+      walletId: walletId ?? this.walletId,
+      chain: chain ?? this.chain,
+      amount: amount ?? this.amount,
+      priority: priority ?? this.priority,
+      usdValue: usdValue ?? this.usdValue,
+      assetName: assetName ?? this.assetName,
+      assetSymbol: assetSymbol ?? this.assetSymbol,
+      assetIconPath: assetIconPath ?? this.assetIconPath,
+      toAddress: toAddress ?? this.toAddress,
+    );
+  }
+}
 
 // 1. IMAGE CACHE MANAGER
 class ImageCacheManager {
@@ -180,6 +240,10 @@ class SendCryptocurrency extends StatefulWidget {
   /// NEW: open with USD tab selected
   final bool startInUsd;
 
+  /// (Optional) Pass from your wallet/dashboard so it flows to API
+  final String? userId;
+  final String? walletId;
+
   const SendCryptocurrency({
     super.key,
     this.title = 'Insert Amount',
@@ -188,6 +252,8 @@ class SendCryptocurrency extends StatefulWidget {
     this.isChargeMode = false,
     this.initialUsd, // NEW
     this.startInUsd = false, // NEW
+    this.userId,
+    this.walletId,
   });
 
   @override
@@ -307,7 +373,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     _usdValue = _isCryptoSelected ? val * _selectedAssetPrice : val;
   }
 
-  // Add this method to your _SendCryptocurrencyState class
+  // ---------- NEXT (Review) ----------
   void _onNextPressed() {
     final entered = double.tryParse(_currentAmount) ?? 0.0;
     final amountCrypto =
@@ -363,18 +429,24 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       return;
     }
 
-    // Default SEND flow
+    // Default SEND flow → go to review screen with all computed info
+    final data = SendFlowData(
+      userId: widget.userId,
+      walletId: widget.walletId,
+      chain: _selectedAssetSymbol, // maps to API "chain"
+      amount: amountCryptoStr, // API expects string
+      priority: "yes", // default; can be edited next screen
+      usdValue: amountCrypto * _selectedAssetPrice,
+      assetName: _selectedAsset,
+      assetSymbol: _selectedAssetSymbol,
+      assetIconPath: _selectedAssetIconPath,
+      toAddress: null, // will be filled on next screen
+    );
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SendConfirmationScreen(
-          amount: amountCryptoStr, // crypto amount
-          assetSymbol: _selectedAssetSymbol,
-          assetName: _selectedAsset,
-          assetIconPath: _selectedAssetIconPath,
-          assetPrice: _selectedAssetPrice,
-          usdValue: amountCrypto * _selectedAssetPrice,
-        ),
+        builder: (_) => SendConfirmationScreen(flowData: data),
       ),
     );
   }

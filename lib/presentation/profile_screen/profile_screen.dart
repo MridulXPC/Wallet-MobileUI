@@ -3,7 +3,7 @@ import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
-import 'package:cryptowallet/services/auth_service.dart';
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
