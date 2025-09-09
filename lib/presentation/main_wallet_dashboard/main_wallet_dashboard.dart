@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/services/wallet_flow.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
@@ -43,17 +45,18 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   late final PageController _pageController;
   int _currentPage = 0;
   late final Timer _timer;
+  bool _didBootstrap = false;
 
+  @override
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
-
-    _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapOnce());
+    _timer = Timer.periodic(const Duration(seconds: 4), (t) {
+      if (!mounted) return; // guard
       if (_pageController.hasClients) {
-        _currentPage++;
-        if (_currentPage >= 4) _currentPage = 0;
-
+        _currentPage = (_currentPage + 1) % 4;
         _pageController.animateToPage(
           _currentPage,
           duration: const Duration(milliseconds: 400),
@@ -63,147 +66,30 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     });
   }
 
+  Future<void> _bootstrapOnce() async {
+    if (_didBootstrap) return;
+    _didBootstrap = true;
+
+    try {
+      await AuthService.fetchMe();
+
+      final local = await WalletFlow
+          .ensureDefaultWallet(); // creates + saves locally if none
+      debugPrint('Current wallet: ${local.name} | ${local.primaryAddress}');
+
+      if (!mounted) return;
+      // 🔥 tell the store to pull from local and activate the new/first wallet
+      await context.read<WalletStore>().reloadFromLocalAndActivate(local.id);
+    } catch (e) {
+      debugPrint('Bootstrap failed: $e');
+    }
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
     _timer.cancel();
     super.dispose();
-  }
-
-  void _showWalletOptionsSheet() {
-    final store = context.read<WalletStore>();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent, // allow gradient to be visible
-      builder: (context) {
-        return Container(
-          // gradient + rounded top corners
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomRight,
-              stops: [0.0, 0.55, 1.0],
-              colors: [
-                Color.fromARGB(255, 6, 11, 33),
-                Color.fromARGB(255, 0, 0, 0),
-                Color.fromARGB(255, 0, 12, 56),
-              ],
-            ),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                12 + MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 6),
-                  // drag handle
-                  Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white38,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  const Text(
-                    'Wallets',
-                    style: TextStyle(
-                      color: Colors.white, // title in white
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // list of wallets
-                  Flexible(
-                    child: Consumer<WalletStore>(
-                      builder: (_, s, __) {
-                        final items = s.wallets;
-                        if (items.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              'No wallets yet',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          );
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: items.length,
-                          itemBuilder: (_, i) {
-                            final w = items[i];
-                            final isActive = s.activeWalletId == w.id;
-                            return ListTile(
-                              leading: Icon(
-                                isActive
-                                    ? Icons.radio_button_checked
-                                    : Icons.radio_button_off,
-                                color: Colors.white,
-                              ),
-                              title: Text(
-                                w.name,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              subtitle: Text(
-                                'Created: ${w.createdAt.toLocal().toString().split(".").first}',
-                                style: const TextStyle(color: Colors.white60),
-                              ),
-                              onTap: () async {
-                                await s.setActive(w.id);
-                                if (context.mounted) Navigator.pop(context);
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-
-                  const Divider(height: 20, color: Colors.white24),
-
-                  // Create New Wallet -> generate BIP39 seed -> call backend -> store locally
-                  ListTile(
-                    leading: const Icon(Icons.add, color: Colors.white),
-                    title: const Text(
-                      'Create New Wallet',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      final messenger = ScaffoldMessenger.of(context);
-                      try {
-                        final w = await store.createAndSendToBackend();
-                        messenger.showSnackBar(
-                          SnackBar(content: Text('Created ${w.name}')),
-                        );
-                      } catch (e) {
-                        messenger.showSnackBar(
-                          SnackBar(content: Text('Failed: $e')),
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   List<FlSpot> generateSpots(List<double> prices) {
@@ -368,10 +254,99 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
   static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
+  void _openChangeWalletSheet(BuildContext context) async {
+    // 👇 keep a safe context from the parent screen
+    final rootCtx = context;
+
+    final wallets = await WalletFlow.loadLocalWallets();
+
+    showModalBottomSheet(
+      context: rootCtx,
+      backgroundColor: const Color(0xFF1A1D29),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (bottomSheetCtx, setModal) {
+          Future<void> _create() async {
+            try {
+              // close using the root (still-mounted) context
+              Navigator.of(rootCtx).pop();
+
+              final w = await WalletFlow.createNewWallet(); // calls API + saves
+
+              // ✅ update store so UI sees the new wallet
+              if (mounted) {
+                final store = rootCtx.read<WalletStore>();
+                await store.reloadFromLocalAndActivate(w.id);
+              }
+
+              // show snackbar with the root context (NOT the disposed sheet)
+              ScaffoldMessenger.of(rootCtx).showSnackBar(
+                SnackBar(content: Text('Wallet created: ${w.name}')),
+              );
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(rootCtx).showSnackBar(
+                  SnackBar(content: Text('Failed: $e')),
+                );
+              }
+            }
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 6),
+                  const Text('Your Wallets',
+                      style: TextStyle(color: Colors.white, fontSize: 18)),
+                  const SizedBox(height: 12),
+                  ...wallets.map((w) => ListTile(
+                        leading: const Icon(Icons.account_balance_wallet,
+                            color: Colors.white70),
+                        title: Text(w.name,
+                            style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          w.primaryAddress.isEmpty
+                              ? 'No address'
+                              : '${w.primaryAddress.substring(0, 8)}…${w.primaryAddress.substring(w.primaryAddress.length - 6)}',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12),
+                        ),
+                        onTap: () {
+                          Navigator.of(rootCtx).pop();
+                          if (mounted) {
+                            rootCtx.read<WalletStore>().setActive(w.id);
+                          }
+                        },
+                      )),
+                  const SizedBox(height: 6),
+                  const Divider(color: Colors.white24),
+                  ListTile(
+                    leading:
+                        const Icon(Icons.add_circle, color: Colors.lightGreen),
+                    title: const Text('Create New Wallet',
+                        style: TextStyle(color: Colors.white)),
+                    subtitle: const Text('Generates a new seed & address',
+                        style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    onTap: _create,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // ✅ Read coins from Provider (rebuilds if coin map changes)
-    final coinStore = context.watch<CoinStore>();
+    context.watch<CoinStore>();
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -388,11 +363,12 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VaultHeaderCard(
-                  totalValue: '\$12,340.55',
-                  vaultName: 'Main Vault',
-                  onTap: () {}, // optional card tap
-                  onChangeWallet: _showWalletOptionsSheet, // opens your sheet
-                  onActivities: _openActivities,
+                  totalValue: '\$12,345.67',
+                  vaultName: 'Main Wallet',
+                  onTap: () {}, // open portfolio
+                  onChangeWallet: () => _openChangeWalletSheet(context),
+                  onActivities: () => Navigator.of(context, rootNavigator: true)
+                      .pushNamed(AppRoutes.transactionHistory),
                 ),
 
                 // ✅ Crypto stats pager pulling iconPath from CoinStore by coinId

@@ -29,7 +29,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => CoinStore()),
         ChangeNotifierProvider(
             create: (_) =>
-                WalletStore()..load()), // loads saved wallets + active wallet
+                WalletStore()), // loads saved wallets + active wallet
       ],
       child: const MyApp(),
     ),

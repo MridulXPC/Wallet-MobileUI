@@ -1,125 +1,112 @@
-import 'dart:convert';
-import 'dart:math';
-import 'package:bip39/bip39.dart' as bip39;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/services/wallet_flow.dart';
 
-class Wallet {
-  final String id; // local id
-  final String name; // My Wallet, My Wallet 1, ...
-  final String mnemonic; // stored locally
+/// If you already have this model, keep yours.
+/// Only requirement: id, name, primaryAddress, createdAt.
+class LocalWallet {
+  final String id;
+  final String name;
+  final String primaryAddress;
   final DateTime createdAt;
-  final Map<String, dynamic>? backend; // optional: backend response
 
-  const Wallet({
+  LocalWallet({
     required this.id,
     required this.name,
-    required this.mnemonic,
+    required this.primaryAddress,
     required this.createdAt,
-    this.backend,
   });
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'mnemonic': mnemonic,
-        'createdAt': createdAt.toIso8601String(),
-        'backend': backend,
-      };
-
-  static Wallet fromJson(Map<String, dynamic> j) => Wallet(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        mnemonic: j['mnemonic'] as String,
-        createdAt: DateTime.parse(j['createdAt'] as String),
-        backend: j['backend'] as Map<String, dynamic>?,
-      );
 }
 
 class WalletStore extends ChangeNotifier {
-  static const _kWallets = 'wallets_v1';
-  static const _kActive = 'active_wallet_id_v1';
+  static const _spActiveId = 'active_wallet_id';
 
-  final List<Wallet> _wallets = [];
-  String? _activeId;
+  List<LocalWallet> _wallets = [];
+  String? _activeWalletId;
 
-  List<Wallet> get wallets => List.unmodifiable(_wallets);
-  String? get activeWalletId => _activeId;
+  List<LocalWallet> get wallets => _wallets;
+  String? get activeWalletId => _activeWalletId;
+  LocalWallet? get activeWallet =>
+      _wallets.firstWhere((w) => w.id == _activeWalletId,
+          orElse: () =>
+              _wallets.isNotEmpty ? _wallets.first : (null as LocalWallet));
 
-  // ---------- persistence ----------
-  Future<void> load() async {
+  // ---------- hydrate / reload ----------
+
+  Future<void> hydrate() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kWallets);
-    _activeId = prefs.getString(_kActive);
-    _wallets.clear();
-    if (raw != null && raw.isNotEmpty) {
-      final List list = jsonDecode(raw) as List;
-      _wallets
-          .addAll(list.map((e) => Wallet.fromJson(e as Map<String, dynamic>)));
-    }
-    notifyListeners();
-  }
+    final savedId = prefs.getString(_spActiveId);
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kWallets,
-      jsonEncode(_wallets.map((w) => w.toJson()).toList()),
-    );
-    if (_activeId != null) {
-      await prefs.setString(_kActive, _activeId!);
+    _wallets = await WalletFlow.loadLocalWallets();
+
+    // pick active:
+    if (_wallets.isEmpty) {
+      _activeWalletId = null;
+    } else if (savedId != null && _wallets.any((w) => w.id == savedId)) {
+      _activeWalletId = savedId;
     } else {
-      await prefs.remove(_kActive);
+      _activeWalletId = _wallets.first.id;
+      await _persistActive(_activeWalletId!);
+    }
+    notifyListeners();
+  }
+
+  Future<void> reloadFromLocal() async {
+    _wallets = await WalletFlow.loadLocalWallets();
+    notifyListeners();
+  }
+
+  Future<void> reloadFromLocalAndActivate(String? preferId) async {
+    await reloadFromLocal();
+    if (_wallets.isEmpty) return;
+
+    if (preferId != null && _wallets.any((w) => w.id == preferId)) {
+      _activeWalletId = preferId;
+    } else {
+      _activeWalletId ??= _wallets.first.id;
+    }
+    if (_activeWalletId != null) await _persistActive(_activeWalletId!);
+    notifyListeners();
+  }
+
+  Future<void> _persistActive(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_spActiveId, id);
+  }
+
+  Future<void> setActive(String id) async {
+    if (_activeWalletId == id) return;
+    _activeWalletId = id;
+    await _persistActive(id);
+    notifyListeners();
+  }
+
+  // ---------- auto-naming ----------
+
+  /// Returns next available name: "My Wallet", "My Wallet 1", "My Wallet 2", …
+  String nextAvailableName({String base = 'My Wallet'}) {
+    final names = _wallets.map((w) => w.name.trim()).toSet();
+    if (!names.contains(base)) return base;
+
+    // find smallest N not used for "base N"
+    for (int i = 1;; i++) {
+      final candidate = '$base $i';
+      if (!names.contains(candidate)) return candidate;
     }
   }
 
-  // ---------- helpers ----------
-  String _genId() =>
-      '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1 << 32)}';
+  // ---------- create new wallet (auto-named) ----------
 
-  String _nextName() {
-    if (_wallets.isEmpty) return 'My Wallet';
-    // reserve unique: My Wallet, My Wallet 1, 2, ...
-    final existing = _wallets.map((w) => w.name.toLowerCase()).toSet();
-    int i = 1;
-    while (true) {
-      final candidate = i == 0 ? 'my wallet' : 'my wallet $i';
-      if (!existing.contains(candidate)) {
-        return i == 0 ? 'My Wallet' : 'My Wallet $i';
-      }
-      i++;
-    }
-  }
+  Future<LocalWallet> createAndSendToBackend(
+      {String baseName = 'My Wallet'}) async {
+    // ensure latest list to calculate name
+    _wallets = await WalletFlow.loadLocalWallets();
+    final name = nextAvailableName(base: baseName);
 
-  // ---------- actions ----------
-  /// Create seed (BIP39) -> send to backend -> store locally -> set active
-  Future<Wallet> createAndSendToBackend() async {
-    final mnemonic = bip39.generateMnemonic(strength: 128);
-    final name = _nextName();
-
-    final resp = await AuthService.submitRecoveryPhrase(phrase: mnemonic);
-    // (optional) you can inspect resp.success here
-
-    final w = Wallet(
-      id: _genId(),
-      name: name,
-      mnemonic: mnemonic,
-      createdAt: DateTime.now(),
-      backend: resp.data,
-    );
-
-    _wallets.add(w);
-    _activeId = w.id;
-    await _save();
-    notifyListeners();
-    return w;
-  }
-
-  Future<void> setActive(String walletId) async {
-    if (_activeId == walletId) return;
-    _activeId = walletId;
-    await _save();
-    notifyListeners();
+    final newW = await WalletFlow.createNewWallet(
+        name: name); // calls backend + saves locally
+    // refresh & activate the new one
+    await reloadFromLocalAndActivate(newW.id);
+    return newW;
   }
 }

@@ -3,7 +3,6 @@ import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrenc
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-// SendFlowData
 
 class SendConfirmationView extends StatefulWidget {
   final SendFlowData flowData; // must include toAddress from Screen 2
@@ -15,40 +14,50 @@ class SendConfirmationView extends StatefulWidget {
 }
 
 class _SendConfirmationViewState extends State<SendConfirmationView> {
+  // UI/flow
   late String _priority; // "yes" | "no"
   bool _submitting = false;
   String? _error;
 
-  // local preview-only fees
+  // local preview-only fees (computed)
   double _activationFee = 0.0;
   double _networkFee = 0.0;
 
-  @override
-  void initState() {
-    super.initState();
-    _priority = widget.flowData.priority; // default from earlier
-    _recalcFees();
-  }
+  // Formatters are a bit heavy—cache one instance
+  static final DateFormat _dateFmt = DateFormat('dd MMM yyyy HH:mm:ss');
 
   // -------- helpers --------
   String get _assetSymbol => widget.flowData.assetSymbol;
-  double get _amountCrypto => double.tryParse(widget.flowData.amount) ?? 0.0;
+  double get _amountCrypto =>
+      double.tryParse(widget.flowData.amount.trim()) ?? 0.0;
 
   double get _willReceive {
     final v = _amountCrypto - _activationFee;
     return v < 0 ? 0.0 : v;
   }
 
-  String get _timeText {
-    final now = DateTime.now();
-    return DateFormat('dd MMM yyyy HH:mm:ss').format(now);
+  String get _timeText => _dateFmt.format(DateTime.now());
+
+  @override
+  void initState() {
+    super.initState();
+    _priority = widget.flowData.priority; // default from earlier
+    _recalcFees(); // initial fee calc
   }
 
   void _recalcFees() {
+    // compute new fees; avoid setState if values unchanged to reduce rebuilds
     final base = _baseFeeForSymbol(_assetSymbol);
-    _networkFee = _priority == "yes" ? base * 1.5 : base; // High = more
-    _activationFee = _networkFee; // keep rows consistent in UI
-    setState(() {});
+    final computedNetwork = _priority == "yes" ? base * 1.5 : base;
+    final computedActivation = computedNetwork;
+
+    if (computedNetwork != _networkFee ||
+        computedActivation != _activationFee) {
+      setState(() {
+        _networkFee = computedNetwork;
+        _activationFee = computedActivation;
+      });
+    }
   }
 
   double _baseFeeForSymbol(String sym) {
@@ -75,14 +84,21 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
   }
 
   Future<void> _confirmAndSend() async {
-    // 1) Validate recipient & amount
-    if ((widget.flowData.toAddress ?? '').isEmpty) {
+    debugPrint('▶️ confirm tapped');
+    final toAddr = (widget.flowData.toAddress ?? '').trim();
+    final amtStr = widget.flowData.amount.trim();
+    debugPrint(
+        '📍 inputs -> to:$toAddr, amount:$amtStr, chain:${widget.flowData.chain}, priority:$_priority');
+
+    if (toAddr.isEmpty) {
       setState(() => _error = 'Missing recipient address.');
+      debugPrint('⛔ stop: empty toAddress');
       return;
     }
-    final amt = double.tryParse(widget.flowData.amount) ?? 0;
+    final amt = double.tryParse(amtStr) ?? 0;
     if (amt <= 0) {
       setState(() => _error = 'Amount must be greater than 0.');
+      debugPrint('⛔ stop: amount <= 0');
       return;
     }
 
@@ -90,50 +106,52 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       _submitting = true;
       _error = null;
     });
-
     try {
-      // 2) Resolve userId from /api/auth/me (cached if already fetched)
       final userId = await AuthService.getOrFetchUserId();
+      if (!mounted) return;
+      debugPrint('👤 userId: $userId');
       if (userId == null || userId.isEmpty) {
         setState(() => _error = 'Unable to resolve user ID.');
+        debugPrint('⛔ stop: userId null/empty');
         return;
       }
 
-      // 3) Resolve walletId from /api/wallet/get-wallets (cached; chain-aware)
-      //    If you already have a walletId in flowData, you can prefer it,
-      //    but here we always resolve from API to stay in sync with backend.
-      final walletId = await AuthService.getOrFetchWalletId(
-        chain: widget.flowData.chain,
-      );
-      if (walletId == null || walletId.isEmpty) {
-        setState(() => _error = 'Unable to resolve wallet ID.');
+      final walletAddress = await AuthService.getOrFetchWalletAddress(
+          chain: widget.flowData.chain);
+      if (!mounted) return;
+      debugPrint('👛 walletAddress: $walletAddress');
+      if (walletAddress == null || walletAddress.isEmpty) {
+        setState(() => _error = 'Unable to resolve wallet address.');
+        debugPrint('⛔ stop: walletAddress null/empty');
         return;
       }
 
-      // 4) Send transaction
+      debugPrint('🚀 calling sendTransaction...');
       final res = await AuthService.sendTransaction(
         userId: userId,
-        walletId: walletId,
-        toAddress: widget.flowData.toAddress!,
-        amount: widget.flowData.amount, // string
-        chain: widget.flowData.chain, // e.g. "BTC", "ETH", "TRX"
-        priority: _priority, // "yes" | "no"
+        walletAddress: walletAddress,
+        toAddress: toAddr,
+        amount: amtStr,
+        chain: widget.flowData.chain,
+        priority: _priority,
       );
+      debugPrint(
+          '✅ sendTransaction returned: ${res.success}  msg:${res.message}');
 
       if (!mounted) return;
 
       if (res.success) {
         final txId = _extractTxId(res.data);
+        debugPrint('🔗 txId: $txId');
         await _showSuccessDialog(context, txId);
-
-        // Close the 3-step flow
-        if (mounted) {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        }
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
       } else {
         setState(() => _error = res.message ?? 'Transaction failed.');
       }
     } catch (e) {
+      if (!mounted) return;
+      debugPrint('💥 exception in confirmAndSend: $e');
       setState(() => _error = 'Transaction error: $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -142,11 +160,13 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   String? _extractTxId(Map<String, dynamic>? data) {
     if (data == null) return null;
-    final keys = ['txId', 'txid', 'hash', 'transactionHash', 'id'];
+    // Try common keys at top level
+    const keys = ['txId', 'txid', 'hash', 'transactionHash', 'id'];
     for (final k in keys) {
       final v = data[k];
       if (v is String && v.isNotEmpty) return v;
     }
+    // Try within nested "data" or "result"
     final nested = (data['data'] ?? data['result']);
     if (nested is Map<String, dynamic>) {
       for (final k in keys) {
@@ -199,8 +219,8 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
     const divider = Color(0x22FFFFFF);
     const accentNote = Color(0xFFF1DF5A);
 
-    final fromAccountLabel = '${widget.flowData.assetSymbol} - Main Account';
-    final toAddress = widget.flowData.toAddress ?? '';
+    final fromAccountLabel = '${_assetSymbol} - Main Account';
+    final toAddress = (widget.flowData.toAddress ?? '').trim();
 
     return Scaffold(
       backgroundColor: bg,
@@ -291,9 +311,11 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                       'Activation Fee',
                       '(-) ${_activationFee.toStringAsFixed(_activationFee >= 1 ? 1 : 6)} $_assetSymbol',
                     ),
-                    _kvRow('Will Receive',
-                        '${_willReceive.toStringAsFixed(5)} $_assetSymbol',
-                        strong: true),
+                    _kvRow(
+                      'Will Receive',
+                      '${_willReceive.toStringAsFixed(5)} $_assetSymbol',
+                      strong: true,
+                    ),
 
                     const SizedBox(height: 10),
                     if (_error != null)
@@ -354,10 +376,8 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             label: const Text('Regular'),
                             selected: _priority == "no",
                             onSelected: (_) {
-                              setState(() {
-                                _priority = "no";
-                                _recalcFees();
-                              });
+                              _priority = "no";
+                              _recalcFees();
                             },
                             selectedColor: Colors.white,
                             labelStyle: TextStyle(
@@ -372,10 +392,8 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             label: const Text('High'),
                             selected: _priority == "yes",
                             onSelected: (_) {
-                              setState(() {
-                                _priority = "yes";
-                                _recalcFees();
-                              });
+                              _priority = "yes";
+                              _recalcFees();
                             },
                             selectedColor: Colors.white,
                             labelStyle: TextStyle(
@@ -407,11 +425,20 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
             // Bottom Confirm button
             Padding(
               padding: const EdgeInsets.only(
-                  left: 16, right: 16, bottom: 16, top: 0),
+                left: 16,
+                right: 16,
+                bottom: 16,
+                top: 0,
+              ),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _submitting ? null : _confirmAndSend,
+                  onPressed: _submitting
+                      ? null
+                      : () async {
+                          FocusScope.of(context).unfocus();
+                          await _confirmAndSend();
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
@@ -426,7 +453,8 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Text('Confirm'),
                 ),
               ),
@@ -447,6 +475,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Key
+          const SizedBox(width: 0), // keeps structure predictable
           Expanded(
             flex: 43,
             child: Text(
@@ -486,7 +515,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       child: SizedBox(
         height: 36,
         width: 36,
-        child: Icon(icon, size: 18, color: Colors.white),
+        child: Icon(icon, size: 18, color: Colors.white), // ✅ use param
       ),
     );
   }

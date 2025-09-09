@@ -7,6 +7,8 @@ import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart'; // ✅ Provider source of truth
+import 'package:cryptowallet/services/api_service.dart'; // ✅ AuthService with fetchMe & fetchTokens
+import 'package:flutter/foundation.dart' show debugPrint;
 
 /// ----------------------------------------------
 /// Flow model passed across the 3-screen send flow
@@ -80,8 +82,7 @@ class ImageCacheManager {
 
   static void preloadImages(List<String> assetPaths, BuildContext context) {
     for (String path in assetPaths) {
-      precacheImage(AssetImage(path), context).catchError((error) {
-        // Silently handle preload errors
+      precacheImage(AssetImage(path), context).catchError((_) {
         debugPrint('Failed to preload image: $path');
       });
     }
@@ -119,9 +120,7 @@ class OptimizedCoinIcon extends StatelessWidget {
         width: size,
         height: size,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          if (wasSynchronouslyLoaded) {
-            return child;
-          }
+          if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
             duration: const Duration(milliseconds: 150),
@@ -171,11 +170,7 @@ class OptimizedAssetListTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              // Use optimized icon widget
-              OptimizedCoinIcon(
-                assetPath: coin.assetPath,
-                size: 40,
-              ),
+              OptimizedCoinIcon(assetPath: coin.assetPath, size: 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -213,6 +208,107 @@ class OptimizedAssetListTile extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------- Local row model for API-loaded assets (but icons from CoinStore) ----------
+class _AssetRow {
+  final String id; // e.g. "BTC" or "USDT-ETH"
+  final String symbol; // e.g. "BTC"
+  final String name; // e.g. "Bitcoin"
+  final double price; // USD price
+  final double balance; // user balance (crypto units)
+  final String assetPath; // from CoinStore.assetPath
+
+  _AssetRow({
+    required this.id,
+    required this.symbol,
+    required this.name,
+    required this.price,
+    required this.balance,
+    required this.assetPath,
+  });
+}
+
+// ---------- Bottom sheet scaffold ----------
+class _AssetSheetScaffold extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final Widget? header;
+  final Widget? chips;
+
+  const _AssetSheetScaffold({
+    Key? key,
+    required this.title,
+    required this.child,
+    this.header,
+    this.chips,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomRight,
+            stops: [0.0, 0.55, 1.0],
+            colors: [
+              Color.fromARGB(255, 6, 11, 33),
+              Color.fromARGB(255, 0, 0, 0),
+              Color.fromARGB(255, 0, 12, 56),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                height: 4,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Title
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'Select Asset',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
+              if (header != null) ...[
+                header!,
+                const SizedBox(height: 10),
+              ],
+              if (chips != null) ...[
+                chips!,
+                const SizedBox(height: 8),
+              ],
+
+              // Content
+              Expanded(child: child),
+
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -266,14 +362,14 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   double _usdValue = 0.00;
   bool _isImagesPreloaded = false;
 
-  // Selected asset properties (derived from CoinStore)
+  // Selected asset properties (derived from CoinStore or API)
   String _selectedAsset = 'Bitcoin';
   String _selectedAssetSymbol = 'BTC';
   double _selectedAssetBalance = 0.00;
   String _selectedAssetIconPath = 'assets/currencyicons/bitcoin.png';
   double _selectedAssetPrice = 30000.00;
 
-  // Dummy prices/balances (plug your API later)
+  // Dummy prices/balances (fallback)
   final Map<String, double> _dummyPrices = const {
     'BTC': 43825.67,
     'BTC-LN': 43825.67,
@@ -295,7 +391,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   final Map<String, double> _dummyBalances = const {
     'BTC': 500.0,
     'BTC-LN': 0.0,
-    'ETH': 0.0,
+    'ETH': 500.0,
     'BNB': 0.0,
     'SOL': 0.0,
     'TRX': 0.0,
@@ -312,7 +408,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   @override
   void dispose() {
-    // Clear image cache when widget is disposed to free memory
     ImageCacheManager.clearCache();
     super.dispose();
   }
@@ -369,7 +464,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   void _calculateUSDValue() {
     final val = double.tryParse(_currentAmount) ?? 0.0;
-    // If crypto tab is selected, amount is crypto → convert to USD. If USD tab selected, amount is already USD.
     _usdValue = _isCryptoSelected ? val * _selectedAssetPrice : val;
   }
 
@@ -467,6 +561,162 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     _calculateUSDValue();
   }
 
+  // ---------- Flexible JSON pickers for VaultToken → UI ----------
+  String _pickString(Map<String, dynamic> j, List<String> keys,
+      {String def = ''}) {
+    for (final k in keys) {
+      final v = j[k];
+      if (v == null) continue;
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+      return v.toString();
+    }
+    return def;
+  }
+
+  double _pickNum(Map<String, dynamic> j, List<String> keys,
+      {double def = 0.0}) {
+    for (final k in keys) {
+      final v = j[k];
+      if (v == null) continue;
+      if (v is num) return v.toDouble();
+      if (v is String) {
+        final d = double.tryParse(v);
+        if (d != null) return d;
+      }
+    }
+    return def;
+  }
+
+  // 🔎 Resolve a Coin from CoinStore (id → symbol → base id)
+  Coin? _resolveCoinFromStore({
+    required CoinStore store,
+    required String id,
+    required String symbol,
+  }) {
+    // 1) Try exact id
+    Coin? coin = store.getById(id);
+    if (coin != null) return coin;
+
+    // 2) Try by exact symbol match among values
+    for (final c in store.coins.values) {
+      if (c.symbol.toUpperCase() == symbol.toUpperCase()) return c;
+    }
+
+    // 3) Try by base id (e.g., "USDT-ETH" -> "USDT")
+    final base = id.contains('-') ? id.split('-').first : id;
+    coin = store.getById(base);
+    if (coin != null) return coin;
+
+    return null;
+  }
+
+  // 🔥 Load assets via API (fetchMe + fetchTokens) and map to rows
+  //     ICONS ALWAYS FROM CoinStore
+  Future<List<_AssetRow>> _loadAssetsFromApi() async {
+    // Ensure user context & token are valid (also caches userId)
+    try {
+      await AuthService.fetchMe();
+    } catch (e) {
+      debugPrint('fetchMe failed (continuing): $e');
+    }
+
+    try {
+      final tokens = await AuthService.fetchTokens();
+      final store = context.read<CoinStore>();
+
+      // Map VaultToken → _AssetRow via toJson/keys (field-agnostic)
+      final rows = tokens.map((t) {
+        Map<String, dynamic> j;
+        try {
+          j = (t as dynamic).toJson() as Map<String, dynamic>;
+        } catch (_) {
+          j = <String, dynamic>{};
+        }
+
+        final rawId = _pickString(j, ['id', '_id', 'tokenId', 'symbol']);
+        final rawSymbol = _pickString(j, ['symbol', 'ticker', 'code'],
+            def: rawId.isNotEmpty ? rawId : 'BTC');
+        final rawName =
+            _pickString(j, ['name', 'tokenName', 'assetName'], def: rawSymbol);
+
+        // Price candidates — adjust if your API uses different keys
+        final price = _pickNum(
+            j,
+            [
+              'priceUsd',
+              'price',
+              'usdPrice',
+              'fiatPrice',
+              'currentPrice',
+              'lastPrice',
+              'marketPrice',
+            ],
+            def: 0.0);
+
+        // Balance candidates
+        final balance = _pickNum(
+            j,
+            [
+              'balance',
+              'amount',
+              'qty',
+              'quantity',
+              'free',
+              'available',
+            ],
+            def: 0.0);
+
+        // 🔗 Resolve the Coin from CoinStore to get the PNG path
+        final coinFromStore = _resolveCoinFromStore(
+          store: store,
+          id: rawId.isNotEmpty ? rawId : rawSymbol,
+          symbol: rawSymbol,
+        );
+
+        final displayId =
+            coinFromStore?.id ?? (rawId.isNotEmpty ? rawId : rawSymbol);
+        final displaySymbol = coinFromStore?.symbol ?? rawSymbol;
+        final displayName = coinFromStore?.name ?? rawName;
+        final assetPath = coinFromStore?.assetPath ??
+            store.cardAssetFor(displayId) // fallback to watermark if exists
+            ??
+            'assets/currencyicons/bitcoin.png'; // last-resort default
+
+        return _AssetRow(
+          id: displayId,
+          symbol: displaySymbol,
+          name: displayName,
+          price: price,
+          balance: balance,
+          assetPath: assetPath, // ✅ from CoinStore
+        );
+      }).toList();
+
+      return rows;
+    } catch (e) {
+      debugPrint('fetchTokens failed, falling back to CoinStore: $e');
+
+      // Fallback to current provider coins so UI still works
+      final coins = context.read<CoinStore>().coins.values.toList()
+        ..sort((a, b) => a.symbol.compareTo(b.symbol));
+
+      return coins.map((c) {
+        final symbol = c.symbol;
+        final name = c.name;
+        final price = _dummyPrices[symbol] ?? _dummyPrices[c.id] ?? 1.0;
+        final balance = _dummyBalances[symbol] ?? _dummyBalances[c.id] ?? 0.0;
+        return _AssetRow(
+          id: c.id,
+          symbol: symbol,
+          name: name,
+          price: price,
+          balance: balance,
+          assetPath: c.assetPath, // ✅ store icon
+        );
+      }).toList();
+    }
+  }
+
   void _showAssetSelector() {
     showModalBottomSheet(
       context: context,
@@ -474,165 +724,134 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       isScrollControlled: true,
       enableDrag: true,
       builder: (context) {
-        final coins = context.read<CoinStore>().coins.values.toList()
-          ..sort((a, b) => a.symbol.compareTo(b.symbol));
-
-        // Build chip list
-        final baseSet = <String>{};
-        for (final c in coins) {
-          final base = _baseSymbol(c.id);
-          baseSet.add(base);
-        }
-        final chips = ['ALL', ...baseSet.toList()..sort()];
-
-        String search = '';
-        String chip = 'ALL';
-
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final filtered = coins.where((c) {
-              final q = search.trim().toLowerCase();
-              final matchesSearch = q.isEmpty ||
-                  c.symbol.toLowerCase().contains(q) ||
-                  c.name.toLowerCase().contains(q) ||
-                  c.id.toLowerCase().contains(q);
-              final matchesChip = chip == 'ALL' || _baseSymbol(c.id) == chip;
-              return matchesSearch && matchesChip;
-            }).toList();
-
-            return ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-              child: Container(
-                height: MediaQuery.of(context).size.height * 0.85,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomRight,
-                    stops: [0.0, 0.55, 1.0],
-                    colors: [
-                      Color.fromARGB(255, 6, 11, 33),
-                      Color.fromARGB(255, 0, 0, 0),
-                      Color.fromARGB(255, 0, 12, 56),
-                    ],
+        return FutureBuilder<List<_AssetRow>>(
+          future: _loadAssetsFromApi(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const _AssetSheetScaffold(
+                title: 'Select Asset',
+                child: Center(
+                  child: SizedBox(
+                    height: 28,
+                    width: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    children: [
-                      // Handle bar
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        height: 4,
-                        width: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
-                          borderRadius: BorderRadius.circular(2),
+              );
+            }
+
+            if (snap.hasError) {
+              return _AssetSheetScaffold(
+                title: 'Select Asset',
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Text(
+                      'Failed to load assets.\n${snap.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            final rows = snap.data ?? const <_AssetRow>[];
+
+            // Build chip list from base symbols
+            final baseSet = <String>{};
+            for (final r in rows) {
+              final base = _baseSymbol(r.id);
+              baseSet.add(base);
+            }
+            final chips = ['ALL', ...baseSet.toList()..sort()];
+
+            String search = '';
+            String chip = 'ALL';
+
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                final filtered = rows.where((r) {
+                  final q = search.trim().toLowerCase();
+                  final matchesSearch = q.isEmpty ||
+                      r.symbol.toLowerCase().contains(q) ||
+                      r.name.toLowerCase().contains(q) ||
+                      r.id.toLowerCase().contains(q);
+                  final matchesChip =
+                      chip == 'ALL' || _baseSymbol(r.id) == chip;
+                  return matchesSearch && matchesChip;
+                }).toList();
+
+                return _AssetSheetScaffold(
+                  title: 'Select Asset',
+                  header: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Search symbol, name, or network',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        prefixIcon:
+                            const Icon(Icons.search, color: Colors.white54),
+                        filled: true,
+                        fillColor: const Color(0xFF1F2431),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
                         ),
                       ),
-
-                      // Title
-                      const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                          'Select Asset',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-
-                      // Search field
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: TextField(
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Search symbol, name, or network',
-                            hintStyle: const TextStyle(color: Colors.white54),
-                            prefixIcon:
-                                const Icon(Icons.search, color: Colors.white54),
-                            filled: true,
-                            fillColor: Color(0xFF1F2431),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide.none,
+                      onChanged: (v) => setModalState(() => search = v),
+                    ),
+                  ),
+                  chips: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: chips.map((f) {
+                        final selected = chip == f;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: ChoiceChip(
+                            label: Text(f),
+                            selected: selected,
+                            onSelected: (_) => setModalState(() => chip = f),
+                            selectedColor: Colors.blue,
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.white : Colors.white70,
                             ),
+                            backgroundColor: const Color(0xFF1F2431),
                           ),
-                          onChanged: (v) => setModalState(() => search = v),
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      // Filter chips
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Row(
-                          children: chips
-                              .map(
-                                (f) => Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 6),
-                                  child: ChoiceChip(
-                                    label: Text(f),
-                                    selected: chip == f,
-                                    onSelected: (_) =>
-                                        setModalState(() => chip = f),
-                                    selectedColor: Colors.blue,
-                                    labelStyle: TextStyle(
-                                      color: chip == f
-                                          ? Colors.white
-                                          : Colors.white70,
-                                    ),
-                                    backgroundColor: const Color(0xFF1F2431),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Optimized list view
-                      Expanded(
-                        child: ListView.builder(
-                          physics: const ClampingScrollPhysics(),
-                          cacheExtent: 500,
-                          itemExtent: 72,
-                          itemCount: filtered.length,
-                          itemBuilder: (context, i) {
-                            final coin = filtered[i];
-                            final price = _dummyPrices[coin.symbol] ??
-                                _dummyPrices[coin.id] ??
-                                1.0;
-                            final balance = _dummyBalances[coin.symbol] ??
-                                _dummyBalances[coin.id] ??
-                                0.0;
-
-                            return OptimizedAssetListTile(
-                              coin: coin,
-                              price: price,
-                              balance: balance,
-                              onTap: () {
-                                _onAssetSelected(coin);
-                                Navigator.pop(context);
-                              },
-                            );
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-                    ],
+                        );
+                      }).toList(),
+                    ),
                   ),
-                ),
-              ),
+                  child: ListView.builder(
+                    physics: const ClampingScrollPhysics(),
+                    cacheExtent: 500,
+                    itemExtent: 72,
+                    itemCount: filtered.length,
+                    itemBuilder: (context, i) {
+                      final r = filtered[i];
+                      // Build a Coin purely from store-driven assetPath & identity
+                      final coin = Coin(
+                        id: r.id,
+                        symbol: r.symbol,
+                        name: r.name,
+                        assetPath: r.assetPath, // ✅ from CoinStore
+                      );
+                      return OptimizedAssetListTile(
+                        coin: coin,
+                        price: r.price,
+                        balance: r.balance,
+                        onTap: () {
+                          _onAssetSelected(coin);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
             );
           },
         );
