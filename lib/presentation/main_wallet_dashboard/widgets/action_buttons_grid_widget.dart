@@ -1,20 +1,29 @@
 // lib/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
+
 import '../../../core/app_export.dart';
 import '../../../stores/coin_store.dart';
 
 class ActionButtonsGridWidget extends StatelessWidget {
   final bool isLarge;
   final bool isTablet;
-  final String coinId; // <-- NEW: jis coin ki card hai
+
+  /// Coin/card id from CoinStore — e.g. "BTC", "BTC-LN", "USDT-TRX", "ETH-ETH"
+  final String coinId;
+
+  /// Optional: override tap for Receive button (e.g., to open the correct chain address)
+  final FutureOr<void> Function()? onReceive;
 
   const ActionButtonsGridWidget({
     super.key,
-    required this.coinId, // <-- REQUIRED
+    required this.coinId,
     this.isLarge = false,
     this.isTablet = false,
+    this.onReceive, // <-- NEW
   });
 
   @override
@@ -32,6 +41,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
         title: "Receive",
         icon: Icons.call_received,
         route: AppRoutes.receiveCrypto,
+        onTapOverride: onReceive, // <-- use your callback if provided
       ),
       _ActionButton(
         title: "Swap",
@@ -42,14 +52,12 @@ class ActionButtonsGridWidget extends StatelessWidget {
         title: "Activity",
         icon: Icons.history,
         route: AppRoutes.tokenDetail,
-        // 👉 TokenDetail ko History tab par le jao + coin context bhejo
+        // Open TokenDetail in History tab and pass coin context
         arguments: {
           'initialTab': 1, // History tab
           'symbol': coin?.symbol, // e.g. BTC
           'name': coin?.name, // e.g. Bitcoin
           'icon': coin?.assetPath, // icon path from CoinStore
-          // zarurat ho to price/extra fields bhi bhej sakte ho:
-          // 'price':  widget.currentPrice  <-- (agar is widget ko pass karna chaho)
         },
       ),
     ];
@@ -67,7 +75,8 @@ class ActionButtonsGridWidget extends StatelessWidget {
                 title: button.title,
                 icon: button.icon,
                 route: button.route,
-                arguments: button.arguments, // <-- forward args
+                arguments: button.arguments,
+                onTapOverride: button.onTapOverride,
               ),
             ),
           );
@@ -81,12 +90,19 @@ class ActionButtonsGridWidget extends StatelessWidget {
     required String title,
     required IconData icon,
     required String route,
-    Object? arguments, // <-- NEW
+    Object? arguments,
+    FutureOr<void> Function()? onTapOverride,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => Navigator.pushNamed(context, route, arguments: arguments),
+        onTap: () async {
+          if (onTapOverride != null) {
+            await onTapOverride();
+          } else {
+            Navigator.pushNamed(context, route, arguments: arguments);
+          }
+        },
         borderRadius: BorderRadius.circular(6),
         child: Container(
           decoration: BoxDecoration(
@@ -99,7 +115,7 @@ class ActionButtonsGridWidget extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, color: Colors.white, size: 24),
-              SizedBox(height: 6),
+              const SizedBox(height: 6),
               Text(
                 title,
                 style: TextStyle(
@@ -123,11 +139,13 @@ class _ActionButton {
   final String title;
   final IconData icon;
   final String route;
-  final Object? arguments; // <-- NEW
+  final Object? arguments;
+  final FutureOr<void> Function()? onTapOverride;
   _ActionButton({
     required this.title,
     required this.icon,
     required this.route,
     this.arguments,
+    this.onTapOverride,
   });
 }

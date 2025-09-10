@@ -1,10 +1,12 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -12,7 +14,7 @@ class ReceiveQR extends StatefulWidget {
   /// Big title at the top, e.g. "Your address to receive BTC"
   final String title;
 
-  /// Base address / invoice text
+  /// Base address / invoice text. If empty, we’ll fetch from API.
   final String address;
 
   /// Optional: Coin/network id (e.g. "BTC", "BTC-LN", "USDT-TRX")
@@ -53,11 +55,19 @@ class _ReceiveQRState extends State<ReceiveQR> {
   // === STATE ===
   late final TextEditingController _satsCtrl;
   bool _expandAmount = true;
-  String _qrData = '';
-  String _shortAddress = '';
-  String get _baseAddress => widget.address;
 
-  // convenience
+  // Address state (may be resolved from API)
+  String? _address; // final resolved address to show
+  String _shortAddress = '';
+  String _qrData = '';
+
+  bool _loadingWallet = false;
+  String? _loadErr;
+
+  // convenience getters
+  String get _baseAddress =>
+      (_address?.isNotEmpty ?? false) ? _address! : widget.address;
+
   bool get _isBtcOnchain =>
       (widget.mode ?? '').toLowerCase() == 'onchain' &&
       (widget.coinId ?? 'BTC').toUpperCase().startsWith('BTC');
@@ -73,9 +83,17 @@ class _ReceiveQRState extends State<ReceiveQR> {
     super.initState();
     _satsCtrl =
         TextEditingController(text: (widget.initialSats ?? 0).toString());
-    _shortAddress = _shorten(widget.address);
-    _qrData = _composeQrData();
     _satsCtrl.addListener(_onAmountChanged);
+
+    // If an explicit address was passed, use it; else fetch from API
+    if (widget.address.trim().isNotEmpty) {
+      _address = widget.address.trim();
+      _shortAddress = _shorten(_address!);
+      _qrData = _composeQrData();
+    } else {
+      // fetch wallets after first frame (Provider is available)
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resolveAddress());
+    }
   }
 
   @override
@@ -85,6 +103,135 @@ class _ReceiveQRState extends State<ReceiveQR> {
     super.dispose();
   }
 
+  // ---------------- Wallet helpers ----------------
+
+  Future<void> _resolveAddress() async {
+    setState(() {
+      _loadingWallet = true;
+      _loadErr = null;
+    });
+
+    try {
+      // 1) get all wallets
+      final wallets = await AuthService.fetchWallets();
+
+      if (wallets.isEmpty) {
+        throw Exception('No wallets found for this account.');
+      }
+
+      // 2) pick active wallet if available, else first
+      String? activeId;
+      try {
+        activeId = context.read<WalletStore>().activeWalletId;
+      } catch (_) {
+        // WalletStore not wired — OK: we’ll just use first wallet
+      }
+
+      Map<String, dynamic> wallet = _pickWallet(wallets, activeId);
+
+      // 3) choose chain code from coinId/mode
+      final chainCode = _preferredChainCode(widget.coinId, widget.mode);
+
+      // 4) extract address from wallet for that chain (fallback to wallet['address'])
+      final addr = _findAddressForChain(wallet, chainCode) ??
+          (wallet['address']?.toString());
+
+      if (addr == null || addr.isEmpty) {
+        throw Exception('No address available for wallet/chain.');
+      }
+
+      _address = addr;
+      _shortAddress = _shorten(addr);
+      _qrData = _composeQrData();
+    } catch (e) {
+      _loadErr = e.toString();
+    } finally {
+      if (mounted) {
+        setState(() => _loadingWallet = false);
+      }
+    }
+  }
+
+  Map<String, dynamic> _pickWallet(
+      List<Map<String, dynamic>> wallets, String? activeId) {
+    if (activeId != null && activeId.isNotEmpty) {
+      final found = wallets.firstWhere(
+        (w) => (w['_id']?.toString() ?? '') == activeId,
+        orElse: () => const <String, dynamic>{},
+      );
+      if (found.isNotEmpty) return found;
+    }
+    return wallets.first;
+  }
+
+  String _preferredChainCode(String? coinId, String? mode) {
+    // mode beats coinId for Lightning/on-chain hint
+    final m = (mode ?? '').toLowerCase();
+    if (m == 'ln') return 'LN';
+
+    // derive from coinId (e.g. "USDT-TRX", "BTC-LN", "ETH", "TRX-TRX")
+    final id = (coinId ?? '').toUpperCase().trim();
+    if (id.contains('-')) {
+      final parts = id.split('-');
+      if (parts.length >= 2) {
+        final chain = parts.last.trim();
+        if (chain.isNotEmpty) return _normalizeChain(chain);
+      }
+    }
+
+    // single symbol → treat symbol as chain (BTC/ETH/TRX/BNB/SOL/XMR)
+    if (id.isNotEmpty) return _normalizeChain(id);
+
+    // fallback to BTC if nothing provided
+    return 'BTC';
+  }
+
+  String _normalizeChain(String chain) {
+    final u = chain.toUpperCase();
+    switch (u) {
+      case 'ETHEREUM':
+        return 'ETH';
+      case 'TRON':
+        return 'TRX';
+      case 'BSC':
+      case 'BNB CHAIN':
+      case 'BNB-CHAIN':
+        return 'BNB';
+      case 'SOLANA':
+        return 'SOL';
+      case 'LIGHTNING':
+      case 'LN':
+        return 'LN';
+      default:
+        return u; // BTC, ETH, TRX, BNB, SOL, XMR, etc.
+    }
+  }
+
+  String? _findAddressForChain(Map<String, dynamic> wallet, String chainCode) {
+    // chains: [ { chain: 'BTC', address: '...' }, { chain: 'ETH', address: '...'}, ... ]
+    final chains = (wallet['chains'] as List?) ?? const [];
+    for (final c in chains) {
+      if (c is! Map) continue;
+      final chain = c['chain']?.toString().toUpperCase();
+      if (_normalizeChain(chain ?? '') == chainCode) {
+        final addr = c['address']?.toString();
+        if (addr != null && addr.isNotEmpty) return addr;
+      }
+    }
+    // Fallbacks:
+    // Some backends might put a per-wallet root address
+    final root = wallet['address']?.toString();
+    if (root != null && root.isNotEmpty) return root;
+
+    // Or a single "publicKey" field
+    final pk = wallet['publicKey']?.toString();
+    if (pk != null && pk.isNotEmpty) return pk;
+
+    return null;
+  }
+
+  // ---------------- UI ----------------
+
   @override
   Widget build(BuildContext context) {
     final title =
@@ -93,6 +240,9 @@ class _ReceiveQRState extends State<ReceiveQR> {
         _isBtcOnchain && _validSats() > 0 && _validSats() < _minSatsDefault;
     final screenWidth = MediaQuery.of(context).size.width;
     final qrSize = (screenWidth * 0.20).clamp(240.0, 300.0);
+
+    final isReady =
+        (_address?.isNotEmpty ?? false) || widget.address.isNotEmpty;
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -142,126 +292,140 @@ class _ReceiveQRState extends State<ReceiveQR> {
 
                     const SizedBox(height: 10),
 
-                    // QR CODE CARD
-                    GestureDetector(
-                      onLongPress: _saveQRToGallery,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _qrCardBg,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 6,
-                              offset: const Offset(0, 4),
+                    if (!isReady || _loadingWallet) ...[
+                      const SizedBox(height: 120),
+                      const CircularProgressIndicator.adaptive(),
+                      const SizedBox(height: 12),
+                      if (_loadErr != null)
+                        Text(_loadErr!,
+                            style: const TextStyle(
+                                color: Colors.redAccent, fontSize: 12)),
+                      const SizedBox(height: 40),
+                    ] else ...[
+                      // QR CODE CARD
+                      GestureDetector(
+                        onLongPress: _saveQRToGallery,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _qrCardBg,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 6,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: RepaintBoundary(
+                            key: _qrKey,
+                            child: QrImageView(
+                              data: _qrData.isEmpty ? _baseAddress : _qrData,
+                              version: QrVersions.auto,
+                              gapless: true,
+                              size: qrSize,
+                              eyeStyle: const QrEyeStyle(
+                                eyeShape: QrEyeShape.square,
+                                color: Colors.black,
+                              ),
+                              dataModuleStyle: const QrDataModuleStyle(
+                                dataModuleShape: QrDataModuleShape.square,
+                                color: Colors.black,
+                              ),
+                              backgroundColor: _qrCardBg,
                             ),
-                          ],
-                        ),
-                        child: RepaintBoundary(
-                          key: _qrKey,
-                          child: QrImageView(
-                            data: _qrData.isEmpty ? _baseAddress : _qrData,
-                            version: QrVersions.auto,
-                            gapless: true,
-                            size: qrSize,
-                            eyeStyle: const QrEyeStyle(
-                              eyeShape: QrEyeShape.square,
-                              color: Colors.black,
-                            ),
-                            dataModuleStyle: const QrDataModuleStyle(
-                              dataModuleShape: QrDataModuleShape.square,
-                              color: Colors.black,
-                            ),
-                            backgroundColor: _qrCardBg,
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-                    // ADDRESS PILL
-                    Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _addressPill,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      padding: const EdgeInsets.only(left: 16, right: 10),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Text(
-                                _shortAddress,
-                                style: const TextStyle(
-                                  color: Color(0xFFE4E7F5),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: 0.2,
+                      // ADDRESS PILL
+                      Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _addressPill,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        padding: const EdgeInsets.only(left: 16, right: 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Text(
+                                  _shortAddress.isNotEmpty
+                                      ? _shortAddress
+                                      : _shorten(_baseAddress),
+                                  style: const TextStyle(
+                                    color: Color(0xFFE4E7F5),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    letterSpacing: 0.2,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          _CircleIconButton(
-                            onTap: _copyAddress,
-                            bg: _copyBtnBg,
-                            icon: Icons.copy_rounded,
-                            iconColor: const Color(0xFFE4E7F5),
-                            size: 32,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // SET AMOUNT HEADER
-                    _SetAmountHeader(
-                      expanded: _expandAmount,
-                      onToggle: () =>
-                          setState(() => _expandAmount = !_expandAmount),
-                    ),
-
-                    // AMOUNT INPUT SECTION
-                    if (_expandAmount) ...[
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Set receiving amount',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                            const SizedBox(width: 8),
+                            _CircleIconButton(
+                              onTap: _copyAddress,
+                              bg: _copyBtnBg,
+                              icon: Icons.copy_rounded,
+                              iconColor: const Color(0xFFE4E7F5),
+                              size: 32,
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          _AmountField(
-                            controller: _satsCtrl,
-                            suffix: _isBtcOnchain || _isLightning ? 'Sats' : '',
-                            hint: '0',
-                            onChanged: (_) => _onAmountChanged(),
-                          ),
-                          if (minError) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Minimum amount is ${_formatNumber(_minSatsDefault)} Sats',
-                              style: const TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 13,
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // SET AMOUNT HEADER
+                      _SetAmountHeader(
+                        expanded: _expandAmount,
+                        onToggle: () =>
+                            setState(() => _expandAmount = !_expandAmount),
+                      ),
+
+                      // AMOUNT INPUT SECTION
+                      if (_expandAmount) ...[
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Set receiving amount',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            _AmountField(
+                              controller: _satsCtrl,
+                              suffix:
+                                  _isBtcOnchain || _isLightning ? 'Sats' : '',
+                              hint: '0',
+                              onChanged: (_) => _onAmountChanged(),
+                            ),
+                            if (minError) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Minimum amount is ${_formatNumber(_minSatsDefault)} Sats',
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
 
-                    const SizedBox(height: 50),
+                      const SizedBox(height: 50),
+                    ],
                   ],
                 ),
               ),
@@ -287,7 +451,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
                     height: 40,
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _share,
+                      onPressed: isReady ? _share : null,
                       style: ElevatedButton.styleFrom(
                         elevation: 0,
                         backgroundColor: Colors.white,
@@ -312,15 +476,17 @@ class _ReceiveQRState extends State<ReceiveQR> {
                       height: 40,
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Pay with BTC account - feature coming soon'),
-                              backgroundColor: Color(0xFF262B45),
-                            ),
-                          );
-                        },
+                        onPressed: isReady
+                            ? () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        'Pay with BTC account - feature coming soon'),
+                                    backgroundColor: Color(0xFF262B45),
+                                  ),
+                                );
+                              }
+                            : null,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: const BorderSide(
@@ -362,6 +528,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
 
     // BTC on-chain → "bitcoin:<addr>?amount=<btc>"
     if (_isBtcOnchain) {
+      if (_baseAddress.isEmpty) return '';
       if (sats > 0) {
         final btc = sats / 100000000.0;
         String amount = btc
@@ -375,6 +542,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
 
     // Lightning
     if (_isLightning) {
+      if (_baseAddress.isEmpty) return '';
       if (sats > 0) {
         return 'lightning:${_baseAddress}?amount_sats=$sats';
       }
@@ -392,8 +560,9 @@ class _ReceiveQRState extends State<ReceiveQR> {
   }
 
   Future<void> _copyAddress() async {
-    await Clipboard.setData(
-        ClipboardData(text: _qrData.isNotEmpty ? _qrData : _baseAddress));
+    final text = _qrData.isNotEmpty ? _qrData : _baseAddress;
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.selectionClick();
     Fluttertoast.showToast(
       msg: 'Address copied to clipboard',
@@ -404,7 +573,8 @@ class _ReceiveQRState extends State<ReceiveQR> {
 
   Future<void> _share() async {
     final text = _qrData.isNotEmpty ? _qrData : _baseAddress;
-    Share.share(text, subject: 'Bitcoin Address');
+    if (text.isEmpty) return;
+    Share.share(text, subject: 'Receive Address');
   }
 
   Future<void> _saveQRToGallery() async {
@@ -418,8 +588,8 @@ class _ReceiveQRState extends State<ReceiveQR> {
       if (bytes == null) return;
 
       await Share.shareXFiles(
-        [XFile.fromData(bytes, name: 'bitcoin_qr.png', mimeType: 'image/png')],
-        subject: 'Bitcoin QR Code',
+        [XFile.fromData(bytes, name: 'receive_qr.png', mimeType: 'image/png')],
+        subject: 'Receive QR Code',
         text: 'Payment QR Code',
       );
       HapticFeedback.mediumImpact();

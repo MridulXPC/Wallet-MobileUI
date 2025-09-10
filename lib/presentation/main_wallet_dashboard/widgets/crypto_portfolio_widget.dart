@@ -1,6 +1,8 @@
+// lib/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/stores/wallet_store.dart'; // ⬅️ watch active wallet id
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,16 +16,9 @@ Future<void> precacheCoinIcons(BuildContext context) async {
   }
 }
 
-/// Portfolio list widget (icons strictly from CoinStore base symbol; no overlays/combo PNGs)
+/// Portfolio list widget (strictly uses CoinStore icons; auto-updates when active wallet changes)
 class CryptoPortfolioWidget extends StatefulWidget {
-  final bool fetchFromApi; // always true in your flow, but keep configurable
-  final List<Map<String, dynamic>> portfolio; // optional manual list
-
-  const CryptoPortfolioWidget({
-    super.key,
-    this.fetchFromApi = true,
-    this.portfolio = const [],
-  });
+  const CryptoPortfolioWidget({super.key});
 
   @override
   State<CryptoPortfolioWidget> createState() => _CryptoPortfolioWidgetState();
@@ -31,98 +26,133 @@ class CryptoPortfolioWidget extends StatefulWidget {
 
 class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     with AutomaticKeepAliveClientMixin {
-  static const String _fallbackAsset = 'assets/icons/placeholder.png';
+  static const String _fallbackAsset = 'assets/currencyicons/bitcoin.png';
 
   List<Map<String, dynamic>> _visible = [];
   bool _loading = false;
   String? _error;
 
+  String? _activeWalletIdMemo; // last seen active wallet id
+
   @override
   void initState() {
     super.initState();
-    _refresh();
+    // Initial fetch (wallet id may be null -> fallback to first wallet)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = context.read<WalletStore>().activeWalletId;
+      _activeWalletIdMemo = id;
+      _refreshForWallet(id);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // React to wallet change
+    final currentId = context.watch<WalletStore>().activeWalletId;
+    if (currentId != _activeWalletIdMemo) {
+      _activeWalletIdMemo = currentId;
+      _refreshForWallet(currentId);
+    }
   }
 
   @override
   bool get wantKeepAlive => true;
 
-  // --- Always resolve a single, base-symbol asset from CoinStore ---
-  String _baseSymbolFor(String symbol, String chain) {
-    final s = symbol.toUpperCase();
-    final c = chain.toUpperCase();
+  // ---------------- Fetch & map ----------------
 
-    // Normalize API symbols to a base symbol (no network in the icon)
-    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
-    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON')))
-      return 'USDT';
-
-    // Everything else: just the base
-    return s; // BTC, ETH, BNB, SOL, TRX, XMR, etc.
-  }
-
-  String _assetFromStoreByBase(CoinStore store, String baseSymbol) {
-    // Force base symbol icon only (never the network-specific id)
-    return store.getById(baseSymbol)?.assetPath ?? _fallbackAsset;
-  }
-
-  Future<void> _refresh() async {
+  Future<void> _refreshForWallet(String? walletId) async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
+      // Resolve which walletId to use (fallback to first wallet if null)
+      String? useWalletId = walletId;
+      if (useWalletId == null || useWalletId.isEmpty) {
+        final wallets = await AuthService.fetchWallets();
+        if (wallets.isNotEmpty) {
+          useWalletId = wallets.first['_id']?.toString();
+        }
+      }
+
+      if (useWalletId == null || useWalletId.isEmpty) {
+        setState(() {
+          _visible = const [];
+          _loading = false;
+          _error = 'No wallet available.';
+        });
+        return;
+      }
+
+      // 🔹 NEW: fetch tokens for the selected wallet via /api/token/get-tokens/:walletId
+      final tokens =
+          await AuthService.fetchTokensByWallet(walletId: useWalletId);
+
       final store = context.read<CoinStore>();
 
-      if (widget.fetchFromApi) {
-        final tokens = await AuthService.fetchTokens(); // List<VaultToken>
+      // Map tokens → UI rows (resolve icon from CoinStore using base symbol only)
+      _visible = tokens.map((t) {
+        final base = _baseSymbolFor(t.symbol, t.chain);
+        final iconAsset =
+            store.getById(base)?.assetPath ?? _fallbackAsset; // single PNG
+        final coinName = store.getById(base)?.name ?? t.name;
 
-        _visible = tokens.map((t) {
-          final base = _baseSymbolFor(t.symbol, t.chain);
-          final iconAsset = _assetFromStoreByBase(store, base);
+        final balanceStr = t.balance; // already string like "0.0000"
+        final usdVal = t.value; // double
 
-          // Name: prefer CoinStore base name when available; fall back to API
-          final coinName = store.getById(base)?.name ?? t.name;
+        String _formatPercent(double v) {
+          final sign = v >= 0 ? '+' : '−';
+          return '$sign${v.abs().toStringAsFixed(2)}%';
+        }
 
-          return {
-            "id": t.symbol, // keep API symbol for routing if needed
-            "symbol": base, // base symbol used throughout UI
-            "name": coinName,
-            "icon": iconAsset, // ✅ single image from CoinStore
-            "balance": t.balance, // string like "0.0000"
-            "usdValue": "\$${t.value.toString()}",
-            "usdBalance": t.value.toStringAsFixed(2),
-            "change24h": "0.00%", // placeholder unless backend provides it
-            "isPositive": true, // placeholder
-            "enabled": true,
-            "chain": t.chain,
-            "contractAddress": t.contractAddress,
-            "_id": t.id,
-          };
-        }).toList();
-      } else {
-        // Purely use provided portfolio but ensure icon = base icon
-        _visible = widget.portfolio.map((m) {
-          final base = (m["symbol"] ?? m["id"] ?? "").toString().toUpperCase();
-          final iconAsset = _assetFromStoreByBase(store, base);
-          return {
-            ...m,
-            "symbol": base,
-            "icon": iconAsset, // enforce base icon
-          };
-        }).toList();
-      }
+        // If backend provides change24h in token json, prefer it; else placeholder
+        double pct = t.changePercent ?? 0.0;
+        final isPositive = pct >= 0;
+        final changeStr = _formatPercent(pct);
+
+        return {
+          "id": t.id ?? '${base}_${t.chain}',
+          "symbol": base,
+          "name": coinName,
+          "icon": iconAsset,
+          "balance": balanceStr,
+          "usdValue": '\$${usdVal.toStringAsFixed(2)}',
+          "usdBalance": usdVal.toStringAsFixed(2),
+          "change24h": changeStr,
+          "isPositive": isPositive,
+          "enabled": true,
+          "chain": t.chain,
+          "contractAddress": t.contractAddress,
+          "_id": t.id,
+        };
+      }).toList();
 
       _visible = _visible.where((x) => x["enabled"] != false).toList();
     } catch (e) {
       _error = e.toString();
       _visible = const [];
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
+
+  // --- Always resolve a single, base-symbol asset from CoinStore ---
+  String _baseSymbolFor(String? symbol, String? chain) {
+    final s = (symbol ?? '').toUpperCase();
+    final c = (chain ?? '').toUpperCase();
+
+    // Normalize API symbols to a base symbol (no network in the icon)
+    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
+    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
+      return 'USDT';
+    }
+    // Everything else: just the base
+    return s.isEmpty ? c : s; // BTC, ETH, BNB, SOL, TRX, XMR, etc.
+  }
+
+  // ---------------- UI ----------------
 
   void _openTokenFilterSheet() {
     final initial = List<Map<String, dynamic>>.from(_visible);
@@ -165,7 +195,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
                 textAlign: TextAlign.center),
             const SizedBox(height: 12),
             TextButton.icon(
-              onPressed: _refresh,
+              onPressed: () => _refreshForWallet(_activeWalletIdMemo),
               icon: const Icon(Icons.refresh, color: Colors.white),
               label: const Text('Retry', style: TextStyle(color: Colors.white)),
             ),
@@ -273,7 +303,7 @@ class _CoinAvatar extends StatelessWidget {
   }
 }
 
-/// One row item — strictly base-symbol icon.
+/// One row item — strictly CoinStore-driven base icon (no overlays).
 class _PortfolioRow extends StatelessWidget {
   final Map<String, dynamic> item;
   const _PortfolioRow({required this.item});
@@ -281,7 +311,7 @@ class _PortfolioRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String icon =
-        (item["icon"] as String?) ?? 'assets/icons/placeholder.png';
+        (item["icon"] as String?) ?? 'assets/currencyicons/bitcoin.png';
     final isPositive = item["isPositive"] ?? true;
     final changeColor = isPositive ? Colors.green : Colors.red;
 
@@ -347,6 +377,8 @@ class _PortfolioRow extends StatelessWidget {
     );
   }
 }
+
+// ---------------- Filter Sheet ----------------
 
 class TokenFilterBottomSheet extends StatefulWidget {
   final List<Map<String, dynamic>> portfolio;
@@ -474,7 +506,6 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                         style: const TextStyle(color: Colors.white)),
                     subtitle: Text(token["usdValue"]?.toString() ?? '',
                         style: const TextStyle(color: Colors.grey)),
-                    // ✅ single base icon
                     secondary: _CoinAvatar(assetPath: iconPath, size: 32),
                     activeColor: Colors.blueAccent,
                     inactiveThumbColor: Colors.white,

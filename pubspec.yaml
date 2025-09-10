@@ -31,6 +31,7 @@ dependencies:
   share_plus: ^11.1.0
   provider: ^6.1.5+1
   flutter_secure_storage: ^9.2.4
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

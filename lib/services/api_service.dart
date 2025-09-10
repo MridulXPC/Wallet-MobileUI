@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cryptowallet/models/token_model.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
@@ -346,6 +348,8 @@ class AuthService {
   // ===================== TOKENS (ASSETS) =====================
 
   static Future<List<VaultToken>> fetchTokens({String? token}) async {
+    debugPrint(
+        '⚠️ fetchTokens() is legacy. Prefer fetchTokensByWallet(walletId: ...)');
     try {
       final response = await _makeRequest(
         method: 'GET',
@@ -353,19 +357,61 @@ class AuthService {
         token: token,
         requireAuth: true,
       );
-
       final data = _handleResponse(response);
       final List<dynamic> list =
           (data['data'] as List?) ?? (data['tokens'] as List?) ?? const [];
-      final tokens = list
+      return list
           .whereType<Map<String, dynamic>>()
           .map((e) => VaultToken.fromJson(e))
           .toList();
-      return tokens;
     } on ApiException {
       rethrow;
     } catch (e) {
       throw ApiException('Failed to fetch tokens: $e');
+    }
+  }
+
+  /// New: fetch tokens for a specific wallet id
+  static Future<List<VaultToken>> fetchTokensByWallet({
+    required String walletId,
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null) {
+      throw const ApiException('No authentication token available');
+    }
+
+    try {
+      final response = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/token/get-tokens/$walletId', // wallet in path
+        token: token,
+        requireAuth: true,
+      );
+
+      final data = _handleResponse(response);
+
+      // Normalize to a List<dynamic> WITHOUT calling List.from on a Map.
+      List<dynamic> list;
+      if (data is List) {
+        list = data as List;
+      } else if (data is Map && data['data'] is List) {
+        list = data['data'] as List<dynamic>;
+      } else if (data is Map && data['tokens'] is List) {
+        list = data['tokens'] as List<dynamic>;
+      } else {
+        list = const <dynamic>[];
+      }
+
+      return list
+          .whereType<Map>() // Map<dynamic, dynamic>
+          .map((e) => e.cast<String, dynamic>()) // -> Map<String, dynamic>
+          .map((json) => VaultToken.fromJson(json)) // -> VaultToken
+          .toList(growable: false);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Failed to fetch tokens for wallet $walletId: $e');
     }
   }
 
@@ -386,31 +432,71 @@ class AuthService {
   }
 
   /// GET /api/auth/me -> returns "user" map and caches _id
-  static Future<Map<String, dynamic>> fetchMe({String? token}) async {
-    token ??= await getStoredToken();
-    if (token == null) {
-      throw const ApiException('No authentication token available');
+  static Future<Map<String, dynamic>> fetchMe() async {
+    // Most backends expose /api/auth/me; adjust if yours differs
+    final uri = Uri.parse('$_baseUrl/api/auth/me');
+
+    final t = await getStoredToken(); // <-- use real token
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      if (t != null && t.isNotEmpty) 'Authorization': 'Bearer $t',
+    };
+
+    http.Response res;
+    try {
+      res = await HttpKit.getWithRetry(uri, headers: headers);
+    } on TimeoutException {
+      throw const ApiException(
+        'Network timeout: server did not respond in time. Please try again.',
+      );
+    } catch (e) {
+      throw ApiException('Network error: $e');
     }
 
-    final res = await _makeRequest(
-      method: 'GET',
-      endpoint: '/api/auth/me',
-      token: token,
-      requireAuth: true,
+    if (res.statusCode == 200) {
+      try {
+        final map = json.decode(res.body) as Map<String, dynamic>;
+        // Optional: cache user id if present
+        final id = (map['user']?['_id'] ?? map['_id'])?.toString();
+        if (id != null && id.isNotEmpty) await _saveUserId(id);
+        return map;
+      } catch (_) {
+        throw const ApiException('Malformed JSON from server.');
+      }
+    }
+
+    if (res.statusCode == 401) {
+      throw const ApiException('Unauthorized (401): token expired/invalid.',
+          statusCode: 401);
+    }
+    if (res.statusCode == 502 ||
+        res.statusCode == 503 ||
+        res.statusCode == 504) {
+      throw ApiException(
+          'Upstream unavailable (${res.statusCode}). Please retry.',
+          statusCode: res.statusCode);
+    }
+
+    throw ApiException(
+      'HTTP ${res.statusCode}: ${res.reasonPhrase ?? 'Unknown'}',
+      statusCode: res.statusCode,
+      details: _safeJson(res.body),
     );
-    final data = _handleResponse(res);
+  }
 
-    final user = (data['user'] as Map?)?.cast<String, dynamic>();
-    if (user == null) {
-      throw const ApiException('Malformed response: "user" missing');
+  // ignore: unused_element
+  static Future<String?> _token() async {
+    // TODO: read your stored token
+    return null;
+  }
+
+  static Map<String, dynamic>? _safeJson(String body) {
+    try {
+      final v = json.decode(body);
+      return v is Map<String, dynamic> ? v : null;
+    } catch (_) {
+      return null;
     }
-
-    final id = user['_id']?.toString();
-    if (id != null && id.isNotEmpty) {
-      await _saveUserId(id);
-    }
-
-    return user;
   }
 
   /// Returns cached userId if present; else fetches it from /api/auth/me.
@@ -427,12 +513,6 @@ class AuthService {
   }
 
   // ===================== WALLETS: /api/wallet/get-wallets =====================
-
-  /// (Legacy) kept in case older code still depends on id caching.
-  static Future<void> _saveWalletId(String walletId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_spWalletIdKey, walletId);
-  }
 
   static Future<String?> getStoredWalletId() async {
     try {
@@ -475,7 +555,6 @@ class AuthService {
     );
     final data = _handleResponse(res);
 
-    // Accept both shapes: {wallets:[...]} or [...]
     final dynamic payload = data['wallets'] ?? data['data'] ?? data;
     List walletsList;
 
@@ -484,7 +563,6 @@ class AuthService {
     } else if (payload is Map && payload['wallets'] is List) {
       walletsList = payload['wallets'];
     } else {
-      // Unexpected shape; log and treat as empty
       debugPrint('⚠️ fetchWallets: unexpected shape: ${payload.runtimeType}');
       walletsList = const [];
     }
@@ -916,5 +994,55 @@ class AuthService {
     }
 
     return null;
+  }
+}
+
+// services/http_client.dart
+
+class HttpKit {
+  static http.Client? _client;
+
+  /// One shared client with sane timeouts.
+  static http.Client get client {
+    if (_client != null) return _client!;
+    final io = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10) // TCP connect
+      ..idleTimeout = const Duration(seconds: 15); // keep-alive idle
+    _client = IOClient(io);
+    return _client!;
+  }
+
+  /// Retry wrapper for idempotent GET/HEAD/OPTIONS
+  static Future<http.Response> getWithRetry(
+    Uri url, {
+    Map<String, String>? headers,
+    int maxAttempts = 3,
+    Duration perAttemptTimeout = const Duration(seconds: 15),
+  }) async {
+    int attempt = 0;
+    Object? lastErr;
+    StackTrace? lastSt;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        final resp =
+            await client.get(url, headers: headers).timeout(perAttemptTimeout);
+        return resp;
+      } catch (e, st) {
+        lastErr = e;
+        lastSt = st;
+      }
+
+      // backoff: 0.5s, 1s, 2s
+      final num n = (500 * (1 << (attempt - 1))).clamp(500, 2000);
+      final int backoffMs = n.toInt();
+      await Future.delayed(Duration(milliseconds: backoffMs));
+    }
+
+    if (lastErr != null && lastSt != null) {
+      Error.throwWithStackTrace(lastErr!, lastSt); // preserve stack
+    }
+    throw Exception('Request failed');
   }
 }

@@ -1,5 +1,10 @@
 // lib/presentation/token_detail/token_detail_screen.dart
+import 'dart:async';
+
+import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
+import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -25,7 +30,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   final List<String> tabs = ['Holdings', 'History', 'About'];
 
   // Dark theme colors
-  static const Color darkBackground = Color(0xFF0A0A0A);
+  static const Color darkBackground = Color(0xFF0B0D1A);
   static const Color cardBackground = Color(0xFF1A1A1A);
   static const Color greenColor = Color(0xFF00D4AA);
   static const Color greyColor = Color(0xFF8E8E8E);
@@ -46,7 +51,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (args != null) {
       setState(() => tokenData = args);
     }
-    _applyInitialTabFromArgs(); // <- NEW: jump to requested tab, e.g., History (1)
+    _applyInitialTabFromArgs();
   }
 
   @override
@@ -55,10 +60,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     super.dispose();
   }
 
-// add inside _TokenDetailScreenState
+  // --------- Initial tab helpers -------------
   int? _extractInitialTabFromArgs() {
     final argsAny = ModalRoute.of(context)?.settings.arguments;
-    // Support both: a Map {'initialTab': 1} and a typed args object with .initialTab
     try {
       if (argsAny is Map<String, dynamic>) {
         return argsAny['initialTab'] as int?;
@@ -77,14 +81,13 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         idx >= 0 &&
         idx < tabs.length &&
         idx != _tabController.index) {
-      // defer until after first build to avoid setState during build
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tabController.animateTo(idx);
       });
     }
   }
 
-  // --------- Dummy transactions (by coin symbol) -------------
+  // ---------- Dummy transactions (by coin symbol) -------------
   Map<String, List<Map<String, dynamic>>> get dummyTransactions => {
         'BTC': [
           {
@@ -171,7 +174,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         ],
       };
 
-  // ---------- conveniences with safe fallbacks ----------
+  // ---------- convenience getters ----------
   String get sym => (tokenData?['symbol'] ?? 'BTC').toString();
   String get name => tokenData?['name'] ?? 'Bitcoin';
   String get iconPath =>
@@ -190,6 +193,49 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   String get volumemarketcap => tokenData?['Volume / Market Cap'] ?? '8.90%';
   String get aboutText =>
       tokenData?['about'] ?? 'No description provided for $name.';
+
+  // Build a usable coinId: prefer explicit coinId/id; else symbol + chain
+  String get _coinId {
+    final explicit = (tokenData?['coinId'] ?? tokenData?['id'])?.toString();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+
+    final s = sym.toUpperCase();
+    final c = _normalizeChain(tokenData?['chain']);
+    if (c.isNotEmpty && c != s) return '$s-$c';
+    return s;
+  }
+
+  String _normalizeChain(dynamic v) {
+    final raw = (v ?? '').toString().trim().toUpperCase();
+    switch (raw) {
+      case 'ETHEREUM':
+      case 'ERC20':
+      case 'ERC-20':
+      case 'ETH-ETH':
+        return 'ETH';
+      case 'TRON':
+      case 'TRC20':
+      case 'TRC-20':
+      case 'TRX-TRX':
+        return 'TRX';
+      case 'SOLANA':
+      case 'SOL-SOL':
+        return 'SOL';
+      case 'BSC':
+      case 'BNB CHAIN':
+      case 'BNB-CHAIN':
+      case 'BEP20':
+      case 'BEP-20':
+      case 'BNB-BNB':
+        return 'BNB';
+      case 'LIGHTNING':
+      case 'LN':
+      case 'BTC-LN':
+        return 'LN';
+      default:
+        return raw; // already normalized or empty
+    }
+  }
 
   // Simple dummy price lookup for variants (until you wire an API)
   static const Map<String, double> _dummyPrices = {
@@ -232,11 +278,160 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     HapticFeedback.lightImpact();
   }
 
+  // --------------------- Receive handling ---------------------
+  // Try multiple likely keys to find an address for a given chain
+  String? _tryKeys(List<String> keys) {
+    for (final k in keys) {
+      final v = tokenData?[k];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    }
+    return null;
+  }
+
+  // Resolve address + mode for the coinId currently shown
+  ({String address, String mode, String title})? _resolveReceive() {
+    final id = _coinId.toUpperCase();
+    final base = id.contains('-') ? id.split('-').first : id;
+    final chain = id.contains('-') ? id.split('-').last : '';
+
+    // BTC (on-chain)
+    if (base == 'BTC' && chain != 'LN') {
+      final addr = _tryKeys([
+        'btcAddress',
+        'bitcoinAddress',
+        'address_btc',
+        'address',
+        'onchainAddress',
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your BTC address');
+    }
+
+    // BTC-LN (Lightning)
+    if (base == 'BTC' && chain == 'LN') {
+      final addr = _tryKeys([
+        'lightning',
+        'lightningAddress',
+        'lnInvoice',
+        'lnurl',
+        'invoice',
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'ln', title: 'Your Lightning invoice');
+    }
+
+    // ETH / ERC-20 (incl. USDT-ETH, ETH-ETH)
+    if (chain == 'ETH' || base == 'ETH') {
+      final addr = _tryKeys([
+        'erc20Address',
+        'ethAddress',
+        'address_eth',
+        'address',
+      ]);
+      if (addr == null) return null;
+      final t =
+          base == 'USDT' ? 'Your USDT (ERC-20) address' : 'Your ETH address';
+      return (address: addr, mode: 'onchain', title: t);
+    }
+
+    // TRX / TRC-20 (incl. USDT-TRX, TRX-TRX)
+    if (chain == 'TRX' || base == 'TRX') {
+      final addr = _tryKeys([
+        'trc20Address',
+        'trxAddress',
+        'address_trx',
+        'address',
+      ]);
+      if (addr == null) return null;
+      final t =
+          base == 'USDT' ? 'Your USDT (TRC-20) address' : 'Your TRX address';
+      return (address: addr, mode: 'onchain', title: t);
+    }
+
+    // SOL
+    if (chain == 'SOL' || base == 'SOL') {
+      final addr = _tryKeys([
+        'solAddress',
+        'solanaAddress',
+        'address_sol',
+        'address',
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your SOL address');
+    }
+
+    // BNB / BSC
+    if (chain == 'BNB' || base == 'BNB') {
+      final addr = _tryKeys([
+        'bep20Address',
+        'bscAddress',
+        'bnbAddress',
+        'address_bnb',
+        'address',
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your BNB (BSC) address');
+    }
+
+    // XMR
+    if (chain == 'XMR' || base == 'XMR') {
+      final addr = _tryKeys([
+        'xmrAddress',
+        'moneroAddress',
+        'address_xmr',
+        'address',
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your XMR address');
+    }
+
+    // Fallback: generic address
+    final generic = _tryKeys(['address']);
+    if (generic != null) {
+      return (
+        address: generic,
+        mode: 'onchain',
+        title: 'Your address to receive $name'
+      );
+    }
+    return null;
+  }
+
+  Future<void> _openReceive() async {
+    final res = _resolveReceive();
+    if (res == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No receive address found for this network'),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReceiveQR(
+          title: res.title,
+          address: res.address,
+          coinId: _coinId,
+          mode: res.mode, // 'onchain' | 'ln'
+          // For BTC on-chain you can set min sats; Lightning ignores it.
+          minSats: (res.mode == 'onchain' && _coinId.startsWith('BTC'))
+              ? 25000
+              : null,
+        ),
+      ),
+    );
+  }
+
   // --------------------- UI ---------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0B0D1A),
+      backgroundColor: darkBackground,
       body: Column(
         children: [
           // Upper half
@@ -258,7 +453,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                         children: [
                           Expanded(
                             child: ActionButtonsGridtoken(
-                              // <— remove `const` because we pass a callback
+                              coinId: _coinId,
+                              onReceive: _openReceive, // <- chain-aware Receive
                               onActivityTap: () => _tabController.animateTo(1),
                             ),
                           ),
@@ -318,7 +514,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         height: 56,
         child: Stack(
           children: [
-            // ← Back button (left)
             Align(
               alignment: Alignment.centerLeft,
               child: IconButton(
@@ -331,8 +526,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
-
-            // Centered token title with icon
             Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -520,7 +713,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   List<Widget> _buildCoinHoldings() {
-    // Only these exact pairs when sym is USDT or BTC
     final store = context.read<CoinStore>();
 
     List<Map<String, dynamic>> rows;
@@ -546,15 +738,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           fallbackIcon: Icons.monetization_on,
           fallbackColor: Colors.green,
         ),
-        // 🔥 New Gas Free row
         _variantRow(
-          id: 'USDT-GASFREE', // <— variant id
-          name: 'USDT (Gas Free)', // title
-          network: 'USDT', // shows as the network line
-          iconPath: usdt?.assetPath, // use base USDT icon
+          id: 'USDT-GASFREE',
+          name: 'USDT (Gas Free)',
+          network: 'USDT',
+          iconPath: usdt?.assetPath,
           fallbackIcon: Icons.local_gas_station,
           fallbackColor: Colors.green,
-          borderColor: Colors.green, // <— custom green border for this row
+          borderColor: Colors.green,
         ),
       ];
     } else if (sym.toUpperCase() == 'SOL') {
@@ -627,8 +818,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         ),
       ];
     } else {
-      // Other coins → single card using its own id (sym)
-
       final bnbbnb = store.getById('BNB-BNB');
       rows = [
         _variantRow(
@@ -642,7 +831,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       ];
     }
 
-    // Render cards
     return rows.map<Widget>((v) {
       final bool isGasFree = (v['id'] == 'USDT-GASFREE');
       final Color outline = isGasFree
@@ -755,13 +943,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       'icon': iconPath ?? '',
       'fallbackIcon': fallbackIcon,
       'iconColor': fallbackColor,
-      'borderColor': borderColor, // <— new
+      'borderColor': borderColor,
     };
   }
 
   // Balance strings (demo). Replace with your real balances.
   String _getVariantBalance(String variantId) {
-    // demo numbers:
     switch (variantId) {
       case 'USDT-ETH':
         return '1,250.50 USDT';
@@ -778,18 +965,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
   // Fiat value = parsed balance * dummy price
   String _getVariantFiatValue(String variantId) {
-    // Parse "12.34 SYMBOL" → 12.34
     final raw = _getVariantBalance(variantId);
     final amountStr = (raw.split(' ').isNotEmpty ? raw.split(' ').first : '0')
         .replaceAll(',', '');
     final amount = double.tryParse(amountStr) ?? 0.0;
 
-    final price = _dummyPrices[variantId] ??
-        _dummyPrices[sym] ??
-        0.0; // fall back to symbol price
+    final price = _dummyPrices[variantId] ?? _dummyPrices[sym] ?? 0.0;
     final usd = amount * price;
     return '\$${usd.toStringAsFixed(2)}';
-    // If you want to support multi-fiat later, swap the symbol and conversion here.
   }
 
   String _getDefaultNetwork(String symbol) {
@@ -1156,96 +1339,136 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 }
 
-// ---- actions bar (simple demo) ----
+// ===================== ActionButtonsGridtoken =====================
+
 class ActionButtonsGridtoken extends StatelessWidget {
   final bool isLarge;
   final bool isTablet;
-  final VoidCallback? onActivityTap; // <- NEW
+
+  /// Coin/card id from CoinStore — e.g. "BTC", "BTC-LN", "USDT-TRX", "ETH-ETH"
+  final String coinId;
+
+  /// Optional: override tap for Receive button (e.g., open the correct chain address)
+  final FutureOr<void> Function()? onReceive;
+
+  /// Optional: for Activity button — if provided, we call this instead of navigating
+  final VoidCallback? onActivityTap;
 
   const ActionButtonsGridtoken({
     super.key,
+    required this.coinId,
     this.isLarge = false,
     this.isTablet = false,
-    this.onActivityTap, // <- NEW
+    this.onReceive,
+    this.onActivityTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final store = context.watch<CoinStore>();
+    final coin = store.getById(coinId);
+
     final List<_ActionButton> actionButtons = [
-      _ActionButton("Send", Icons.send, "/send"),
-      _ActionButton("Receive", Icons.download, "/receive"),
-      _ActionButton("Swap", Icons.swap_horiz, "/swap"),
-      // Activity stays on this screen: just switch tab
       _ActionButton(
-        "Activity",
-        Icons.history,
-        "", // route unused for this one
-        enabled: true,
-        onTap: onActivityTap, // <- NEW
+        title: "Send",
+        icon: Icons.send,
+        route: AppRoutes.sendCrypto,
+      ),
+      _ActionButton(
+        title: "Receive",
+        icon: Icons.call_received,
+        route: AppRoutes.receiveCrypto,
+        onTapOverride: onReceive, // <- use custom receive if provided
+      ),
+      _ActionButton(
+        title: "Swap",
+        icon: Icons.swap_horiz,
+        route: AppRoutes.swapScreen,
+      ),
+      _ActionButton(
+        title: "Activity",
+        icon: Icons.history,
+        route: AppRoutes.tokenDetail,
+        onTapOverride: onActivityTap,
+        arguments: onActivityTap == null
+            ? {
+                'initialTab': 1, // History tab
+                'symbol': coin?.symbol, // e.g. BTC
+                'name': coin?.name, // e.g. Bitcoin
+                'icon': coin?.assetPath, // icon path from CoinStore
+              }
+            : null,
       ),
     ];
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: actionButtons.map((b) {
-          return _buildActionItem(
-            context,
-            title: b.title,
-            icon: b.icon,
-            route: b.route,
-            enabled: b.enabled,
-            onTap: b.onTap, // <- NEW
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: actionButtons.map((button) {
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _buildActionButton(
+                context,
+                title: button.title,
+                icon: button.icon,
+                route: button.route,
+                arguments: button.arguments,
+                onTapOverride: button.onTapOverride,
+              ),
+            ),
           );
         }).toList(),
       ),
     );
   }
 
-  Widget _buildActionItem(
+  Widget _buildActionButton(
     BuildContext context, {
     required String title,
     required IconData icon,
     required String route,
-    bool enabled = true,
-    VoidCallback? onTap, // <- NEW
+    Object? arguments,
+    FutureOr<void> Function()? onTapOverride,
   }) {
-    final Color activeColor = const Color(0xFF2E5BFF);
-    final Color disabledColor = Colors.grey.shade400;
-
-    return GestureDetector(
-      onTap: enabled
-          ? (onTap ??
-              () =>
-                  Navigator.pushNamed(context, route)) // <- prefer custom onTap
-          : null,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: enabled ? activeColor : disabledColor),
-          const SizedBox(height: 6),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: enabled ? Colors.black : disabledColor,
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          if (onTapOverride != null) {
+            await onTapOverride();
+          } else {
+            Navigator.pushNamed(context, route, arguments: arguments);
+          }
+        },
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(6),
           ),
-        ],
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 24),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11.sp,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1256,15 +1479,12 @@ class _ActionButton {
   final IconData icon;
   final String route;
   final Object? arguments;
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  _ActionButton(
-    this.title,
-    this.icon,
-    this.route, {
+  final FutureOr<void> Function()? onTapOverride;
+  _ActionButton({
+    required this.title,
+    required this.icon,
+    required this.route,
     this.arguments,
-    this.enabled = true,
-    this.onTap,
+    this.onTapOverride,
   });
 }

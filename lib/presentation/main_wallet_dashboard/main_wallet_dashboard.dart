@@ -12,7 +12,8 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:provider/provider.dart'; // ✅ Provider
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart'; // ⬅️ for currency formatting
 
 class WalletHomeScreen extends StatefulWidget {
   const WalletHomeScreen({super.key});
@@ -23,6 +24,10 @@ class WalletHomeScreen extends StatefulWidget {
 
 class _WalletHomeScreenState extends State<WalletHomeScreen> {
   int _selectedIndex = 0;
+
+  // ⬇️ live portfolio total (display string)
+  String _portfolioDisplay = '—';
+  bool _loadingPortfolio = false;
 
   void _onItemTapped(int index) {
     if (index == 1) {
@@ -48,13 +53,12 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   bool _didBootstrap = false;
 
   @override
-  @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapOnce());
     _timer = Timer.periodic(const Duration(seconds: 4), (t) {
-      if (!mounted) return; // guard
+      if (!mounted) return;
       if (_pageController.hasClients) {
         _currentPage = (_currentPage + 1) % 4;
         _pageController.animateToPage(
@@ -73,16 +77,93 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     try {
       await AuthService.fetchMe();
 
-      final local = await WalletFlow
-          .ensureDefaultWallet(); // creates + saves locally if none
-      debugPrint('Current wallet: ${local.name} | ${local.primaryAddress}');
-
+      final local = await WalletFlow.ensureDefaultWallet();
       if (!mounted) return;
-      // 🔥 tell the store to pull from local and activate the new/first wallet
       await context.read<WalletStore>().reloadFromLocalAndActivate(local.id);
+
+      // ⬅️ compute total once wallets are ready
+      await _refreshPortfolioTotal();
     } catch (e) {
-      debugPrint('Bootstrap failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(e is ApiException ? e.message : 'Something went wrong.'),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () {
+              _didBootstrap = false;
+              _bootstrapOnce();
+            },
+          ),
+        ),
+      );
     }
+  }
+
+  // ⬇️ Fetch wallets and compute total USD
+  Future<void> _refreshPortfolioTotal() async {
+    setState(() => _loadingPortfolio = true);
+    try {
+      final wallets = await AuthService.fetchWallets();
+      final totalUsd = _sumAllWalletsUsd(wallets);
+      final formatted = NumberFormat.currency(symbol: '\$', decimalDigits: 2)
+          .format(totalUsd);
+      if (!mounted) return;
+      setState(() => _portfolioDisplay = formatted);
+    } catch (_) {
+      // keep previous display on error
+    } finally {
+      if (mounted) setState(() => _loadingPortfolio = false);
+    }
+  }
+
+  // -------- Aggregation helpers (robust to varied shapes) --------
+  double _sumAllWalletsUsd(List<Map<String, dynamic>> wallets) {
+    double total = 0.0;
+    for (final w in wallets) {
+      total += _walletUsd(w);
+    }
+    return total;
+  }
+
+  double _walletUsd(Map<String, dynamic> w) {
+    final chains = (w['chains'] as List?) ?? const [];
+    if (chains.isNotEmpty) {
+      double sum = 0.0;
+      for (final c in chains) {
+        if (c is! Map) continue;
+        final m = c.cast<String, dynamic>();
+
+        final usdDirect = _asDouble(m['fiatValue']) ??
+            _asDouble(m['usdValue']) ??
+            _asDouble(m['balanceUSD']);
+        if (usdDirect != null) {
+          sum += usdDirect;
+          continue;
+        }
+        final bal = _asDouble(m['balance']) ?? _asDouble(m['amount']);
+        final price = _asDouble(m['priceUsd']) ??
+            _asDouble(m['usdPrice']) ??
+            _asDouble(m['price']);
+        if (bal != null && price != null) sum += bal * price;
+      }
+      return sum;
+    }
+
+    // wallet-level fallback values
+    return _asDouble(w['fiatValue']) ??
+        _asDouble(w['usdValue']) ??
+        _asDouble(w['totalUsd']) ??
+        _asDouble(w['total']) ??
+        0.0;
+  }
+
+  double? _asDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
   }
 
   @override
@@ -107,157 +188,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     return allData.expand((e) => e).reduce(max) * 1.02;
   }
 
-  // ✅ Use only supported coins & drive icons via CoinStore by ID
-  // Each card carries a coinId; UI will resolve icon/name/symbol from Provider.
-// Put this inside _WalletHomeScreenState
-  final List<Map<String, dynamic>> _cryptoCardsSeed = [
-    // -------- BTC family --------
-    {
-      'coinId': 'BTC',
-      'title': 'Bitcoin',
-      'price': 61547.81,
-      'monthly': List.generate(30, (i) => 61000 + Random().nextDouble() * 1000),
-      'today': List.generate(24, (i) => 61200 + Random().nextDouble() * 500),
-      'yearly': List.generate(12, (i) => 59000 + Random().nextDouble() * 2000),
-    },
-    {
-      'coinId': 'BTC-LN',
-      'title': 'Bitcoin Lightning',
-      'price': 61547.81,
-      'monthly': List.generate(30, (i) => 61000 + Random().nextDouble() * 1000),
-      'today': List.generate(24, (i) => 61200 + Random().nextDouble() * 500),
-      'yearly': List.generate(12, (i) => 59000 + Random().nextDouble() * 2000),
-    },
-
-    // -------- BNB --------
-    {
-      'coinId': 'BNB',
-      'title': 'BNB',
-      'price': 575.42,
-      'monthly': List.generate(30, (i) => 540 + Random().nextDouble() * 50),
-      'today': List.generate(24, (i) => 565 + Random().nextDouble() * 10),
-      'yearly': List.generate(12, (i) => 400 + Random().nextDouble() * 200),
-    },
-    {
-      'coinId': 'BNB-BNB',
-      'title': 'BNB (BNB Chain)',
-      'price': 575.42,
-      'monthly': List.generate(30, (i) => 540 + Random().nextDouble() * 50),
-      'today': List.generate(24, (i) => 565 + Random().nextDouble() * 10),
-      'yearly': List.generate(12, (i) => 400 + Random().nextDouble() * 200),
-    },
-
-    // -------- ETH --------
-    {
-      'coinId': 'ETH',
-      'title': 'Ethereum',
-      'price': 3457.32,
-      'monthly': List.generate(30, (i) => 3400 + Random().nextDouble() * 100),
-      'today': List.generate(24, (i) => 3450 + Random().nextDouble() * 50),
-      'yearly': List.generate(12, (i) => 3200 + Random().nextDouble() * 200),
-    },
-    {
-      'coinId': 'ETH-ETH',
-      'title': 'ETH (Ethereum)',
-      'price': 3457.32,
-      'monthly': List.generate(30, (i) => 3400 + Random().nextDouble() * 100),
-      'today': List.generate(24, (i) => 3450 + Random().nextDouble() * 50),
-      'yearly': List.generate(12, (i) => 3200 + Random().nextDouble() * 200),
-    },
-
-    // -------- SOL --------
-    {
-      'coinId': 'SOL',
-      'title': 'Solana',
-      'price': 148.12,
-      'monthly': List.generate(30, (i) => 140 + Random().nextDouble() * 12),
-      'today': List.generate(24, (i) => 147 + Random().nextDouble() * 3),
-      'yearly': List.generate(12, (i) => 120 + Random().nextDouble() * 30),
-    },
-    {
-      'coinId': 'SOL-SOL',
-      'title': 'SOL (Solana)',
-      'price': 148.12,
-      'monthly': List.generate(30, (i) => 140 + Random().nextDouble() * 12),
-      'today': List.generate(24, (i) => 147 + Random().nextDouble() * 3),
-      'yearly': List.generate(12, (i) => 120 + Random().nextDouble() * 30),
-    },
-
-    // -------- TRX --------
-    {
-      'coinId': 'TRX',
-      'title': 'Tron',
-      'price': 0.13,
-      'monthly': List.generate(30, (i) => 0.12 + Random().nextDouble() * 0.02),
-      'today': List.generate(24, (i) => 0.125 + Random().nextDouble() * 0.01),
-      'yearly': List.generate(12, (i) => 0.10 + Random().nextDouble() * 0.04),
-    },
-    {
-      'coinId': 'TRX-TRX',
-      'title': 'TRX (Tron)',
-      'price': 0.13,
-      'monthly': List.generate(30, (i) => 0.12 + Random().nextDouble() * 0.02),
-      'today': List.generate(24, (i) => 0.125 + Random().nextDouble() * 0.01),
-      'yearly': List.generate(12, (i) => 0.10 + Random().nextDouble() * 0.04),
-    },
-
-    // -------- USDT --------
-    {
-      'coinId': 'USDT',
-      'title': 'Tether',
-      'price': 1.00,
-      'monthly': List.generate(30, (i) => 0.99 + Random().nextDouble() * 0.02),
-      'today': List.generate(24, (i) => 0.995 + Random().nextDouble() * 0.01),
-      'yearly': List.generate(12, (i) => 0.98 + Random().nextDouble() * 0.04),
-    },
-    {
-      'coinId': 'USDT-ETH',
-      'title': 'Tether (ETH)',
-      'price': 1.00,
-      'monthly': List.generate(30, (i) => 0.99 + Random().nextDouble() * 0.02),
-      'today': List.generate(24, (i) => 0.995 + Random().nextDouble() * 0.01),
-      'yearly': List.generate(12, (i) => 0.98 + Random().nextDouble() * 0.04),
-    },
-    {
-      'coinId': 'USDT-TRX',
-      'title': 'Tether (TRX)',
-      'price': 1.00,
-      'monthly': List.generate(30, (i) => 0.99 + Random().nextDouble() * 0.02),
-      'today': List.generate(24, (i) => 0.995 + Random().nextDouble() * 0.01),
-      'yearly': List.generate(12, (i) => 0.98 + Random().nextDouble() * 0.04),
-    },
-
-    // -------- XMR --------
-    {
-      'coinId': 'XMR',
-      'title': 'Monero',
-      'price': 165.50,
-      'monthly': List.generate(30, (i) => 150 + Random().nextDouble() * 20),
-      'today': List.generate(24, (i) => 162 + Random().nextDouble() * 6),
-      'yearly': List.generate(12, (i) => 120 + Random().nextDouble() * 60),
-    },
-    {
-      'coinId': 'XMR-XMR',
-      'title': 'Monero (XMR)',
-      'price': 165.50,
-      'monthly': List.generate(30, (i) => 150 + Random().nextDouble() * 20),
-      'today': List.generate(24, (i) => 162 + Random().nextDouble() * 6),
-      'yearly': List.generate(12, (i) => 120 + Random().nextDouble() * 60),
-    },
-  ];
-
-  void _openActivities() {
-    // you'll define this next
-    Navigator.of(context, rootNavigator: true)
-        .pushNamed(AppRoutes.transactionHistory);
-  }
-
   static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   void _openChangeWalletSheet(BuildContext context) async {
-    // 👇 keep a safe context from the parent screen
     final rootCtx = context;
-
     final wallets = await WalletFlow.loadLocalWallets();
 
     showModalBottomSheet(
@@ -270,18 +204,15 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
         builder: (bottomSheetCtx, setModal) {
           Future<void> _create() async {
             try {
-              // close using the root (still-mounted) context
               Navigator.of(rootCtx).pop();
+              final w = await WalletFlow.createNewWallet(); // API + save
 
-              final w = await WalletFlow.createNewWallet(); // calls API + saves
-
-              // ✅ update store so UI sees the new wallet
               if (mounted) {
                 final store = rootCtx.read<WalletStore>();
                 await store.reloadFromLocalAndActivate(w.id);
+                await _refreshPortfolioTotal(); // ⬅️ recompute after create
               }
 
-              // show snackbar with the root context (NOT the disposed sheet)
               ScaffoldMessenger.of(rootCtx).showSnackBar(
                 SnackBar(content: Text('Wallet created: ${w.name}')),
               );
@@ -316,10 +247,11 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                           style: const TextStyle(
                               color: Colors.white54, fontSize: 12),
                         ),
-                        onTap: () {
+                        onTap: () async {
                           Navigator.of(rootCtx).pop();
                           if (mounted) {
-                            rootCtx.read<WalletStore>().setActive(w.id);
+                            await rootCtx.read<WalletStore>().setActive(w.id);
+                            await _refreshPortfolioTotal(); // ⬅️ recompute after switch
                           }
                         },
                       )),
@@ -345,7 +277,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Read coins from Provider (rebuilds if coin map changes)
     context.watch<CoinStore>();
 
     return Scaffold(
@@ -363,23 +294,17 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VaultHeaderCard(
-                  totalValue: '\$12,345.67',
+                  totalValue: _portfolioDisplay, // ⬅️ dynamic total
                   vaultName: 'Main Wallet',
                   onTap: () {}, // open portfolio
                   onChangeWallet: () => _openChangeWalletSheet(context),
                   onActivities: () => Navigator.of(context, rootNavigator: true)
                       .pushNamed(AppRoutes.transactionHistory),
                 ),
-
-                // ✅ Crypto stats pager pulling iconPath from CoinStore by coinId
                 const MainCoinsOnly(),
-
-                // ✅ Portfolio list: build from Provider coins so icons are guaranteed
-                // ✅ Portfolio list: build from Provider coins so icons are guaranteed
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child:
-                      const CryptoPortfolioWidget(), // auto-loads ALL coins from CoinStore
+                  child: const CryptoPortfolioWidget(),
                 ),
               ],
             ),
@@ -396,27 +321,19 @@ class MainCoinsOnly extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<CoinStore>();
-
-    // Only these 7 coins in your desired order
     const ids = ['BTC', 'ETH', 'SOL', 'TRX', 'USDT', 'BNB', 'XMR'];
 
-    // Build cards only for coins that exist in the store
     final cards = <Widget>[];
     for (final id in ids) {
       final coin = store.getById(id);
       if (coin == null) continue;
-
-      // dummy sparkline data; swap with real series if you have it
       const series = [1.0, 1.06, 1.02, 1.12, 1.08, 1.18];
-
       cards.add(
         CryptoStatCard(
           key: ValueKey('card-${coin.id}'),
           coinId: coin.id,
           title: coin.name,
-          // Ensures one card per color/icon (even if duplicates are passed accidentally)
           colorKey: coin.assetPath,
-          // TODO: replace with your live price (e.g., from a price provider)
           currentPrice: 0.0,
           monthlyData: series,
           todayData: series,
@@ -425,7 +342,6 @@ class MainCoinsOnly extends StatelessWidget {
       );
     }
 
-    // If none found, show a friendly empty state
     if (cards.isEmpty) {
       return const SizedBox(
         height: 160,
@@ -439,7 +355,7 @@ class MainCoinsOnly extends StatelessWidget {
     }
 
     return CryptoStatsPager(
-      cards: cards, // exactly and only the 7 cards above
+      cards: cards,
       viewportPeek: 0.95,
       height: 340,
       showArrows: false,
@@ -449,7 +365,6 @@ class MainCoinsOnly extends StatelessWidget {
   }
 }
 
-// Responsive Legend Item (unchanged)
 class LegendItem extends StatelessWidget {
   final Color color;
   final String label;
