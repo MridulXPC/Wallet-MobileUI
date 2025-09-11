@@ -1,19 +1,21 @@
 // lib/presentation/token_detail/token_detail_screen.dart
 import 'dart:async';
-
+import 'dart:convert';
+import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
-
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 
 class TokenDetailScreen extends StatefulWidget {
   const TokenDetailScreen({super.key});
-
   @override
   State<TokenDetailScreen> createState() => _TokenDetailScreenState();
 }
@@ -21,15 +23,27 @@ class TokenDetailScreen extends StatefulWidget {
 class _TokenDetailScreenState extends State<TokenDetailScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? tokenData;
-  String selectedPeriod = 'LIVE';
-  bool isBookmarked = false;
+
+  // ---- live price state (Binance) ----
+  WebSocketChannel? _ws;
+  StreamSubscription? _wsSub;
+  double? _livePrice; // last price
+  double? _liveChangePercent; // 24h % change (+/-)
+  String? _liveChangeAbs; // optional abs change text if available
+
+  // ---- chart state (CoinGecko) ----
   List<FlSpot> chartData = [];
+  bool _chartLoading = false;
+  String selectedPeriod = 'LIVE';
+  Timer? _reconnectTimer;
+
+  bool isBookmarked = false;
   late TabController _tabController;
 
   final List<String> timePeriods = ['LIVE', '4H', '1D', '1W', '1M', 'MAX'];
   final List<String> tabs = ['Holdings', 'History', 'About'];
 
-  // Dark theme colors
+  // Dark theme palette
   static const Color darkBackground = Color(0xFF0B0D1A);
   static const Color cardBackground = Color(0xFF1A1A1A);
   static const Color greenColor = Color(0xFF00D4AA);
@@ -40,7 +54,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: tabs.length, vsync: this);
-    _generateMockChartData();
   }
 
   @override
@@ -48,14 +61,19 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     super.didChangeDependencies();
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    if (args != null) {
+    if (args != null && tokenData == null) {
       setState(() => tokenData = args);
+      _applyInitialTabFromArgs();
+      _startLiveStream(); // <- Binance WS
+      _loadChartFor(selectedPeriod); // <- CoinGecko chart
     }
-    _applyInitialTabFromArgs();
   }
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
+    _wsSub?.cancel();
+    _ws?.sink.close();
     _tabController.dispose();
     super.dispose();
   }
@@ -64,12 +82,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   int? _extractInitialTabFromArgs() {
     final argsAny = ModalRoute.of(context)?.settings.arguments;
     try {
-      if (argsAny is Map<String, dynamic>) {
-        return argsAny['initialTab'] as int?;
-      } else {
-        final dynamic d = argsAny;
-        return d?.initialTab as int?;
-      }
+      if (argsAny is Map<String, dynamic>) return argsAny['initialTab'] as int?;
+      final dynamic d = argsAny;
+      return d?.initialTab as int?;
     } catch (_) {
       return null;
     }
@@ -87,114 +102,262 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
-  // ---------- Dummy transactions (by coin symbol) -------------
-  Map<String, List<Map<String, dynamic>>> get dummyTransactions => {
-        'BTC': [
-          {
-            'id': 'btc_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.004256',
-            'coin': 'BTC',
-            'dateTime': '20 Aug 2025 10:38:50',
-            'from': 'bc1q07...eyla0f',
-            'to': 'bc1qkv...sft0rz',
-            'hash':
-                'e275b987f6c5b8e715e01461d8fae15dc4f5ae9e9ec178a65bc2173cabfded5b',
-            'block': 910917,
-            'feeDetails': {'Total Fee': '0.00000378 BTC'},
-          },
-          {
-            'id': 'btc_receive_1',
-            'type': 'receive',
-            'status': 'Confirmed',
-            'amount': '0.0046011',
-            'coin': 'BTC',
-            'dateTime': '18 Aug 2025 14:22:15',
-            'from': 'bc1q89...xyz123',
-            'to': 'bc1q07...eyla0f',
-            'hash':
-                'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456',
-            'block': 910815,
-            'feeDetails': {'Total Fee': '0.00000245 BTC'},
-          },
-          {
-            'id': 'btc_swap_1',
-            'type': 'swap',
-            'status': 'Confirmed',
-            'amount': '0.002',
-            'coin': 'BTC',
-            'dateTime': '17 Aug 2025 09:15:30',
-            'hash':
-                'swap123456789abcdef123456789abcdef123456789abcdef123456789abcdef',
-            'swapDetails': {
-              'fromCoin': 'ETH',
-              'fromAmount': '1.25',
-              'toCoin': 'BTC',
-              'toAmount': '0.002',
-              'rate': '0.0016',
-              'swapId': 'SWAP_BTC_001'
-            },
-            'feeDetails': {'Swap Fee': '0.5%', 'Network Fee': '0.00001 BTC'},
-          },
-        ],
-        'ETH': [
-          {
-            'id': 'eth_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '2.5',
-            'coin': 'ETH',
-            'dateTime': '21 Aug 2025 16:45:12',
-            'from': '0x742d...F8H',
-            'to': '0x1234...5678',
-            'hash': '0xeth1234...89abcdef',
-            'block': 18245673,
-            'feeDetails': {
-              'Gas Used': '21,000',
-              'Gas Price': '25 Gwei',
-              'Total Fee': '0.000525 ETH',
-            },
-          },
-        ],
-        'USDT': [
-          {
-            'id': 'usdt_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '50.332725',
-            'coin': 'USDT',
-            'dateTime': '09 Aug 2025 06:01:48',
-            'from': 'TAJ6r4...t372GF',
-            'to': 'TBmLQS...LFGABn',
-            'hash': '72c2e0...d55429',
-            'block': 74680192,
-            'feeDetails': {'Bandwidth Fee': '0.0', 'Total Fee': '13.84485 TRX'},
-          },
-        ],
-      };
-
-  // ---------- convenience getters ----------
-  String get sym => (tokenData?['symbol'] ?? 'BTC').toString();
+  // ---------- symbol / ids ----------
+  String get sym => (tokenData?['symbol'] ?? 'BTC').toString().toUpperCase();
   String get name => tokenData?['name'] ?? 'Bitcoin';
   String get iconPath =>
       tokenData?['icon'] ?? 'assets/currencyicons/bitcoin.png';
 
-  double get price => (tokenData?['price'] as num?)?.toDouble() ?? 43825.67;
-  String get changeText => tokenData?['changeText'] ?? r'$72.42 (+0.06%)';
-  bool get changePositive => tokenData?['changePositive'] ?? true;
+  // Fallbacks if no live stream yet
+  double get _fallbackPrice =>
+      (tokenData?['price'] as num?)?.toDouble() ?? 43825.67;
+  String get _fallbackChangeText =>
+      tokenData?['changeText'] ?? r'$72.42 (+0.06%)';
+  bool get _fallbackChangePositive => tokenData?['changePositive'] ?? true;
 
-  String get marketCap => tokenData?['marketCap'] ?? r'$2.4T';
-  String get volume24h => tokenData?['volume24h'] ?? r'$45.2B';
-  String get circulating => tokenData?['circulating'] ?? '—';
-  String get alltimehigh => tokenData?['All time high'] ?? '\$73,737.00';
-  String get alltimelow => tokenData?['All time low'] ?? '\$65.00';
-  String get fullydiluted => tokenData?['Fully diluted'] ?? '\$2.6T';
-  String get volumemarketcap => tokenData?['Volume / Market Cap'] ?? '8.90%';
-  String get aboutText =>
-      tokenData?['about'] ?? 'No description provided for $name.';
+  // Mapping: app symbol -> Binance stream symbol ("btcusdt")
+  String? _binanceStreamSymbol(String s) {
+    final base = s.toUpperCase();
+    // We stream vs USDT by default
+    const supported = {
+      'BTC': 'btcusdt',
+      'ETH': 'ethusdt',
+      'BNB': 'bnbusdt',
+      'SOL': 'solusdt',
+      'TRX': 'trxusdt',
+      'XMR': 'xmrusdt', // may not be supported on Binance in some regions
+      'USDT': null, // USDT/USDT doesn’t make sense — skip stream
+    };
+    return supported[base] ?? '${base.toLowerCase()}usdt';
+  }
 
-  // Build a usable coinId: prefer explicit coinId/id; else symbol + chain
+  // Mapping: app symbol -> CoinGecko coin id
+  String _coingeckoIdForSymbol(String s) {
+    switch (s.toUpperCase()) {
+      case 'BTC':
+        return 'bitcoin';
+      case 'ETH':
+        return 'ethereum';
+      case 'BNB':
+        return 'binancecoin';
+      case 'SOL':
+        return 'solana';
+      case 'TRX':
+        return 'tron';
+      case 'USDT':
+        return 'tether';
+      case 'XMR':
+        return 'monero';
+      default:
+        return 'bitcoin';
+    }
+  }
+
+  /* ===================== BINANCE LIVE TICKER ===================== */
+
+  void _startLiveStream() {
+    // Close any previous stream
+    _reconnectTimer?.cancel();
+    _wsSub?.cancel();
+    _ws?.sink.close();
+
+    final streamSym = _binanceStreamSymbol(sym);
+    if (streamSym == null) return; // e.g., USDT
+
+    final url = 'wss://stream.binance.com:9443/ws/$streamSym@ticker';
+    _ws = IOWebSocketChannel.connect(Uri.parse(url));
+
+    _wsSub = _ws!.stream.listen(
+      (event) {
+        try {
+          final m = jsonDecode(event as String) as Map<String, dynamic>;
+          final last = double.tryParse(m['c']?.toString() ?? '');
+          final pct = double.tryParse(m['P']?.toString() ?? '');
+          final abs = m['p']?.toString(); // optional absolute change
+          if (!mounted) return;
+          setState(() {
+            if (last != null) _livePrice = last;
+            if (pct != null) _liveChangePercent = pct;
+            _liveChangeAbs = abs;
+          });
+        } catch (_) {}
+      },
+      onDone: _scheduleReconnect,
+      onError: (_) => _scheduleReconnect(),
+      cancelOnError: true,
+    );
+  }
+
+  void _scheduleReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _startLiveStream();
+    });
+  }
+
+  /* ===================== COINGECKO CHART ===================== */
+
+  Future<void> _loadChartFor(String period) async {
+    setState(() => _chartLoading = true);
+
+    try {
+      final id = _coingeckoIdForSymbol(sym);
+      // Map UI period -> CoinGecko days
+      final (days, filterHours) = switch (period) {
+        'LIVE' => ('1', 1), // last 1h from 1D data
+        '4H' => ('1', 4),
+        '1D' => ('1', null),
+        '1W' => ('7', null),
+        '1M' => ('30', null),
+        _ => ('max', null),
+      };
+
+      final uri = Uri.parse(
+          'https://api.coingecko.com/api/v3/coins/$id/market_chart?vs_currency=usd&days=$days');
+      final res = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200)
+        throw Exception('Chart HTTP ${res.statusCode}');
+      final map = jsonDecode(res.body) as Map<String, dynamic>;
+      final List prices = (map['prices'] as List?) ?? const [];
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final cutoffMs =
+          (filterHours != null) ? nowMs - (filterHours * 60 * 60 * 1000) : null;
+
+      final points = <FlSpot>[];
+      for (final row in prices) {
+        if (row is! List || row.length < 2) continue;
+        final ts = (row[0] as num).toInt();
+        final price = (row[1] as num).toDouble();
+        if (cutoffMs != null && ts < cutoffMs) continue;
+        points.add(FlSpot(ts.toDouble(), price));
+      }
+
+      // If CoinGecko is throttled or empty, fall back to last known price
+      if (points.isEmpty) {
+        final p = _livePrice ?? _fallbackPrice;
+        final t = DateTime.now().millisecondsSinceEpoch.toDouble();
+        points.addAll([
+          FlSpot(t - 600000, p * 0.995),
+          FlSpot(t - 300000, p * 1.002),
+          FlSpot(t, p),
+        ]);
+      }
+
+      // Normalize X to 0..N for smoother FLChart
+      final t0 = points.first.x;
+      final norm = <FlSpot>[];
+      for (final s in points) {
+        norm.add(FlSpot((s.x - t0) / 1000.0, s.y)); // seconds from start
+      }
+
+      if (!mounted) return;
+      setState(() {
+        chartData = norm;
+        _chartLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // graceful fallback — keep previous data, stop spinner
+      setState(() => _chartLoading = false);
+    }
+  }
+
+  /* ===================== UI ===================== */
+
+  void _onPeriodSelected(String period) {
+    setState(() => selectedPeriod = period);
+    HapticFeedback.selectionClick();
+    _loadChartFor(period);
+  }
+
+  void _toggleBookmark() {
+    setState(() => isBookmarked = !isBookmarked);
+    HapticFeedback.lightImpact();
+  }
+
+  // --------------------- Receive handling (unchanged) ---------------------
+  String? _tryKeys(List<String> keys) {
+    for (final k in keys) {
+      final v = tokenData?[k];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    }
+    return null;
+  }
+
+  ({String address, String mode, String title})? _resolveReceive() {
+    final id = _coinId.toUpperCase();
+    final base = id.contains('-') ? id.split('-').first : id;
+    final chain = id.contains('-') ? id.split('-').last : '';
+
+    if (base == 'BTC' && chain != 'LN') {
+      final addr = _tryKeys([
+        'btcAddress',
+        'bitcoinAddress',
+        'address_btc',
+        'address',
+        'onchainAddress'
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your BTC address');
+    }
+    if (base == 'BTC' && chain == 'LN') {
+      final addr = _tryKeys(
+          ['lightning', 'lightningAddress', 'lnInvoice', 'lnurl', 'invoice']);
+      if (addr == null) return null;
+      return (address: addr, mode: 'ln', title: 'Your Lightning invoice');
+    }
+    if (chain == 'ETH' || base == 'ETH') {
+      final addr =
+          _tryKeys(['erc20Address', 'ethAddress', 'address_eth', 'address']);
+      if (addr == null) return null;
+      final t =
+          base == 'USDT' ? 'Your USDT (ERC-20) address' : 'Your ETH address';
+      return (address: addr, mode: 'onchain', title: t);
+    }
+    if (chain == 'TRX' || base == 'TRX') {
+      final addr =
+          _tryKeys(['trc20Address', 'trxAddress', 'address_trx', 'address']);
+      if (addr == null) return null;
+      final t =
+          base == 'USDT' ? 'Your USDT (TRC-20) address' : 'Your TRX address';
+      return (address: addr, mode: 'onchain', title: t);
+    }
+    if (chain == 'SOL' || base == 'SOL') {
+      final addr =
+          _tryKeys(['solAddress', 'solanaAddress', 'address_sol', 'address']);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your SOL address');
+    }
+    if (chain == 'BNB' || base == 'BNB') {
+      final addr = _tryKeys([
+        'bep20Address',
+        'bscAddress',
+        'bnbAddress',
+        'address_bnb',
+        'address'
+      ]);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your BNB (BSC) address');
+    }
+    if (chain == 'XMR' || base == 'XMR') {
+      final addr =
+          _tryKeys(['xmrAddress', 'moneroAddress', 'address_xmr', 'address']);
+      if (addr == null) return null;
+      return (address: addr, mode: 'onchain', title: 'Your XMR address');
+    }
+    final generic = _tryKeys(['address']);
+    if (generic != null) {
+      return (
+        address: generic,
+        mode: 'onchain',
+        title: 'Your address to receive $name'
+      );
+    }
+    return null;
+  }
+
   String get _coinId {
     final explicit = (tokenData?['coinId'] ?? tokenData?['id'])?.toString();
     if (explicit != null && explicit.isNotEmpty) return explicit;
@@ -233,195 +396,25 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       case 'BTC-LN':
         return 'LN';
       default:
-        return raw; // already normalized or empty
+        return raw;
     }
   }
 
-  // Simple dummy price lookup for variants (until you wire an API)
-  static const Map<String, double> _dummyPrices = {
-    "BTC": 43825.67,
-    "BTC-LN": 43825.67,
-    "ETH": 2641.25,
-    "ETH-ETH": 2641.25,
-    "USDT": 1.00,
-    "USDT-ETH": 1.00,
-    "USDT-TRX": 1.00,
-    "BNB": 575.42,
-    "BNB-BNB": 575.42,
-    "SOL": 148.12,
-    "SOL-SOL": 148.12,
-    "TRX": 0.13,
-    "TRX-TRX": 0.13,
-    "XMR": 165.50,
-    "XMR-XMR": 165.50,
-  };
-
-  void _generateMockChartData() {
-    chartData = List.generate(50, (i) {
-      final base = 1.0;
-      final trend = i * 0.015;
-      final noise = (i % 7) * 0.02 - 0.01;
-      return FlSpot(i.toDouble(), base + trend + noise);
-    });
-  }
-
-  void _onPeriodSelected(String period) {
-    setState(() {
-      selectedPeriod = period;
-      _generateMockChartData();
-    });
-    HapticFeedback.selectionClick();
-  }
-
-  void _toggleBookmark() {
-    setState(() => isBookmarked = !isBookmarked);
-    HapticFeedback.lightImpact();
-  }
-
-  // --------------------- Receive handling ---------------------
-  // Try multiple likely keys to find an address for a given chain
-  String? _tryKeys(List<String> keys) {
-    for (final k in keys) {
-      final v = tokenData?[k];
-      if (v is String && v.trim().isNotEmpty) return v.trim();
-    }
-    return null;
-  }
-
-  // Resolve address + mode for the coinId currently shown
-  ({String address, String mode, String title})? _resolveReceive() {
-    final id = _coinId.toUpperCase();
-    final base = id.contains('-') ? id.split('-').first : id;
-    final chain = id.contains('-') ? id.split('-').last : '';
-
-    // BTC (on-chain)
-    if (base == 'BTC' && chain != 'LN') {
-      final addr = _tryKeys([
-        'btcAddress',
-        'bitcoinAddress',
-        'address_btc',
-        'address',
-        'onchainAddress',
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your BTC address');
-    }
-
-    // BTC-LN (Lightning)
-    if (base == 'BTC' && chain == 'LN') {
-      final addr = _tryKeys([
-        'lightning',
-        'lightningAddress',
-        'lnInvoice',
-        'lnurl',
-        'invoice',
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'ln', title: 'Your Lightning invoice');
-    }
-
-    // ETH / ERC-20 (incl. USDT-ETH, ETH-ETH)
-    if (chain == 'ETH' || base == 'ETH') {
-      final addr = _tryKeys([
-        'erc20Address',
-        'ethAddress',
-        'address_eth',
-        'address',
-      ]);
-      if (addr == null) return null;
-      final t =
-          base == 'USDT' ? 'Your USDT (ERC-20) address' : 'Your ETH address';
-      return (address: addr, mode: 'onchain', title: t);
-    }
-
-    // TRX / TRC-20 (incl. USDT-TRX, TRX-TRX)
-    if (chain == 'TRX' || base == 'TRX') {
-      final addr = _tryKeys([
-        'trc20Address',
-        'trxAddress',
-        'address_trx',
-        'address',
-      ]);
-      if (addr == null) return null;
-      final t =
-          base == 'USDT' ? 'Your USDT (TRC-20) address' : 'Your TRX address';
-      return (address: addr, mode: 'onchain', title: t);
-    }
-
-    // SOL
-    if (chain == 'SOL' || base == 'SOL') {
-      final addr = _tryKeys([
-        'solAddress',
-        'solanaAddress',
-        'address_sol',
-        'address',
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your SOL address');
-    }
-
-    // BNB / BSC
-    if (chain == 'BNB' || base == 'BNB') {
-      final addr = _tryKeys([
-        'bep20Address',
-        'bscAddress',
-        'bnbAddress',
-        'address_bnb',
-        'address',
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your BNB (BSC) address');
-    }
-
-    // XMR
-    if (chain == 'XMR' || base == 'XMR') {
-      final addr = _tryKeys([
-        'xmrAddress',
-        'moneroAddress',
-        'address_xmr',
-        'address',
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your XMR address');
-    }
-
-    // Fallback: generic address
-    final generic = _tryKeys(['address']);
-    if (generic != null) {
-      return (
-        address: generic,
-        mode: 'onchain',
-        title: 'Your address to receive $name'
-      );
-    }
-    return null;
-  }
-
-  Future<void> _openReceive() async {
+  void _openReceive() {
     final res = _resolveReceive();
-    if (res == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No receive address found for this network'),
-        ),
-      );
-      return;
-    }
+    final id = _coinId;
+    final pretty = name;
+    final mode = res?.mode ?? (id.endsWith('-LN') ? 'ln' : 'onchain');
 
-    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ReceiveQR(
-          title: res.title,
-          address: res.address,
-          coinId: _coinId,
-          mode: res.mode, // 'onchain' | 'ln'
-          // For BTC on-chain you can set min sats; Lightning ignores it.
-          minSats: (res.mode == 'onchain' && _coinId.startsWith('BTC'))
-              ? 25000
-              : null,
+          title: res?.title ?? 'Your address to receive $pretty',
+          address: res?.address ?? '',
+          coinId: id,
+          mode: mode,
+          minSats: (mode == 'onchain' && id.startsWith('BTC')) ? 25000 : null,
         ),
       ),
     );
@@ -430,6 +423,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   // --------------------- UI ---------------------
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isLarge = screenWidth > 900;
+    final isTablet = screenWidth > 600;
     return Scaffold(
       backgroundColor: darkBackground,
       body: Column(
@@ -452,10 +448,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                       Row(
                         children: [
                           Expanded(
-                            child: ActionButtonsGridtoken(
+                            child: ActionButtonsGridWidget(
+                              isLarge: isLarge,
+                              isTablet: isTablet,
                               coinId: _coinId,
-                              onReceive: _openReceive, // <- chain-aware Receive
-                              onActivityTap: () => _tabController.animateTo(1),
+                              onReceive: _openReceive,
                             ),
                           ),
                           SizedBox(width: 3.w),
@@ -467,7 +464,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               ],
             ),
           ),
-
           // Lower half
           Expanded(
             flex: 1,
@@ -572,7 +568,17 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   Widget _buildTokenPriceDisplay() {
-    final changeClr = changePositive ? greenColor : Colors.redAccent;
+    final price = _livePrice ?? _fallbackPrice;
+    final pct = _liveChangePercent;
+    final isUp = (pct ?? 0) >= 0
+        ? (_liveChangePercent != null ? true : _fallbackChangePositive)
+        : false;
+    final changeClr = isUp ? greenColor : Colors.redAccent;
+
+    final pctText = (pct != null)
+        ? '${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(2)}%'
+        : _fallbackChangeText;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: Column(
@@ -589,14 +595,13 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                changePositive ? Icons.arrow_upward : Icons.arrow_downward,
-                color: changeClr,
-                size: 18,
-              ),
+              Icon(isUp ? Icons.arrow_upward : Icons.arrow_downward,
+                  color: changeClr, size: 18),
               const SizedBox(width: 4),
               Text(
-                changeText,
+                _liveChangeAbs != null
+                    ? '${_liveChangeAbs!.startsWith('-') ? '' : '+'}\$${double.tryParse(_liveChangeAbs!)?.toStringAsFixed(2) ?? _liveChangeAbs} ($pctText)'
+                    : pctText,
                 style: TextStyle(
                   color: changeClr,
                   fontSize: 16,
@@ -644,10 +649,19 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   Widget _buildPriceChart() {
-    final minY =
-        chartData.map((s) => s.y).reduce((a, b) => a < b ? a : b) - 0.05;
-    final maxY =
-        chartData.map((s) => s.y).reduce((a, b) => a > b ? a : b) + 0.05;
+    if (_chartLoading && chartData.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 24.0),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    final spots =
+        chartData.isNotEmpty ? chartData : [FlSpot(0, _fallbackPrice)];
+    final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b) * 0.995;
+    final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.005;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 2.w),
@@ -658,7 +672,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
-              spots: chartData,
+              spots: spots,
               isCurved: true,
               color: greenColor,
               barWidth: 3,
@@ -678,8 +692,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               ),
             ),
           ],
-          minX: 0,
-          maxX: chartData.length.toDouble() - 1,
+          minX: spots.first.x,
+          maxX: spots.last.x,
           minY: minY,
           maxY: maxY,
         ),
@@ -687,7 +701,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // ------------------ Holdings tab ------------------
+  // ------------------ Holdings tab (unchanged UI) ------------------
   Widget _buildHoldingsTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 3.w),
@@ -947,7 +961,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     };
   }
 
-  // Balance strings (demo). Replace with your real balances.
+  // Balance strings (demo)
   String _getVariantBalance(String variantId) {
     switch (variantId) {
       case 'USDT-ETH':
@@ -963,36 +977,50 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
-  // Fiat value = parsed balance * dummy price
+  // Fiat value = parsed balance * (live price when available)
   String _getVariantFiatValue(String variantId) {
     final raw = _getVariantBalance(variantId);
     final amountStr = (raw.split(' ').isNotEmpty ? raw.split(' ').first : '0')
         .replaceAll(',', '');
     final amount = double.tryParse(amountStr) ?? 0.0;
 
-    final price = _dummyPrices[variantId] ?? _dummyPrices[sym] ?? 0.0;
-    final usd = amount * price;
+    // Prefer live price if this variant matches the selected coin
+    final p = (variantId.startsWith(sym))
+        ? (_livePrice ?? _fallbackPrice)
+        : _dummyPrices[variantId] ?? _dummyPrices[sym] ?? _fallbackPrice;
+
+    final usd = amount * p;
     return '\$${usd.toStringAsFixed(2)}';
   }
 
-  String _getDefaultNetwork(String symbol) {
-    switch (symbol.toUpperCase()) {
-      case 'ETH':
-        return 'Ethereum Network';
-      case 'TRX':
-        return 'Tron Network';
-      case 'SOL':
-        return 'Solana Network';
-      case 'BNB':
-        return 'BSC Network';
-      case 'XMR':
-        return 'Monero Network';
-      default:
-        return 'Native Network';
-    }
-  }
+  // ------------------ History tab (demo) ------------------
+  Map<String, List<Map<String, dynamic>>> get dummyTransactions => {
+        'BTC': [
+          {
+            'id': 'btc_send_1',
+            'type': 'send',
+            'status': 'Confirmed',
+            'amount': '0.004256',
+            'coin': 'BTC',
+            'dateTime': '20 Aug 2025 10:38:50',
+            'from': 'bc1q07...eyla0f',
+            'to': 'bc1qkv...sft0rz',
+          },
+        ],
+        'ETH': [
+          {
+            'id': 'eth_send_1',
+            'type': 'send',
+            'status': 'Confirmed',
+            'amount': '2.5',
+            'coin': 'ETH',
+            'dateTime': '21 Aug 2025 16:45:12',
+            'from': '0x742d...F8H',
+            'to': '0x1234...5678',
+          },
+        ],
+      };
 
-  // ------------------ History tab ------------------
   Widget _buildHistoryTab() {
     return SingleChildScrollView(child: _buildTransactionsSection());
   }
@@ -1038,7 +1066,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
       child: Row(
         children: [
-          // Type icon
           Container(
             width: 40,
             height: 40,
@@ -1050,7 +1077,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                 color: Colors.white, size: 18),
           ),
           const SizedBox(width: 16),
-          // Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1093,7 +1119,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${tx['amount']} ${_getCoinSymbol(tx['coin'])}',
+                          '${tx["amount"]} ${_getCoinSymbol(tx["coin"])}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1129,7 +1155,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // ------------------ About tab ------------------
+  // ------------------ About tab (unchanged UI) ------------------
   Widget _buildAboutTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
@@ -1137,23 +1163,28 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(height: 2.h),
-          // Market stats
           Container(
             padding: EdgeInsets.all(1.w),
             child: Column(
               children: [
-                _buildStatRow('Market Cap', marketCap),
-                _buildStatRow('24h Volume', volume24h),
-                _buildStatRow('Circulating Supply', circulating),
-                _buildStatRow('Volume / Market Cap', volumemarketcap),
-                _buildStatRow('All time high', alltimehigh),
-                _buildStatRow('All time low', alltimelow),
-                _buildStatRow('Fully diluted', fullydiluted),
+                _buildStatRow(
+                    'Market Cap', tokenData?['marketCap'] ?? r'$2.4T'),
+                _buildStatRow(
+                    '24h Volume', tokenData?['volume24h'] ?? r'$45.2B'),
+                _buildStatRow(
+                    'Circulating Supply', tokenData?['circulating'] ?? '—'),
+                _buildStatRow('Volume / Market Cap',
+                    tokenData?['Volume / Market Cap'] ?? '8.90%'),
+                _buildStatRow('All time high',
+                    tokenData?['All time high'] ?? '\$73,737.00'),
+                _buildStatRow(
+                    'All time low', tokenData?['All time low'] ?? '\$65.00'),
+                _buildStatRow(
+                    'Fully diluted', tokenData?['Fully diluted'] ?? '\$2.6T'),
               ],
             ),
           ),
           SizedBox(height: 3.h),
-          // About block
           Container(
             padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
@@ -1192,7 +1223,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                               const TextStyle(color: greyColor, fontSize: 14)),
                       SizedBox(height: 1.5.h),
                       Text(
-                        aboutText,
+                        tokenData?['about'] ??
+                            'No description provided for $name.',
                         style: const TextStyle(
                           color: lightGreyColor,
                           fontSize: 14,
@@ -1337,154 +1369,23 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (address.length <= 12) return address;
     return '${address.substring(0, 6)}...${address.substring(address.length - 6)}';
   }
-}
 
-// ===================== ActionButtonsGridtoken =====================
-
-class ActionButtonsGridtoken extends StatelessWidget {
-  final bool isLarge;
-  final bool isTablet;
-
-  /// Coin/card id from CoinStore — e.g. "BTC", "BTC-LN", "USDT-TRX", "ETH-ETH"
-  final String coinId;
-
-  /// Optional: override tap for Receive button (e.g., open the correct chain address)
-  final FutureOr<void> Function()? onReceive;
-
-  /// Optional: for Activity button — if provided, we call this instead of navigating
-  final VoidCallback? onActivityTap;
-
-  const ActionButtonsGridtoken({
-    super.key,
-    required this.coinId,
-    this.isLarge = false,
-    this.isTablet = false,
-    this.onReceive,
-    this.onActivityTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final store = context.watch<CoinStore>();
-    final coin = store.getById(coinId);
-
-    final List<_ActionButton> actionButtons = [
-      _ActionButton(
-        title: "Send",
-        icon: Icons.send,
-        route: AppRoutes.sendCrypto,
-      ),
-      _ActionButton(
-        title: "Receive",
-        icon: Icons.call_received,
-        route: AppRoutes.receiveCrypto,
-        onTapOverride: onReceive, // <- use custom receive if provided
-      ),
-      _ActionButton(
-        title: "Swap",
-        icon: Icons.swap_horiz,
-        route: AppRoutes.swapScreen,
-      ),
-      _ActionButton(
-        title: "Activity",
-        icon: Icons.history,
-        route: AppRoutes.tokenDetail,
-        onTapOverride: onActivityTap,
-        arguments: onActivityTap == null
-            ? {
-                'initialTab': 1, // History tab
-                'symbol': coin?.symbol, // e.g. BTC
-                'name': coin?.name, // e.g. Bitcoin
-                'icon': coin?.assetPath, // icon path from CoinStore
-              }
-            : null,
-      ),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: actionButtons.map((button) {
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _buildActionButton(
-                context,
-                title: button.title,
-                icon: button.icon,
-                route: button.route,
-                arguments: button.arguments,
-                onTapOverride: button.onTapOverride,
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required String route,
-    Object? arguments,
-    FutureOr<void> Function()? onTapOverride,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () async {
-          if (onTapOverride != null) {
-            await onTapOverride();
-          } else {
-            Navigator.pushNamed(context, route, arguments: arguments);
-          }
-        },
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: Colors.white, size: 24),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11.sp,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton {
-  final String title;
-  final IconData icon;
-  final String route;
-  final Object? arguments;
-  final FutureOr<void> Function()? onTapOverride;
-  _ActionButton({
-    required this.title,
-    required this.icon,
-    required this.route,
-    this.arguments,
-    this.onTapOverride,
-  });
+  // simple fallback price book for non-selected variants or offline
+  static const Map<String, double> _dummyPrices = {
+    "BTC": 43825.67,
+    "BTC-LN": 43825.67,
+    "ETH": 2641.25,
+    "ETH-ETH": 2641.25,
+    "USDT": 1.00,
+    "USDT-ETH": 1.00,
+    "USDT-TRX": 1.00,
+    "BNB": 575.42,
+    "BNB-BNB": 575.42,
+    "SOL": 148.12,
+    "SOL-SOL": 148.12,
+    "TRX": 0.13,
+    "TRX-TRX": 0.13,
+    "XMR": 165.50,
+    "XMR-XMR": 165.50,
+  };
 }

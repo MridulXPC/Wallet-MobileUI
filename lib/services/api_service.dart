@@ -1,6 +1,8 @@
+// lib/services/api_service.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cryptowallet/models/explore_model.dart';
 import 'package:cryptowallet/models/token_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -105,7 +107,6 @@ class AuthService {
               .timeout(_timeout);
           break;
         case 'DELETE':
-          // If your backend expects body on DELETE, add `body: jsonBody`.
           response = await _client
               .delete(uri, headers: defaultHeaders)
               .timeout(_timeout);
@@ -296,9 +297,6 @@ class AuthService {
         prefs.remove('use_biometrics'),
         prefs.remove(_spUserIdKey),
         prefs.remove(_spWalletIdKey), // legacy
-        // Clear all cached wallet addresses (basic sweep)
-        // If you have a fixed list of chains, remove those exact keys.
-        // Here we leave them as-is to avoid scanning keys.
       ]);
     } catch (_) {}
   }
@@ -433,7 +431,6 @@ class AuthService {
 
   /// GET /api/auth/me -> returns "user" map and caches _id
   static Future<Map<String, dynamic>> fetchMe() async {
-    // Most backends expose /api/auth/me; adjust if yours differs
     final uri = Uri.parse('$_baseUrl/api/auth/me');
 
     final t = await getStoredToken(); // <-- use real token
@@ -674,8 +671,9 @@ class AuthService {
           (pickedWallet['chains'] as List?) ?? const [],
           want,
         );
-        if (addrFromPicked != null && addrFromPicked.isNotEmpty)
+        if (addrFromPicked != null && addrFromPicked.isNotEmpty) {
           return addrFromPicked;
+        }
         // Fallback: some backends put 'address' at wallet level
         final direct = (pickedWallet['address'] as String?)?.trim();
         if (direct != null && direct.isNotEmpty) return direct;
@@ -715,7 +713,7 @@ class AuthService {
       if (c is! Map) continue;
       final m = c.cast<String, dynamic>();
       final chainCode = (m['chain'] as String?)?.toUpperCase().trim();
-      final normalized = _normalizeChain(chainCode);
+      final normalized = _normalizeChain(chainCode ?? '');
       final address = (m['address'] as String?)?.trim();
 
       if (address != null && address.isNotEmpty) {
@@ -730,17 +728,14 @@ class AuthService {
   // ===================== TRANSACTIONS =====================
 
   /// POST /api/transaction/send
-  /// Header: Authorization: Bearer <jwt> (mandatory)
-  /// Body: userID, walletAddress, toAddress, amount, chain, priority (optional)
-  /// NOTE: If your backend also expects the JWT in the body, keep `"token": token`.
   static Future<AuthResponse> sendTransaction({
     required String userId,
-    required String walletAddress, // ✅ backend wants walletAddress
+    required String walletAddress,
     required String toAddress,
     required String amount,
     required String chain,
     String priority = "yes",
-    String? coinSymbol, // ✅ e.g. "BTC", "ETH" (not the JWT)
+    String? coinSymbol,
   }) async {
     try {
       final jwt = await getStoredToken();
@@ -748,18 +743,16 @@ class AuthService {
         throw const ApiException("No authentication token available");
       }
 
-      // Build request body
       final requestBody = <String, dynamic>{
         "userID": userId,
-        "walletAddress": walletAddress, // ✅ correct key
+        "walletAddress": walletAddress,
         "toAddress": toAddress,
         "amount": amount,
         "priority": priority,
-        "chain": chain, // keep as passed
-        "token": coinSymbol ?? chain, // ✅ coin symbol, not JWT
+        "chain": chain,
+        "token": coinSymbol ?? chain,
       };
 
-      // ---- Debug logging ----
       debugPrint("🌐 POST /api/transaction/send");
       debugPrint("🔐 Authorization: Bearer ***JWT***");
       debugPrint("📦 Request body: ${jsonEncode(requestBody)}");
@@ -767,7 +760,7 @@ class AuthService {
       final response = await _makeRequest(
         method: 'POST',
         endpoint: '/api/transaction/send',
-        token: jwt, // ✅ JWT only in header
+        token: jwt,
         requireAuth: true,
         body: requestBody,
       );
@@ -784,12 +777,9 @@ class AuthService {
     }
   }
 
-// ===================== SWAPS =====================
+  // ===================== SWAPS =====================
 
-  /// POST /swaps/getQuote
-  /// Header: Authorization: Bearer <jwt>
-  /// Body: { fromToken, toToken, amount, chain }
-// --- QUOTES ---------------------------------------------------------------
+  /// POST /api/swaps/getQuote
   static Future<AuthResponse> getSwapQuote({
     required String fromToken,
     required String toToken,
@@ -804,8 +794,8 @@ class AuthService {
     final body = {
       "fromToken": fromToken,
       "toToken": toToken,
-      "amount": amount, // backend expects number
-      "chain": chain, // e.g. "BTC", "ETH", "TRON"
+      "amount": amount,
+      "chain": chain,
     };
 
     Future<AuthResponse> _call(String endpoint) async {
@@ -827,10 +817,8 @@ class AuthService {
     }
 
     try {
-      // primary (correct) path
       return await _call('/api/swaps/getQuote');
     } on ApiException catch (e) {
-      // defensive: try non-/api once if server is mounted differently
       if (e.statusCode == 404 || e.statusCode == 405) {
         debugPrint("↩️ retrying without /api prefix...");
         return await _call('/swaps/getQuote');
@@ -839,32 +827,22 @@ class AuthService {
     }
   }
 
-  /// POST /swaps/swap
-  /// Header: Authorization: Bearer <jwt>
-  /// Body:
-  /// {
-  ///   "walletId": "",
-  ///   "fromToken": "",
-  ///   "toToken": "",
-  ///   "amount": 8,
-  ///   "slippage": 1,
-  ///   "chainI": "",
-  ///   "private_key": ""
-  /// }
-// --- SWAP ---------------------------------------------------------------
+  /// POST /api/swaps/swap
   static Future<AuthResponse> swapTokens({
     required String walletId,
     required String fromToken,
     required String toToken,
-    required double amount, // number
-    required double slippage, // percent (e.g., 1 = 1%)
-    required String chainI, // e.g. "BTC", "ETH", "TRON"
+    required double amount,
+    required double slippage,
+    required String chainI,
     required String privateKey,
   }) async {
     final jwt = await getStoredToken();
     if (jwt == null) {
       throw const ApiException('No authentication token available');
     }
+
+    print(jwt);
 
     final body = {
       "walletId": walletId,
@@ -895,10 +873,8 @@ class AuthService {
     }
 
     try {
-      // primary (correct) path
       return await _call('/api/swaps/swap');
     } on ApiException catch (e) {
-      // defensive: try non-/api once
       if (e.statusCode == 404 || e.statusCode == 405) {
         debugPrint("↩️ retrying without /api prefix...");
         return await _call('/swaps/swap');
@@ -906,7 +882,8 @@ class AuthService {
       rethrow;
     }
   }
-// ===================== WALLET SECRETS HELPERS (ADD THESE) =====================
+
+  // ===================== WALLET SECRETS HELPERS =====================
 
   static String? _extractPrivateKeyFromMap(Map<String, dynamic> m) {
     final candidates = [
@@ -947,30 +924,25 @@ class AuthService {
     final want = _normalizeChain(chain);
     final wallets = await fetchWallets();
 
-    // Shape: list of wallet maps
     for (final wRaw in wallets) {
       final w = wRaw.cast<String, dynamic>();
-      // try per-chain first
       final pk = _extractPrivateKeyFromChains(
               (w['chains'] as List?) ?? const [], want) ??
-          _extractPrivateKeyFromMap(w); // wallet-level fallback
+          _extractPrivateKeyFromMap(w);
       if (pk != null && pk.isNotEmpty) return pk;
     }
     return null;
   }
 
   /// Returns {'walletId': '...', 'private_key': '...'} for a given chain.
-  /// Picks the "best" wallet that supports the chain, falls back to first with creds.
   static Future<Map<String, String>?> getWalletIdAndPrivateKeyForChain(
       String chain) async {
     final want = _normalizeChain(chain);
     final wallets = await fetchWallets();
     if (wallets.isEmpty) return null;
 
-    // Prefer the same selection logic as _pickWallet
     final picked = _pickWallet(wallets, chain: want);
 
-    // Try picked wallet first
     if (picked != null) {
       final pk = _extractPrivateKeyFromChains(
               (picked['chains'] as List?) ?? const [], want) ??
@@ -981,7 +953,6 @@ class AuthService {
       }
     }
 
-    // Otherwise scan all
     for (final wRaw in wallets) {
       final w = wRaw.cast<String, dynamic>();
       final pk = _extractPrivateKeyFromChains(
@@ -995,9 +966,80 @@ class AuthService {
 
     return null;
   }
+
+  // ===================== EXPLORE: /api/token/explore/:address =====================
+
+  /// GET /api/token/explore/<walletAddress>
+  /// Returns parsed [ExploreData] including balances and transactions.
+  static Future<ExploreData> exploreAddress(
+    String walletAddress, {
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    try {
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/token/explore/$walletAddress',
+        token: token,
+        requireAuth: true,
+      );
+      final map = _handleResponse(res);
+
+      // The API wraps payload like: { success: true, data: { ... } }
+      final data = (map['data'] ?? map) as Map<String, dynamic>;
+      return ExploreData.fromJson(data);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Failed to explore $walletAddress: $e');
+    }
+  }
+
+  // Add to AuthService
+  static Future<Map<String, double>> fetchSpotPrices({
+    required List<String>
+        symbols, // e.g. ['BTC','ETH','USDT','TRX','BNB','SOL']
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null) {
+      throw const ApiException('No authentication token available');
+    }
+
+    // Try /api/market/prices?symbols=BTC,ETH,...
+    Future<Map<String, double>> _call(String endpoint) async {
+      final q = Uri(queryParameters: {'symbols': symbols.join(',')}).query;
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '$endpoint?$q',
+        token: token,
+        requireAuth: true,
+      );
+      final data = _handleResponse(res);
+
+      // Expect { "success": true, "data": { "BTC": 43825.67, "ETH": 2641.25, ... } }
+      final map = (data['data'] ?? data) as Map;
+      return map.map((k, v) =>
+          MapEntry(k.toString().toUpperCase(), (v as num).toDouble()));
+    }
+
+    try {
+      return await _call('/api/market/prices');
+    } on ApiException catch (e) {
+      if (e.statusCode == 404 || e.statusCode == 405) {
+        // fallback if your server mounts without /api
+        return await _call('/market/prices');
+      }
+      rethrow;
+    }
+  }
 }
 
-// services/http_client.dart
+// ===================== HTTP helper =====================
 
 class HttpKit {
   static http.Client? _client;
@@ -1006,8 +1048,8 @@ class HttpKit {
   static http.Client get client {
     if (_client != null) return _client!;
     final io = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10) // TCP connect
-      ..idleTimeout = const Duration(seconds: 15); // keep-alive idle
+      ..connectionTimeout = const Duration(seconds: 10)
+      ..idleTimeout = const Duration(seconds: 15);
     _client = IOClient(io);
     return _client!;
   }
@@ -1041,7 +1083,7 @@ class HttpKit {
     }
 
     if (lastErr != null && lastSt != null) {
-      Error.throwWithStackTrace(lastErr!, lastSt); // preserve stack
+      Error.throwWithStackTrace(lastErr!, lastSt);
     }
     throw Exception('Request failed');
   }

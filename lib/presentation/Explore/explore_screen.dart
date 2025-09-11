@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cryptowallet/stores/coin_store.dart'; // <-- uses your CoinStore for icons
+import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/services/api_service.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -105,9 +106,9 @@ class _ExploreScreenState extends State<ExploreScreen>
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: switch (_vm.state) {
-                  _ExploreState.idle => _IdleHint(key: const ValueKey('idle')),
+                  _ExploreState.idle => const _IdleHint(key: ValueKey('idle')),
                   _ExploreState.loading =>
-                    _LoadingSkeleton(key: const ValueKey('loading')),
+                    const _LoadingSkeleton(key: ValueKey('loading')),
                   _ExploreState.error => _ErrorBox(
                       key: const ValueKey('err'),
                       message: _vm.error ?? 'Something went wrong',
@@ -173,13 +174,13 @@ class _SearchField extends StatelessWidget {
                 style: const TextStyle(color: Colors.white),
                 textInputAction: TextInputAction.search,
                 onSubmitted: onSubmitted,
-                decoration: InputDecoration(
-                  hintText: hint,
-                  hintStyle: const TextStyle(color: Colors.white60),
+                decoration: const InputDecoration(
+                  hintText: 'Search by wallet address',
+                  hintStyle: TextStyle(color: Colors.white60),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+                      EdgeInsets.symmetric(horizontal: 4, vertical: 12),
                 ),
               ),
             ),
@@ -452,7 +453,7 @@ class _LoadedView extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${_fmtAmount(h.balance)} ${coin?.symbol ?? ''}',
+                              '${_fmtAmount(h.balance)} ${coin?.symbol ?? h.coinId}',
                               style: const TextStyle(
                                   color: Colors.white60, fontSize: 12),
                             ),
@@ -470,7 +471,9 @@ class _LoadedView extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${(h.usdValue / result.portfolioUsd * 100).toStringAsFixed(1)}%',
+                            result.portfolioUsd > 0
+                                ? '${(h.usdValue / result.portfolioUsd * 100).toStringAsFixed(1)}%'
+                                : '—',
                             style: const TextStyle(
                                 color: Colors.white60, fontSize: 12),
                           ),
@@ -520,7 +523,7 @@ class _LoadedView extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '${isOut ? '-' : '+'}${_fmtAmount(tx.amount)} ${coin?.symbol ?? ''}',
+                            '${isOut ? '-' : '+'}${_fmtAmount(tx.amount)} ${coin?.symbol ?? tx.coinId}',
                             style: TextStyle(
                               color: isOut
                                   ? const Color(0xFFE86D6D)
@@ -581,15 +584,15 @@ class _CoinCircle extends StatelessWidget {
               assetPath!,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const Icon(
-                  Icons.image_not_supported,
-                  color: Colors.white38,
-                  size: 14),
+                Icons.image_not_supported,
+                color: Colors.white38,
+                size: 14,
+              ),
             ),
     );
   }
 }
 
-// Small pill chip used in the header ("X assets", "Y transactions")
 Widget _chip(String label, {IconData? icon}) {
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -693,6 +696,8 @@ class _ExploreVM extends ChangeNotifier {
   _ExploreResult? result;
   String? error;
 
+  Map<String, double> _prices = {};
+
   Future<void> search(String address) async {
     state = _ExploreState.loading;
     error = null;
@@ -700,8 +705,22 @@ class _ExploreVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // TODO: replace with your real API
-      result = await _FakeExplorerApi.fetch(address);
+      // Call backend
+      final envelope = await AuthService.exploreAddress(address);
+
+      // Normalize to a Map<String, dynamic>
+      final data = _normalizeExplorePayload(envelope);
+
+      // Collect needed base symbols and fetch spot prices (optional)
+      final needed = _collectBaseSymbols(data).toList();
+      try {
+        _prices = await AuthService.fetchSpotPrices(symbols: needed);
+      } catch (_) {
+        _prices = {for (final s in needed) s: 0.0};
+      }
+
+      // Map -> UI model
+      result = _mapExploreToResult(data);
       state = _ExploreState.loaded;
     } catch (e) {
       error = e.toString();
@@ -715,6 +734,259 @@ class _ExploreVM extends ChangeNotifier {
     result = null;
     error = null;
     notifyListeners();
+  }
+
+  /* -------- robust unwrapping: Map | AuthResponse | ExploreData ---------- */
+  Map<String, dynamic> _normalizeExplorePayload(Object any) {
+    // 1) If it's a Map, unwrap .data if present.
+    if (any is Map) {
+      final map = any.cast<String, dynamic>();
+      final inner = map['data'];
+      if (inner is Map) return inner.cast<String, dynamic>();
+      return map;
+    }
+
+    // 2) If it's a typed object (AuthResponse or ExploreData), try .data first.
+    final dAny = any as dynamic;
+    final core = (() {
+      try {
+        final maybeData = dAny.data;
+        if (maybeData != null) return maybeData;
+      } catch (_) {}
+      return dAny;
+    })();
+
+    Map<String, dynamic> summary = {};
+    try {
+      final s = core.summary;
+      if (s != null) {
+        summary = {
+          'totalValueUSD': (s.totalValueUSD ?? s['totalValueUSD']) ?? 0,
+          'totalAssets': (s.totalAssets ?? s['totalAssets']) ?? 0,
+          'totalTransactions':
+              (s.totalTransactions ?? s['totalTransactions']) ?? 0,
+          'firstActivity': (s.firstActivity ?? s['firstActivity']),
+          'lastActivity': (s.lastActivity ?? s['lastActivity']),
+        };
+      }
+    } catch (_) {}
+
+    final balances = <Map<String, dynamic>>[];
+    try {
+      final list = (core.balances as List?) ?? const [];
+      for (final b in list) {
+        final x = b as dynamic;
+        balances.add({
+          'chain': (x.chain ?? x['chain'])?.toString(),
+          'nativeBalance': (x.nativeBalance ?? x['nativeBalance'])?.toString(),
+          'nativeSymbol': (x.nativeSymbol ?? x['nativeSymbol'])?.toString(),
+          'formattedBalance':
+              (x.formattedBalance ?? x['formattedBalance'])?.toString(),
+        });
+      }
+    } catch (_) {}
+
+    final transactions = <Map<String, dynamic>>[];
+    try {
+      final list = (core.transactions as List?) ??
+          (core.txs as List?) ?? // defensive alias if API changes
+          const [];
+      for (final t in list) {
+        final x = t as dynamic;
+        transactions.add({
+          'chain': (x.chain ?? x['chain'])?.toString(),
+          'hash': (x.hash ?? x['hash'])?.toString(),
+          'from': (x.from ?? x['from'])?.toString(),
+          'to': (x.to ?? x['to'])?.toString(),
+          'value': (x.value ?? x['value'])?.toString(),
+          'timestamp': (x.timestamp ?? x['timestamp']),
+          'blockNumber': (x.blockNumber ?? x['blockNumber']),
+          'gasUsed': (x.gasUsed ?? x['gasUsed'])?.toString(),
+          'gasPrice': (x.gasPrice ?? x['gasPrice'])?.toString(),
+          'status': (x.status ?? x['status'])?.toString(),
+          'type': (x.type ?? x['type'])?.toString(),
+        });
+      }
+    } catch (_) {}
+
+    Map<String, dynamic> metadata = {};
+    try {
+      final m = core.metadata;
+      if (m != null) {
+        metadata = {
+          'explorationTime': (m.explorationTime ?? m['explorationTime']),
+          'dataFreshness': (m.dataFreshness ?? m['dataFreshness']),
+          'supportedChains':
+              (m.supportedChains ?? m['supportedChains']) as List? ?? const [],
+        };
+      }
+    } catch (_) {}
+
+    String? walletAddress;
+    String? detectedChain;
+    try {
+      walletAddress = (core.walletAddress ?? core['walletAddress'])?.toString();
+      detectedChain = (core.detectedChain ?? core['detectedChain'])?.toString();
+    } catch (_) {}
+
+    return {
+      'walletAddress': walletAddress ?? '',
+      'detectedChain': detectedChain ?? '',
+      'summary': summary,
+      'balances': balances,
+      'assets': const <dynamic>[],
+      'transactions': transactions,
+      'metadata': metadata,
+    };
+  }
+
+  /* -------------------- mapping -> screen models -------------------- */
+
+  String _normChain(String? v) {
+    final u = (v ?? '').toUpperCase().trim();
+    switch (u) {
+      case 'TRON':
+      case 'TRX':
+        return 'TRX';
+      case 'BSC':
+      case 'BNB-CHAIN':
+      case 'BNB CHAIN':
+      case 'BNB':
+        return 'BNB';
+      case 'ETH':
+      case 'ETHEREUM':
+        return 'ETH';
+      case 'BTC':
+        return 'BTC';
+      case 'SOL':
+      case 'SOLANA':
+        return 'SOL';
+      default:
+        return u.isEmpty ? 'ETH' : u;
+    }
+  }
+
+  double _priceFor(String coinId) {
+    final base = coinId.contains('-') ? coinId.split('-').first : coinId;
+    return _prices[base.toUpperCase()] ?? 0.0;
+  }
+
+  int _decimalsForChain(String chain) {
+    switch (chain) {
+      case 'ETH':
+      case 'BNB':
+        return 18;
+      case 'BTC':
+        return 8;
+      case 'SOL':
+        return 9;
+      case 'TRX':
+        return 6;
+      default:
+        return 18;
+    }
+  }
+
+  double _toDisplayUnits(String raw, String chain) {
+    // Guard in case backend returns messages (rate-limit text, etc.)
+    final d = _decimalsForChain(chain);
+    final n = double.tryParse(raw);
+    if (n == null) return 0.0;
+    return n / math.pow(10, d);
+  }
+
+  Set<String> _collectBaseSymbols(Map<String, dynamic> data) {
+    final out = <String>{};
+    final balances = (data['balances'] as List?) ?? const [];
+    for (final b in balances) {
+      if (b is! Map) continue;
+      out.add(_normChain(b['chain']));
+    }
+    final txs = (data['transactions'] as List?) ?? const [];
+    for (final t in txs) {
+      if (t is! Map) continue;
+      out.add(_normChain(t['chain']));
+    }
+    return out;
+  }
+
+  _ExploreResult _mapExploreToResult(Map<String, dynamic> data) {
+    final address = (data['walletAddress'] ?? '').toString();
+    final balances = (data['balances'] as List?) ?? const [];
+    final txs = (data['transactions'] as List?) ?? const [];
+
+    final holdings = <_Holding>[];
+    for (final b in balances) {
+      if (b is! Map) continue;
+      final chain = _normChain(b['chain']);
+      final fb = (b['formattedBalance']?.toString() ?? '').trim();
+      final nb = (b['nativeBalance']?.toString() ?? '').trim();
+
+      // "NaN" -> 0
+      final parsedFb = double.tryParse(fb);
+      final bal = (parsedFb?.isFinite ?? false)
+          ? (parsedFb ?? 0.0)
+          : _toDisplayUnits(nb, chain);
+
+      final usd = bal * _priceFor(chain);
+      holdings.add(_Holding(coinId: chain, balance: bal, usdValue: usd));
+    }
+
+    final portfolioUsd = holdings.fold<double>(0.0, (s, h) => s + h.usdValue);
+
+    final now = DateTime.now();
+    final listTx = <_Tx>[];
+    for (final t in txs) {
+      if (t is! Map) continue;
+      final chain = _normChain(t['chain']);
+      final txid = (t['hash'] ?? '').toString();
+      final type = (t['type'] ?? '').toString().toLowerCase().trim();
+      final statusStr = (t['status'] ?? '').toString().toLowerCase();
+      final valueRaw = (t['value'] ?? '0').toString();
+
+      final ts = (t['timestamp'] is int)
+          ? DateTime.fromMillisecondsSinceEpoch(
+              (t['timestamp'] as int) * 1000,
+              isUtc: true,
+            ).toLocal()
+          : now;
+
+      final amount = _toDisplayUnits(valueRaw, chain);
+
+      final dir = switch (type) {
+        'send' => TxDirection.outgoing,
+        'receive' => TxDirection.incoming,
+        _ => TxDirection.outgoing,
+      };
+
+      final st = switch (statusStr) {
+        'success' => TxStatus.confirmed,
+        'pending' => TxStatus.pending,
+        'failed' => TxStatus.failed,
+        _ => TxStatus.confirmed,
+      };
+
+      final usd = amount * _priceFor(chain);
+
+      listTx.add(_Tx(
+        txid: txid,
+        coinId: chain,
+        direction: dir,
+        status: st,
+        amount: amount,
+        usdValue: usd,
+        timestamp: ts,
+      ));
+    }
+
+    listTx.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return _ExploreResult(
+      address: address,
+      portfolioUsd: portfolioUsd,
+      holdings: holdings,
+      transactions: listTx,
+    );
   }
 }
 
@@ -735,7 +1007,7 @@ class _ExploreResult {
 }
 
 class _Holding {
-  final String coinId; // must be a key from CoinStore (e.g., 'BTC', 'USDT-TRX')
+  final String coinId; // key from CoinStore (e.g., 'ETH', 'BTC', 'TRX')
   final double balance;
   final double usdValue;
   _Holding(
@@ -764,84 +1036,4 @@ class _Tx {
     required this.usdValue,
     required this.timestamp,
   });
-}
-
-/* ----------------------------- Fake API (demo) ----------------------------- */
-
-class _FakeExplorerApi {
-  static Future<_ExploreResult> fetch(String address) async {
-    // simulate latency
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // pretend validation
-    if (address.length < 8) {
-      throw Exception('Invalid address');
-    }
-
-    // Build some deterministic-ish demo data from the address
-    final seed = address.codeUnits.fold<int>(0, (a, b) => a + b);
-    final r = math.Random(seed);
-
-    final holdings = <_Holding>[
-      _Holding(coinId: 'BTC', balance: 0.052734, usdValue: 0.052734 * 62000),
-      _Holding(coinId: 'USDT-TRX', balance: 1250.00, usdValue: 1250.00),
-      _Holding(coinId: 'ETH', balance: 0.500000, usdValue: 0.5 * 3400),
-      _Holding(coinId: 'TRX', balance: 3250.00, usdValue: 3250 * 0.12),
-    ];
-
-    // compute portfolio
-    final portfolio = holdings.fold<double>(0, (s, h) => s + h.usdValue);
-
-    final now = DateTime.now();
-    final txs = <_Tx>[
-      _Tx(
-        txid: '0x${_hex(r, 64)}',
-        coinId: 'BTC',
-        direction: TxDirection.outgoing,
-        status: TxStatus.confirmed,
-        amount: 0.003807,
-        usdValue: 0.003807 * 62000,
-        timestamp: now.subtract(const Duration(hours: 6)),
-      ),
-      _Tx(
-        txid: '0x${_hex(r, 64)}',
-        coinId: 'USDT-TRX',
-        direction: TxDirection.incoming,
-        status: TxStatus.confirmed,
-        amount: 426.40,
-        usdValue: 426.40,
-        timestamp: now.subtract(const Duration(days: 1, hours: 3)),
-      ),
-      _Tx(
-        txid: '0x${_hex(r, 64)}',
-        coinId: 'ETH',
-        direction: TxDirection.outgoing,
-        status: TxStatus.pending,
-        amount: 0.215000,
-        usdValue: 0.215000 * 3400,
-        timestamp: now.subtract(const Duration(days: 2, hours: 5)),
-      ),
-      _Tx(
-        txid: '0x${_hex(r, 64)}',
-        coinId: 'TRX',
-        direction: TxDirection.incoming,
-        status: TxStatus.confirmed,
-        amount: 700.00,
-        usdValue: 700 * 0.12,
-        timestamp: now.subtract(const Duration(days: 4, hours: 8)),
-      ),
-    ];
-
-    return _ExploreResult(
-      address: address,
-      portfolioUsd: portfolio,
-      holdings: holdings,
-      transactions: txs,
-    );
-  }
-
-  static String _hex(math.Random r, int len) {
-    const chars = '0123456789abcdef';
-    return List.generate(len, (_) => chars[r.nextInt(chars.length)]).join();
-  }
 }

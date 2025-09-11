@@ -19,17 +19,13 @@ void main() async {
     return CustomErrorWidget(errorDetails: details);
   };
 
-  // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(
-    // ✅ Provide CoinStore + WalletStore globally
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => CoinStore()),
-        ChangeNotifierProvider(
-            create: (_) =>
-                WalletStore()), // loads saved wallets + active wallet
+        ChangeNotifierProvider(create: (_) => WalletStore()),
       ],
       child: const MyApp(),
     ),

@@ -308,15 +308,11 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         (raw) {
           try {
             final data = jsonDecode(raw as String) as Map<String, dynamic>;
-            final last =
-                double.tryParse(data['c']?.toString() ?? ''); // last price
-            final pct =
-                double.tryParse(data['P']?.toString() ?? ''); // % change 24h
-            final abs =
-                double.tryParse(data['p']?.toString() ?? ''); // abs change 24h
+            final last = double.tryParse(data['c']?.toString() ?? '');
+            final pct = double.tryParse(data['P']?.toString() ?? '');
+            final abs = double.tryParse(data['p']?.toString() ?? '');
 
-            if (last != null) {
-              if (!mounted) return;
+            if (last != null && mounted) {
               setState(() {
                 _livePrice = last;
                 _changePercent24 = pct ?? _changePercent24;

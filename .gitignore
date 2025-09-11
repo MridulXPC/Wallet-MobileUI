@@ -10,6 +10,8 @@
 .history
 .svn/
 .swiftpm/
+# Ignore environment variables
+.env
 migrate_working_dir/
 pubspec.lock
 

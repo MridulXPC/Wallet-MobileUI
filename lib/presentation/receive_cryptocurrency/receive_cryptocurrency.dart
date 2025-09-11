@@ -1,3 +1,4 @@
+// lib/presentation/receive_cryptocurrency/receive_cryptocurrency.dart
 import 'dart:ui' as ui;
 
 import 'package:cryptowallet/services/api_service.dart';
@@ -127,17 +128,23 @@ class _ReceiveQRState extends State<ReceiveQR> {
         // WalletStore not wired — OK: we’ll just use first wallet
       }
 
-      Map<String, dynamic> wallet = _pickWallet(wallets, activeId);
+      final wallet = _pickWallet(wallets, activeId);
 
       // 3) choose chain code from coinId/mode
       final chainCode = _preferredChainCode(widget.coinId, widget.mode);
 
-      // 4) extract address from wallet for that chain (fallback to wallet['address'])
-      final addr = _findAddressForChain(wallet, chainCode) ??
-          (wallet['address']?.toString());
+      // 4) extract address for that chain, with generous fallbacks
+      String? addr = _findAddressForChain(wallet, chainCode);
+
+      // Last-resort: any address we can find in wallet
+      addr ??= _findAnyAddress(wallet);
 
       if (addr == null || addr.isEmpty) {
-        throw Exception('No address available for wallet/chain.');
+        // Do not throw; keep screen usable and show a friendly error
+        setState(() {
+          _loadErr = 'Could not find an address for $chainCode in this wallet.';
+        });
+        return;
       }
 
       _address = addr;
@@ -208,25 +215,133 @@ class _ReceiveQRState extends State<ReceiveQR> {
   }
 
   String? _findAddressForChain(Map<String, dynamic> wallet, String chainCode) {
-    // chains: [ { chain: 'BTC', address: '...' }, { chain: 'ETH', address: '...'}, ... ]
+    String norm(String? s) => _normalizeChain((s ?? '').toString());
+
+    // 1) Look through a chains[] array: [{chain:'BTC', address:'...'}, ...]
     final chains = (wallet['chains'] as List?) ?? const [];
     for (final c in chains) {
       if (c is! Map) continue;
-      final chain = c['chain']?.toString().toUpperCase();
-      if (_normalizeChain(chain ?? '') == chainCode) {
+      final chain = norm(c['chain']?.toString());
+      if (chain == chainCode) {
         final addr = c['address']?.toString();
         if (addr != null && addr.isNotEmpty) return addr;
       }
     }
-    // Fallbacks:
-    // Some backends might put a per-wallet root address
-    final root = wallet['address']?.toString();
-    if (root != null && root.isNotEmpty) return root;
 
-    // Or a single "publicKey" field
-    final pk = wallet['publicKey']?.toString();
-    if (pk != null && pk.isNotEmpty) return pk;
+    // 2) Common flat fields by chain
+    String? byKeys(List<String> keys) {
+      for (final k in keys) {
+        final v = wallet[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+      return null;
+    }
 
+    switch (chainCode) {
+      case 'LN':
+        return byKeys([
+          'lightningAddress',
+          'lnInvoice',
+          'lnurl',
+          'invoice',
+          'lightning',
+        ]);
+      case 'BTC':
+        return byKeys([
+          'btcAddress',
+          'bitcoinAddress',
+          'address_btc',
+          'onchainAddress',
+          'address',
+          'publicKey',
+        ]);
+      case 'ETH':
+        return byKeys([
+          'erc20Address',
+          'ethAddress',
+          'address_eth',
+          'evmAddress',
+          'address',
+          'publicKey',
+        ]);
+      case 'TRX':
+        return byKeys([
+          'trc20Address',
+          'trxAddress',
+          'address_trx',
+          'address',
+          'publicKey',
+        ]);
+      case 'BNB':
+        return byKeys([
+          'bep20Address',
+          'bscAddress',
+          'bnbAddress',
+          'address_bnb',
+          'address',
+          'publicKey',
+        ]);
+      case 'SOL':
+        return byKeys([
+          'solAddress',
+          'solanaAddress',
+          'address_sol',
+          'address',
+          'publicKey',
+        ]);
+      case 'XMR':
+        return byKeys([
+          'xmrAddress',
+          'moneroAddress',
+          'address_xmr',
+          'address',
+          'publicKey',
+        ]);
+      default:
+        return wallet['address']?.toString();
+    }
+  }
+
+  /// Last-resort fallback to extract any address-looking field from a wallet.
+  String? _findAnyAddress(Map<String, dynamic> wallet) {
+    // Try common simple fields first
+    final flatCandidates = [
+      'address',
+      'publicKey',
+      'btcAddress',
+      'ethAddress',
+      'erc20Address',
+      'trc20Address',
+      'trxAddress',
+      'bep20Address',
+      'bscAddress',
+      'bnbAddress',
+      'solAddress',
+      'solanaAddress',
+      'xmrAddress',
+      'moneroAddress',
+      'lightningAddress',
+      'lnInvoice',
+      'lnurl',
+      'invoice',
+      'address_eth',
+      'address_trx',
+      'address_bnb',
+      'address_sol',
+      'address_xmr',
+    ];
+    for (final k in flatCandidates) {
+      final v = wallet[k];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    }
+
+    // Then try the first non-empty address from chains[]
+    final chains = (wallet['chains'] as List?) ?? const [];
+    for (final c in chains) {
+      if (c is! Map) continue;
+      final addr = c['address']?.toString();
+      if (addr != null && addr.isNotEmpty) return addr;
+    }
     return null;
   }
 
