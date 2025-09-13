@@ -99,7 +99,14 @@ class _SwapScreenState extends State<SwapScreen> {
   @override
   void initState() {
     super.initState();
-    _ensureMe();
+    _fromController.addListener(() {
+      final val = double.tryParse(_fromController.text) ?? 0.0;
+      if (val != fromAmount) {
+        setState(() => fromAmount = val);
+        _stopQuoteCountdown();
+        _scheduleQuote();
+      }
+    });
   }
 
   @override
@@ -108,14 +115,6 @@ class _SwapScreenState extends State<SwapScreen> {
     _stopQuoteCountdown();
     _fromController.dispose();
     super.dispose();
-  }
-
-  Future<void> _ensureMe() async {
-    try {
-      await AuthService.fetchMe();
-    } catch (e) {
-      debugPrint('fetchMe failed: $e');
-    }
   }
 
   // ---------------- Slippage Bottom Sheet ----------------
@@ -277,7 +276,7 @@ class _SwapScreenState extends State<SwapScreen> {
   // ---------------- Coin Picker ----------------
   Future<void> _openCoinPicker({required bool isFrom}) async {
     // ensure auth (as requested, hit /api/auth/me)
-    await _ensureMe();
+
     _selectCoin(isFrom: isFrom);
   }
 

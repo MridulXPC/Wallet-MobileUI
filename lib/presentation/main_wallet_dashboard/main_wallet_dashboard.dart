@@ -56,7 +56,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapOnce());
+
     _timer = Timer.periodic(const Duration(seconds: 4), (t) {
       if (!mounted) return;
       if (_pageController.hasClients) {
@@ -68,37 +68,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
         );
       }
     });
-  }
-
-  Future<void> _bootstrapOnce() async {
-    if (_didBootstrap) return;
-    _didBootstrap = true;
-
-    try {
-      await AuthService.fetchMe();
-
-      final local = await WalletFlow.ensureDefaultWallet();
-      if (!mounted) return;
-      await context.read<WalletStore>().reloadFromLocalAndActivate(local.id);
-
-      // ⬅️ compute total once wallets are ready
-      await _refreshPortfolioTotal();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text(e is ApiException ? e.message : 'Something went wrong.'),
-          action: SnackBarAction(
-            label: 'Retry',
-            onPressed: () {
-              _didBootstrap = false;
-              _bootstrapOnce();
-            },
-          ),
-        ),
-      );
-    }
   }
 
   // ⬇️ Fetch wallets and compute total USD

@@ -1,11 +1,14 @@
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
+import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/models/token_model.dart';
+import 'package:cryptowallet/models/explore_model.dart';
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
 
-// ✅ Pull coin metadata (name, symbol, icon) from Provider
 import 'package:cryptowallet/stores/coin_store.dart';
 
 class WalletInfoScreen extends StatefulWidget {
@@ -17,7 +20,6 @@ class WalletInfoScreen extends StatefulWidget {
 
 class _WalletInfoScreenState extends State<WalletInfoScreen>
     with TickerProviderStateMixin {
-  /// Selected coin by **coinId** (must match CoinStore ids, e.g. BTC, BTC-LN, USDT-ETH, USDT-TRX, BNB-BNB, etc.)
   String selectedCoinId = 'BTC';
 
   // Animation controllers
@@ -26,393 +28,69 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   // State variables
   bool _isCardFlipped = false;
-  String _lightningState = 'sync'; // sync, syncing, synced
+  String _lightningState = 'sync';
   Timer? _lightningTimer;
   bool _isLightningComplete = false;
 
-  // --------- Dummy wallet details (price/balance/address) per coinId ----------
-  // Feel free to swap with real values from your APIs later.
-  Map<String, Map<String, String>> get _dummyDetails => {
-        // BTC family
-        'BTC': {
-          'price': '43,825.67',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-        },
-        'BTC-LN': {
-          'price': '43,825.67',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'lnbc1...xyz',
-        },
+  // API Integration State
+  bool _isLoading = true;
+  String? _error;
+  List<VaultToken> _tokens = [];
+  ExploreData? _exploreData;
+  Map<String, double> _spotPrices = {};
+  String? _currentWalletAddress;
 
-        // BNB family
-        'BNB': {
-          'price': '575.42',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'bnb1qxy2kgdygjrsqtzq2n0yrf2493p83kksm3kz3a',
-        },
-        'BNB-BNB': {
-          'price': '575.42',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'bnb1abc9d8f7k6m5n4p3q2r1s0t9u8v7w6x5y4z3',
-        },
+  // Cached data to avoid repeated API calls
+  Map<String, ExploreData> _exploreCache = {};
+  DateTime? _lastPriceUpdate;
 
-        // ETH family
-        'ETH': {
-          'price': '2,641.25',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '0x742d35Cc6Dd7D8b4B8B4f42C8B4B2f4D8E8F8G8H',
-        },
-        'ETH-ETH': {
-          'price': '2,641.25',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '0x1234567890abcdef1234567890abcdef12345678',
-        },
+  static const Duration _priceUpdateInterval = Duration(minutes: 5);
 
-        // SOL family
-        'SOL': {
-          'price': '148.12',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '4Nd1mW2...SolanaAddress...',
-        },
-        'SOL-SOL': {
-          'price': '148.12',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '7Gh3pQk...AnotherSolAddr...',
-        },
+  // UI Constants
+  static const Color kBg = Color(0xFF0B0D1A);
+  static const Color kTile = Color(0xFF2A2D3A);
+  static const Color kTileBorder = Color(0xFF3A3D4A);
+  static const Color kMuted = Color(0xFF6B7280);
+  static const EdgeInsets kHPad8 = EdgeInsets.symmetric(horizontal: 8);
 
-        // TRX family
-        'TRX': {
-          'price': '0.13',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'TAJ6r4...t372GF',
-        },
-        'TRX-TRX': {
-          'price': '0.13',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'TBmLQS...LFGABn',
-        },
+  static const BoxShadow kSoftShadow = BoxShadow(
+    color: Colors.black26,
+    blurRadius: 8,
+    offset: Offset(0, 2),
+  );
 
-        // USDT family
-        'USDT': {
-          'price': '1.00',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'TetherGeneric...',
-        },
-        'USDT-ETH': {
-          'price': '1.00',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '0xUSDTOnETH...',
-        },
-        'USDT-TRX': {
-          'price': '1.00',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': 'TUSDTOnTRX...',
-        },
+  static const LinearGradient kCardFrontGrad = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF2A2D3A),
+      Color.fromARGB(255, 0, 0, 0),
+      Color.fromARGB(255, 0, 12, 56),
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
 
-        // XMR family
-        'XMR': {
-          'price': '165.50',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '44AFFq5kSiGBoZ...MoneroAddr...',
-        },
-        'XMR-XMR': {
-          'price': '165.50',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '488fyrk...AnotherXMR...',
-        },
-      };
+  static const LinearGradient kCardBackGrad = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF2D5A2D),
+      Color.fromARGB(255, 0, 20, 0),
+      Color.fromARGB(255, 0, 56, 12),
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
 
-  // --------- Dummy transactions (keys must match selectedCoinId) -------------
-  Map<String, List<Map<String, dynamic>>> get dummyTransactions => {
-        'BTC': [
-          {
-            'id': 'btc_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.004256',
-            'coin': 'BTC',
-            'dateTime': '20 Aug 2025 10:38:50',
-            'from': 'bc1q07...eyla0f',
-            'to': 'bc1qkv...sft0rz',
-            'hash':
-                'e275b987f6c5b8e715e01461d8fae15dc4f5ae9e9ec178a65bc2173cabfded5b',
-            'block': 910917,
-            'feeDetails': {'Total Fee': '0.00000378 BTC'},
-          },
-          {
-            'id': 'btc_receive_1',
-            'type': 'receive',
-            'status': 'Confirmed',
-            'amount': '0.0046011',
-            'coin': 'BTC',
-            'dateTime': '18 Aug 2025 14:22:15',
-            'from': 'bc1q89...xyz123',
-            'to': 'bc1q07...eyla0f',
-            'hash':
-                'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456',
-            'block': 910815,
-            'feeDetails': {'Total Fee': '0.00000245 BTC'},
-          },
-          {
-            'id': 'btc_swap_1',
-            'type': 'swap',
-            'status': 'Confirmed',
-            'amount': '0.002',
-            'coin': 'BTC',
-            'dateTime': '17 Aug 2025 09:15:30',
-            'hash':
-                'swap123456789abcdef123456789abcdef123456789abcdef123456789abcdef',
-            'swapDetails': {
-              'fromCoin': 'ETH',
-              'fromAmount': '1.25',
-              'toCoin': 'BTC',
-              'toAmount': '0.002',
-              'rate': '0.0016',
-              'swapId': 'SWAP_BTC_001'
-            },
-            'feeDetails': {'Swap Fee': '0.5%', 'Network Fee': '0.00001 BTC'},
-          },
-        ],
-        'ETH': [
-          {
-            'id': 'eth_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '2.5',
-            'coin': 'ETH',
-            'dateTime': '21 Aug 2025 16:45:12',
-            'from': '0x742d35Cc6Dd7D8b4B8B4f42C8B4B2f4D8E8F8G8H',
-            'to': '0x1234567890abcdef1234567890abcdef12345678',
-            'hash':
-                '0xeth123456789abcdef123456789abcdef123456789abcdef123456789abcdef',
-            'block': 18245673,
-            'feeDetails': {
-              'Gas Used': '21,000',
-              'Gas Price': '25 Gwei',
-              'Total Fee': '0.000525 ETH',
-            },
-          },
-          {
-            'id': 'eth_receive_1',
-            'type': 'receive',
-            'status': 'Confirmed',
-            'amount': '1.8',
-            'coin': 'ETH',
-            'dateTime': '19 Aug 2025 11:30:45',
-            'from': '0x9876543210fedcba9876543210fedcba98765432',
-            'to': '0x742d35Cc6Dd7D8b4B8B4f42C8B4B2f4D8E8F8G8H',
-            'hash':
-                '0xeth987654321fedcba987654321fedcba987654321fedcba987654321fedcba',
-            'block': 18244890,
-            'feeDetails': {'Total Fee': '0.00031 ETH'},
-          },
-          {
-            'id': 'eth_swap_1',
-            'type': 'swap',
-            'status': 'Confirmed',
-            'amount': '3.2',
-            'coin': 'ETH',
-            'dateTime': '16 Aug 2025 08:22:18',
-            'hash':
-                '0xswapeth123456789abcdef123456789abcdef123456789abcdef123456789ab',
-            'swapDetails': {
-              'fromCoin': 'USDT',
-              'fromAmount': '8500',
-              'toCoin': 'ETH',
-              'toAmount': '3.2',
-              'rate': '2656.25',
-              'swapId': 'SWAP_ETH_001'
-            },
-            'feeDetails': {'Swap Fee': '0.3%', 'Network Fee': '0.0015 ETH'},
-          },
-        ],
-        'USDT': [
-          {
-            'id': 'usdt_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '50.332725',
-            'coin': 'USDT',
-            'dateTime': '09 Aug 2025 06:01:48',
-            'from': 'TAJ6r4...t372GF',
-            'to': 'TBmLQS...LFGABn',
-            'hash':
-                '72c2e0618ba1c320f6da0e8dfaba7dc6e7f54a531609889e01af6edb800d55429',
-            'block': 74680192,
-            'feeDetails': {'Bandwidth Fee': '0.0', 'Total Fee': '13.84485 TRX'},
-          },
-          {
-            'id': 'usdt_send_2',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '52.842548',
-            'coin': 'USDT',
-            'dateTime': '09 Aug 2025 05:40:06',
-            'from': 'TH2B65...TbTDJv',
-            'to': 'TLntW9...828ird',
-            'hash':
-                'd414a6af812068499d3348d9c8cd2d54064d25538b14735c0b787443727a0ff8',
-            'block': 74679758,
-            'feeDetails': {'Bandwidth Fee': '699.0', 'Total Fee': '0.00 TRX'},
-          },
-          {
-            'id': 'usdt_swap_1',
-            'type': 'swap',
-            'status': 'Confirmed',
-            'amount': '1000',
-            'coin': 'USDT',
-            'dateTime': '15 Aug 2025 09:25:33',
-            'hash':
-                'SWAPUSDT123456789ABCDEF123456789ABCDEF123456789ABCDEF123456789A',
-            'swapDetails': {
-              'fromCoin': 'BTC',
-              'fromAmount': '0.0228',
-              'toCoin': 'USDT',
-              'toAmount': '1000',
-              'rate': '43859.65',
-              'swapId': 'SWAP_USDT_001'
-            },
-            'feeDetails': {'Swap Fee': '0.1%', 'Network Fee': '15 TRX'},
-          },
-        ],
-        'BTC-LN': [
-          {
-            'id': 'ln_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.00116463',
-            'coin': 'BTC-LN',
-            'dateTime': '09 Aug 2025 05:25:10',
-            'from': '033834...485b7d',
-            'to': 'lnbc1164...p8wjgwt',
-            'hash':
-                'ea3cd3027c1445ebc88e30f2da55d1fafc4706f08feb97864c6a25a5680b0098',
-            'lightningDetails': {
-              'Swap ID': 'TCkQ1ZmWzeqy',
-              'Description': '-',
-              'Destination public key': '032842...2571de',
-              'Payment hash':
-                  '0c0d12b226cd40dadf1262fdfe11e940a7074fdac6250697eca7e5442b2f1dca',
-              'Refund amount': '0',
-            },
-          },
-          {
-            'id': 'ln_send_2',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.0005',
-            'coin': 'BTC-LN',
-            'dateTime': '12 Aug 2025 14:18:25',
-            'from': '033834...485b7d',
-            'to': 'lnbc500...xyz789',
-            'hash':
-                'ln987654321abcdef987654321abcdef987654321abcdef987654321abcdef12',
-            'lightningDetails': {
-              'Swap ID': 'LN_SWAP_002',
-              'Description': 'Coffee payment',
-              'Destination public key': '035512...8841ac',
-              'Payment hash':
-                  '1a2b3c4d5e6f789012345678901234567890abcdef1234567890abcdef123456',
-              'Refund amount': '0',
-            },
-          },
-          {
-            'id': 'ln_receive_1',
-            'type': 'receive',
-            'status': 'Confirmed',
-            'amount': '0.00046011',
-            'coin': 'BTC-LN',
-            'dateTime': '11 Aug 2025 18:33:42',
-            'from': 'lnbc4601...def456',
-            'to': '033834...485b7d',
-            'hash':
-                'lnreceive123456789abcdef123456789abcdef123456789abcdef123456789ab',
-            'lightningDetails': {
-              'Swap ID': 'LN_RCV_001',
-              'Description': 'Payment received',
-              'Source public key': '028847...9923fe',
-              'Payment hash':
-                  '9f8e7d6c5b4a392817263544536271890abcdef1234567890abcdef123456789',
-              'Refund amount': '0',
-            },
-          },
-        ],
-
-        // Minimal examples for remaining families
-        'TRX': [
-          {
-            'id': 'trx_receive_1',
-            'type': 'receive',
-            'status': 'Confirmed',
-            'amount': '120',
-            'coin': 'TRX',
-            'dateTime': '18 Aug 2025 10:12:00',
-            'from': 'TDv...abc',
-            'to': 'TAJ6...xyz',
-            'hash': 'trxHash1',
-            'block': 74670001,
-            'feeDetails': {'Total Fee': '0 TRX'},
-          },
-        ],
-        'SOL': [
-          {
-            'id': 'sol_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '1.25',
-            'coin': 'SOL',
-            'dateTime': '19 Aug 2025 09:01:00',
-            'from': '4Nd1mW2...',
-            'to': '7Gh3pQk...',
-            'hash': 'solHash1',
-            'feeDetails': {'Total Fee': '0.000005 SOL'},
-          },
-        ],
-        'BNB': [
-          {
-            'id': 'bnb_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.5',
-            'coin': 'BNB',
-            'dateTime': '20 Aug 2025 12:20:00',
-            'from': 'bnb1qxy2...',
-            'to': 'bnb1abc9...',
-            'hash': 'bnbHash1',
-            'feeDetails': {'Total Fee': '0.000375 BNB'},
-          },
-        ],
-        'XMR': [
-          {
-            'id': 'xmr_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.75',
-            'coin': 'XMR',
-            'dateTime': '21 Aug 2025 15:45:00',
-            'from': '44AFFq...',
-            'to': '488fyrk...',
-            'hash': 'xmrHash1',
-            'feeDetails': {'Total Fee': '0.0002 XMR'},
-          },
-        ],
-      };
+  static const LinearGradient kSheetGrad = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomRight,
+    stops: [0.0, 0.55, 1.0],
+    colors: [
+      Color.fromARGB(255, 6, 11, 33),
+      Color.fromARGB(255, 0, 0, 0),
+      Color.fromARGB(255, 0, 12, 56),
+    ],
+  );
 
   @override
   void initState() {
@@ -426,6 +104,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
 
     _startLightningTimer();
+    _initializeWallet();
   }
 
   @override
@@ -435,19 +114,275 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     super.dispose();
   }
 
-  // Convenience getters from Provider
-  bool get isLightningSelected => selectedCoinId == 'BTC-LN';
+  // API Integration Methods
+  Future<void> _initializeWallet() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
 
-  Map<String, String> _currentDetails() {
-    return _dummyDetails[selectedCoinId] ??
-        {
-          'price': '0.00',
-          'balance': '0.00',
-          'usdBalance': '0.00',
-          'address': '—',
-        };
+      await Future.wait([_loadTokens(), _loadSpotPrices()]);
+
+      // Choose first available wallet token as the selected coin (if not set)
+      if (_tokens.isNotEmpty) {
+        final firstBase =
+            _baseFromToken(_tokens.first.symbol, _tokens.first.chain);
+        if (firstBase.isNotEmpty) selectedCoinId = firstBase;
+      }
+
+      await _loadWalletAddress();
+      if (_currentWalletAddress != null) {
+        await _loadTransactionData();
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load wallet data: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
+  Future<void> _loadTokens() async {
+    try {
+      // Try to get wallet ID and load tokens
+      final wallets = await AuthService.fetchWallets();
+      if (wallets.isNotEmpty) {
+        final walletId = wallets.first['_id']?.toString();
+        if (walletId != null) {
+          final tokens =
+              await AuthService.fetchTokensByWallet(walletId: walletId);
+          setState(() {
+            _tokens = tokens;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading tokens: $e');
+      // Fallback to legacy method
+      try {
+        final tokens = await AuthService.fetchTokens();
+        setState(() {
+          _tokens = tokens;
+        });
+      } catch (e2) {
+        debugPrint('Error with fallback token loading: $e2');
+      }
+    }
+  }
+
+  Future<void> _loadSpotPrices() async {
+    final now = DateTime.now();
+    if (_lastPriceUpdate != null &&
+        now.difference(_lastPriceUpdate!) < _priceUpdateInterval) {
+      return;
+    }
+
+    try {
+      final prices = await AuthService.fetchSpotPrices(
+        symbols: ['BTC', 'ETH', 'USDT', 'TRX', 'BNB', 'SOL', 'XMR'],
+      );
+      setState(() {
+        _spotPrices = prices; // may be empty if endpoint unavailable
+        _lastPriceUpdate = now;
+      });
+    } catch (e) {
+      // With the tolerant fetcher above, this shouldn't throw anymore.
+      // Keep a quiet log just in case.
+      debugPrint('Spot prices unavailable: $e');
+    }
+  }
+
+  Future<void> _loadWalletAddress() async {
+    try {
+      final address = await AuthService.getOrFetchWalletAddress(
+        chain: _getChainForCoin(selectedCoinId),
+      );
+      setState(() {
+        _currentWalletAddress = address;
+      });
+    } catch (e) {
+      debugPrint('Error loading wallet address: $e');
+    }
+  }
+
+  Future<void> _loadTransactionData() async {
+    if (_currentWalletAddress == null) return;
+
+    // Check cache first
+    if (_exploreCache.containsKey(_currentWalletAddress)) {
+      setState(() {
+        _exploreData = _exploreCache[_currentWalletAddress];
+      });
+      return;
+    }
+
+    try {
+      final exploreData =
+          await AuthService.exploreAddress(_currentWalletAddress!);
+      setState(() {
+        _exploreData = exploreData;
+        _exploreCache[_currentWalletAddress!] = exploreData;
+      });
+    } catch (e) {
+      debugPrint('Error loading transaction data: $e');
+    }
+  }
+
+  String _getChainForCoin(String coinId) {
+    // Map your coin IDs to chain names expected by the API
+    if (coinId.startsWith('BTC')) return 'BTC';
+    if (coinId.startsWith('ETH')) return 'ETH';
+    if (coinId.startsWith('USDT-ETH')) return 'ETH';
+    if (coinId.startsWith('USDT-TRX')) return 'TRON';
+    if (coinId.startsWith('TRX')) return 'TRON';
+    if (coinId.startsWith('BNB')) return 'BNB';
+    if (coinId.startsWith('SOL')) return 'SOL';
+    if (coinId.startsWith('XMR')) return 'XMR';
+    return coinId.split('-').first; // fallback
+  }
+
+  // Get current coin data from API or fallback to dummy
+  Map<String, String> _getCurrentCoinData() {
+    final chainKey = _getChainForCoin(selectedCoinId);
+
+    // Try to get from API data first
+    VaultToken? token;
+    try {
+      token = _tokens.firstWhere(
+        (t) => t.symbol.toUpperCase() == chainKey.toUpperCase(),
+        orElse: () => _tokens.firstWhere(
+          (t) => t.name.toUpperCase().contains(chainKey.toUpperCase()),
+        ),
+      );
+    } catch (e) {
+      // Token not found, will use fallback
+    }
+
+    final price = _spotPrices[chainKey] ?? 0.0;
+    final balance = token?.balance?.toString() ?? '0.00';
+    final balanceDouble = double.tryParse(balance) ?? 0.0;
+    final usdBalance = token != null && price > 0
+        ? (balanceDouble * price).toStringAsFixed(2)
+        : '0.00';
+
+    return {
+      'price': price > 0 ? price.toStringAsFixed(2) : '0.00',
+      'balance': balance,
+      'usdBalance': usdBalance,
+      'address': _currentWalletAddress ?? 'Loading...',
+    };
+  }
+
+  // Get transactions from API data
+  List<Map<String, dynamic>> _getCurrentTransactions() {
+    if (_exploreData?.transactions == null) {
+      return []; // Return empty list instead of dummy data
+    }
+
+    // Convert API transactions to your UI format
+    return _exploreData!.transactions!
+        .map((tx) => {
+              'id': tx.hash ?? 'unknown',
+              'type': _determineTransactionType(tx),
+              'status': tx.status ?? 'Unknown',
+              'amount': tx.value?.toString() ?? '0',
+              'coin': selectedCoinId,
+              'dateTime': _formatDateTime(tx.timestamp as String?),
+              'from': tx.from ?? 'Unknown',
+              'to': tx.to ?? 'Unknown',
+              'hash': tx.hash ?? '',
+              'block': tx.blockNumber,
+              'feeDetails': {
+                'Total Fee':
+                    '${tx.gasUsed ?? 0} ${_getChainForCoin(selectedCoinId)}',
+              },
+            })
+        .toList();
+  }
+
+  String _determineTransactionType(ExploreTransaction tx) {
+    final currentAddr = _currentWalletAddress?.toLowerCase();
+    final fromAddr = tx.from?.toLowerCase();
+    final toAddr = tx.to?.toLowerCase();
+
+    if (fromAddr == currentAddr && toAddr != currentAddr) {
+      return 'send';
+    } else if (toAddr == currentAddr && fromAddr != currentAddr) {
+      return 'receive';
+    }
+    return 'send'; // default
+  }
+
+  String _formatDateTime(String? timestamp) {
+    if (timestamp == null) return 'Unknown time';
+    try {
+      final date =
+          DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp) * 1000);
+      return '${date.day} ${_getMonthName(date.month)} ${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return 'Unknown time';
+    }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return months[month];
+  }
+
+  // Update selected coin and reload data
+  Future<void> _updateSelectedCoin(String newCoinId) async {
+    setState(() {
+      selectedCoinId = newCoinId;
+      _isCardFlipped = false;
+      _flipController.reset();
+      _lightningState = 'sync';
+      _isLightningComplete = false;
+      _currentWalletAddress = null;
+      _exploreData = null;
+    });
+
+    _startLightningTimer();
+
+    // Reload data for new coin
+    await _loadWalletAddress();
+    if (_currentWalletAddress != null) {
+      await _loadTransactionData();
+    }
+  }
+
+  // USD toggle state
+  bool _showAllInUsd = false;
+  final Set<String> _usdPerTx = <String>{};
+
+  double _priceForCoinUsd(String coinKey) {
+    final chainKey = _getChainForCoin(coinKey);
+    return _spotPrices[chainKey] ?? 0.0;
+  }
+
+  String _formatUsd(double usd) => '\$${usd.toStringAsFixed(2)}';
+
+  // Convenience getters
+  bool get isLightningSelected => selectedCoinId == 'BTC-LN';
+
+  // Lightning Timer Methods
   void _startLightningTimer() {
     _lightningTimer?.cancel();
     if (isLightningSelected && !_isLightningComplete) {
@@ -478,15 +413,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     });
   }
 
-  void _toggleCardFlip() {
-    if (_isCardFlipped) {
-      _flipController.reverse();
-    } else {
-      _flipController.forward();
-    }
-    setState(() => _isCardFlipped = !_isCardFlipped);
-  }
-
   void _cycleLightningState() {
     setState(() {
       switch (_lightningState) {
@@ -509,6 +435,15 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     });
   }
 
+  void _toggleCardFlip() {
+    if (_isCardFlipped) {
+      _flipController.reverse();
+    } else {
+      _flipController.forward();
+    }
+    setState(() => _isCardFlipped = !_isCardFlipped);
+  }
+
   // Navigate to transaction details
   void _navigateToTransactionDetails(Map<String, dynamic> transaction) {
     Navigator.push(
@@ -522,15 +457,53 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Listen so UI updates when coin store changes (e.g., icons)
     final store = context.watch<CoinStore>();
     final coin = store.getById(selectedCoinId);
-    final details = _currentDetails();
+
+    // Show loading or error state
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: kBg,
+        body: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: kBg,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Error loading wallet',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: const TextStyle(color: kMuted, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _initializeWallet,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final details = _getCurrentCoinData();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0D1A),
+      backgroundColor: kBg,
       bottomNavigationBar: BottomNavBar(
-        selectedIndex: 1, // Balance tab selected
+        selectedIndex: 1,
         onTap: (index) {
           if (index == 1) return;
           Navigator.pushReplacementNamed(
@@ -550,19 +523,23 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
           children: [
             _buildHeader(coin, details),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    _buildBalanceCard(coin, details),
-                    const SizedBox(height: 16),
-                    _buildAvailableReservedRow(details),
-                    const SizedBox(height: 24),
-                    _buildActionButtons(context),
-                    const SizedBox(height: 24),
-                    _buildTransactionsSection(),
-                  ],
+              child: RefreshIndicator(
+                onRefresh: _initializeWallet,
+                child: SingleChildScrollView(
+                  padding: kHPad8,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      _buildBalanceCard(coin, details),
+                      const SizedBox(height: 16),
+                      _buildAvailableRow(details),
+                      const SizedBox(height: 24),
+                      _buildActionButtons(context),
+                      const SizedBox(height: 24),
+                      _buildTransactionsSection(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -591,7 +568,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A2D3A),
+                      color: kTile,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Center(
@@ -611,7 +588,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                         const Text(
                           'Select Crypto',
                           style: TextStyle(
-                            color: Color(0xFF6B7280),
+                            color: kMuted,
                             fontSize: 11,
                           ),
                         ),
@@ -644,7 +621,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2D3A),
+                color: kTile,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: const Icon(
@@ -686,25 +663,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF2A2D3A),
-            Color.fromARGB(255, 0, 0, 0),
-            Color.fromARGB(255, 0, 12, 56),
-          ],
-          stops: [0.0, 0.5, 1.0],
-        ),
+        gradient: kCardFrontGrad,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF3A3D4A), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: kTileBorder, width: 1),
+        boxShadow: const [kSoftShadow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -731,7 +693,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
           Text(
             address,
             style: const TextStyle(
-              color: Color(0xFF6B7280),
+              color: kMuted,
               fontSize: 11,
             ),
           ),
@@ -764,25 +726,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF2D5A2D),
-              Color.fromARGB(255, 0, 20, 0),
-              Color.fromARGB(255, 0, 56, 12),
-            ],
-            stops: [0.0, 0.5, 1.0],
-          ),
+          gradient: kCardBackGrad,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: const Color(0xFF4A6A4A), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: const [kSoftShadow],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -848,76 +795,33 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-// === USD toggle state ===
-  bool _showAllInUsd = false; // global toggle
-  final Set<String> _usdPerTx = <String>{}; // per-transaction toggles
-
-// Get a USD price for a coin key like 'BTC', 'ETH', 'USDT-TRX', 'BTC-LN'
-  double _priceForCoinUsd(String coinKey) {
-    // Normalize coin family (BTC-LN -> BTC, USDT-TRX -> USDT, etc.)
-    String family = coinKey;
-    if (family.contains('-')) family = family.split('-').first;
-
-    // Try our dummy details first (they store price strings)
-    final details = _dummyDetails[coinKey] ?? _dummyDetails[family];
-    if (details != null) {
-      final p = double.tryParse((details['price'] ?? '0').replaceAll(',', ''));
-      if (p != null && p > 0) return p;
-    }
-
-    // Fallbacks per family if needed
-    switch (family) {
-      case 'BTC':
-        return 43825.67;
-      case 'ETH':
-        return 2641.25;
-      case 'SOL':
-        return 148.12;
-      case 'TRX':
-        return 0.13;
-      case 'USDT':
-        return 1.0;
-      case 'BNB':
-        return 575.42;
-      case 'XMR':
-        return 165.50;
-      default:
-        return 0.0;
-    }
-  }
-
-  String _formatUsd(double usd) {
-    // Simple formatter with 2 decimals
-    return '\$${usd.toStringAsFixed(2)}';
-  }
-
   Widget _buildActionIcons() {
     if (selectedCoinId.startsWith('USDT')) {
       return Row(
         children: [
-          _miniIconBox(
-              Icons.copy, const Color(0xFF3A3D4A), const Color(0xFF6B7280)),
+          _miniIconBox(Icons.copy, kTileBorder, kMuted),
           const SizedBox(width: 8),
           GestureDetector(
             onTap: _toggleCardFlip,
-            child:
-                _miniIconBox(Icons.eco, const Color(0xFF3A3D4A), Colors.green),
+            child: _miniIconBox(Icons.eco, kTileBorder, Colors.green),
           ),
         ],
       );
     } else if (isLightningSelected) {
       return _getLightningStateWidget();
     } else {
-      return _miniIconBox(
-          Icons.copy, const Color(0xFF3A3D4A), const Color(0xFF6B7280));
+      return _miniIconBox(Icons.copy, kTileBorder, kMuted);
     }
   }
 
-  Widget _miniIconBox(IconData icon, Color bg, Color fg) {
+  Widget _miniIconBox(IconData icon, Color border, Color fg) {
     return Container(
       padding: const EdgeInsets.all(6),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: kTile,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border),
+      ),
       child: Icon(icon, color: fg, size: 14),
     );
   }
@@ -986,21 +890,12 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  Widget _buildAvailableReservedRow(Map<String, String> details) {
+  Widget _buildAvailableRow(Map<String, String> details) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(
-            child: _kv('Available', details['balance'] ?? '0'),
-          ),
-          Container(width: 1, height: 36, color: const Color(0xFF3A3D4A)),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: _kv('Reserved', '0'),
-            ),
-          ),
+          Expanded(child: _kv('Available', details['balance'] ?? '0')),
         ],
       ),
     );
@@ -1010,8 +905,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+        Text(label, style: const TextStyle(color: kMuted, fontSize: 13)),
         const SizedBox(height: 4),
         Row(
           children: [
@@ -1021,7 +915,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     fontSize: 15,
                     fontWeight: FontWeight.w500)),
             const SizedBox(width: 8),
-            const Icon(Icons.info_outline, color: Color(0xFF6B7280), size: 16),
+            const Icon(Icons.info_outline, color: kMuted, size: 16),
           ],
         ),
       ],
@@ -1030,7 +924,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   Widget _buildActionButtons(BuildContext context) {
     if (isLightningSelected) {
-      // Only Send, Receive, Scan for Lightning
+      // Lightning: Send, Receive, Scan
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 0),
         child: Row(
@@ -1040,20 +934,20 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               Navigator.pushNamed(context, AppRoutes.sendCrypto);
             }),
             _buildActionButton('Receive', Icons.arrow_downward, () {
-              _showLightningReceiveOptions(); // 👈 new
+              _showLightningReceiveOptions();
             }),
             _buildActionButton('Scan', Icons.qr_code_scanner, () {
-              // Navigator.pushNamed(context, AppRoutes.scanQr); // if you have one
+              // Navigator.pushNamed(context, AppRoutes.scanQr);
             }),
           ],
         ),
       );
     } else {
-      // Full set
+      // Non-Lightning: Send, Swap, Receive
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildActionButton('Send', Icons.send, () {
               Navigator.pushNamed(context, AppRoutes.sendCrypto);
@@ -1062,21 +956,45 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               Navigator.pushNamed(context, AppRoutes.swapScreen);
             }),
             _buildActionButton('Receive', Icons.arrow_downward, () {
-              Navigator.pushNamed(
-                context,
-                AppRoutes.receiveCrypto,
-                // arguments: {
-                //   'coinId': currentCoinId, // whatever coin is selected
-                // },
-              );
-            }),
-            _buildActionButton('Charge', Icons.credit_card, () {
-              // Navigator.pushNamed(context, AppRoutes.charge); // your route
+              Navigator.pushNamed(context, AppRoutes.receiveCrypto);
             }),
           ],
         ),
       );
     }
+  }
+
+  Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        child: Column(
+          children: [
+            Container(
+              width: 60,
+              height: 48,
+              decoration: BoxDecoration(
+                color: kTile,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: kTileBorder),
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showLightningReceiveOptions() {
@@ -1087,18 +1005,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       builder: (_) {
         return ClipRect(
           child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomRight,
-                stops: [0.0, 0.55, 1.0],
-                colors: [
-                  Color.fromARGB(255, 6, 11, 33),
-                  Color.fromARGB(255, 0, 0, 0),
-                  Color.fromARGB(255, 0, 12, 56),
-                ],
-              ),
-            ),
+            decoration: const BoxDecoration(gradient: kSheetGrad),
             padding: EdgeInsets.only(
               left: 12,
               right: 12,
@@ -1110,20 +1017,18 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // grabber
                   Container(
                     width: 36,
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 12, top: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A2D3A),
+                      color: kTile,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-
                   _receiveOptionTile(
                     icon: Icons.receipt_long,
-                    iconBg: const Color(0xFF2A2D3A),
+                    iconBg: kTile,
                     title: 'Receive via Invoice',
                     subtitle: 'Create a Lightning invoice to get paid',
                     onTap: () {
@@ -1134,7 +1039,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                   const SizedBox(height: 8),
                   _receiveOptionTile(
                     icon: Icons.currency_bitcoin,
-                    iconBg: const Color(0xFF2A2D3A),
+                    iconBg: kTile,
                     title: 'Receive via BTC mainnet',
                     subtitle: 'Use on-chain address (SegWit / Taproot)',
                     onTap: () {
@@ -1171,6 +1076,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               Container(
                 width: 36,
                 height: 36,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Icon(icon, color: Colors.white, size: 20),
               ),
               const SizedBox(width: 12),
@@ -1185,8 +1094,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                             fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(subtitle,
-                        style: const TextStyle(
-                            color: Color(0xFF6B7280), fontSize: 12)),
+                        style: const TextStyle(color: kMuted, fontSize: 12)),
                   ],
                 ),
               ),
@@ -1198,25 +1106,21 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  /// TODO hooks — you’ll tell me what to do next.
-  /// For now these just navigate with arguments you can catch on your receive screen.
   void _onLightningInvoiceReceive() {
-    // Example: open your receive screen in "lightning-invoice" mode
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const SendCryptocurrency(
-          title: 'Charge', // 👈 changes app bar title
-          initialCoinId: 'BTC-LN', // 👈 preselect Lightning
-          buttonLabel: 'Next', // (optional)
-          isChargeMode: true, // 👈 toggles invoice flow branch
+          title: 'Charge',
+          initialCoinId: 'BTC-LN',
+          buttonLabel: 'Next',
+          isChargeMode: true,
         ),
       ),
     );
   }
 
   void _onLightningMainnetReceive() {
-    // Example: switch to BTC (on-chain) and open regular receive
     setState(() {
       selectedCoinId = 'BTC';
       _isCardFlipped = false;
@@ -1235,47 +1139,12 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 62,
-        child: Column(
-          children: [
-            Container(
-              width: 60,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2D3A),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF3A3D4A)),
-              ),
-              child: Icon(icon, color: Colors.white, size: 22),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w400,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTransactionsSection() {
-    final transactions = dummyTransactions[selectedCoinId] ?? [];
+    final transactions = _getCurrentTransactions();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section header with tabs
-        // Section header with tabs + global $ button
         Row(
           children: [
             Container(
@@ -1294,9 +1163,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               ),
             ),
             const SizedBox(width: 24),
-
             const Spacer(),
-            // ==== Global USD toggle button ====
             Tooltip(
               message:
                   _showAllInUsd ? 'Show native amounts' : 'Show all in USD',
@@ -1307,18 +1174,15 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A2D3A),
+                    color: kTile,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _showAllInUsd
-                          ? Colors.green
-                          : const Color(0xFF3A3D4A),
+                      color: _showAllInUsd ? Colors.green : kTileBorder,
                     ),
                   ),
                   child: Center(
                     child: Icon(
-                      Icons
-                          .currency_exchange, // or Icons.attach_money, Icons.payments_outlined
+                      Icons.currency_exchange,
                       color: _showAllInUsd ? Colors.green : Colors.white,
                       size: 14,
                     ),
@@ -1328,35 +1192,34 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
             ),
           ],
         ),
-
         const SizedBox(height: 24),
-
         if (transactions.isNotEmpty) ...[
           ...transactions.map((tx) => _buildTransactionItem(tx)).toList(),
         ] else ...[
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(40),
-            child: const Column(
+            child: Column(
               children: [
-                Text(
+                const Text(
                   'No transactions yet',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w500),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Your transactions will appear here',
-                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
+                  _currentWalletAddress == null
+                      ? 'Loading wallet...'
+                      : 'Your transactions will appear here',
+                  style: const TextStyle(color: kMuted, fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
               ],
             ),
           ),
         ],
-
         const SizedBox(height: 100),
       ],
     );
@@ -1364,15 +1227,12 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   Widget _buildTransactionItem(Map<String, dynamic> transaction) {
     final String txId = (transaction['id'] ?? '').toString();
-    final String coinKey =
-        (transaction['coin'] ?? '').toString(); // e.g. BTC, BTC-LN, USDT-TRX
+    final String coinKey = (transaction['coin'] ?? '').toString();
     final bool showUsd = _showAllInUsd || _usdPerTx.contains(txId);
 
-    // amount (string -> double)
     final double amount =
         double.tryParse((transaction['amount'] ?? '0').toString()) ?? 0.0;
 
-    // USD conversion
     final double priceUsd = _priceForCoinUsd(coinKey);
     final String amountLabel = showUsd
         ? _formatUsd(amount * priceUsd)
@@ -1380,8 +1240,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
     return InkWell(
       onTap: () => _navigateToTransactionDetails(transaction),
-      splashColor: const Color(0xFF2A2D3A).withOpacity(0.3),
-      highlightColor: const Color(0xFF2A2D3A).withOpacity(0.1),
+      splashColor: kTile.withOpacity(0.3),
+      highlightColor: kTile.withOpacity(0.1),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
@@ -1392,7 +1252,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2D3A),
+                color: kTile,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(_getTransactionTypeIcon(transaction['type']),
@@ -1440,7 +1300,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                           Text(
                             _getTimeAgo(transaction['dateTime']),
                             style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: kMuted,
                               fontSize: 12,
                             ),
                           ),
@@ -1457,7 +1317,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              // === Per-transaction USD toggle ===
                               Tooltip(
                                 message: _usdPerTx.contains(txId)
                                     ? 'Show native amount'
@@ -1477,18 +1336,17 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                     width: 22,
                                     height: 22,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF2A2D3A),
+                                      color: kTile,
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
                                         color: _usdPerTx.contains(txId)
                                             ? Colors.green
-                                            : const Color(0xFF3A3D4A),
+                                            : kTileBorder,
                                       ),
                                     ),
                                     child: Center(
                                       child: Icon(
-                                        Icons
-                                            .monetization_on_outlined, // or Icons.attach_money
+                                        Icons.monetization_on_outlined,
                                         color: _usdPerTx.contains(txId)
                                             ? Colors.green
                                             : Colors.white,
@@ -1536,16 +1394,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       crossAxisAlignment:
           end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
-        Text(value,
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+        Text(label, style: const TextStyle(color: kMuted, fontSize: 12)),
+        Text(value, style: const TextStyle(color: kMuted, fontSize: 12)),
       ],
     );
   }
 
-  // ------------------- Helpers -------------------
-
+  // Helper methods
   String _getTimeAgo(String dateTime) {
     try {
       final parts = dateTime.split(' ');
@@ -1554,7 +1409,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         final month = parts[1];
         final year = int.parse(parts[2]);
 
-        final months = {
+        const months = {
           'Jan': 1,
           'Feb': 2,
           'Mar': 3,
@@ -1583,13 +1438,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   String _getCoinSymbol(String coinKey) {
-    // coinKey could be 'BTC', 'BTC-LN', 'USDT-ETH', etc.
-    // Prefer mapping by id => symbol from provider where possible:
     final store = context.read<CoinStore>();
     final coin = store.getById(coinKey);
     if (coin != null) return coin.symbol;
 
-    // Fallback from known families:
     if (coinKey.startsWith('USDT')) return 'USDT';
     if (coinKey.startsWith('ETH')) return 'ETH';
     if (coinKey.startsWith('TRX')) return 'TRX';
@@ -1644,10 +1496,65 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     return '${address.substring(0, 6)}...${address.substring(address.length - 6)}';
   }
 
-  void _showCoinSelector() {
-    final store = context.read<CoinStore>();
-    final coins = store.coins.values.toList(); // all 15
+  // Map a token's symbol/chain to a base coin id (used to resolve CoinStore icon/name)
+  String _baseFromToken(String? symbol, String? chain) {
+    final s = (symbol ?? '').toUpperCase();
+    final c = (chain ?? '').toUpperCase();
+    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
+    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
+      return 'USDT';
+    }
+    return s.isEmpty ? c : s;
+  }
 
+  /// Returns Coin objects (from CoinStore) that correspond to tokens
+  /// in the ACTIVE wallet only. Falls back to CoinStore if no tokens found.
+  Future<List<Coin>> _coinsForActiveWallet() async {
+    final store = context.read<CoinStore>();
+    // 1) figure out active wallet id
+    String? activeId = context.read<WalletStore>().activeWalletId;
+    if (activeId == null || activeId.isEmpty) {
+      final wallets = await AuthService.fetchWallets();
+      if (wallets.isNotEmpty) {
+        activeId = wallets.first['_id']?.toString();
+      }
+    }
+
+    // 2) get tokens for that wallet
+    if (activeId != null && activeId.isNotEmpty) {
+      try {
+        final tokens =
+            await AuthService.fetchTokensByWallet(walletId: activeId);
+
+        // 3) map tokens -> base symbol -> Coin from store
+        final bases = <String>{};
+        for (final t in tokens) {
+          bases.add(_baseFromToken(t.symbol, t.chain));
+        }
+
+        final coins = <Coin>[];
+        for (final base in bases) {
+          final c = store.getById(base);
+          if (c != null) coins.add(c);
+        }
+
+        // if we found some, return just those
+        if (coins.isNotEmpty) {
+          coins.sort((a, b) => a.symbol.compareTo(b.symbol));
+          return coins;
+        }
+      } catch (_) {
+        // ignore and fall back
+      }
+    }
+
+    // 4) fallback: whole store (previous behavior)
+    final all = store.coins.values.toList()
+      ..sort((a, b) => a.symbol.compareTo(b.symbol));
+    return all;
+  }
+
+  void _showCoinSelector() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1656,134 +1563,134 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, scrollController) => ClipRect(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomRight,
-                stops: [0.0, 0.55, 1.0],
-                colors: [
-                  Color.fromARGB(255, 6, 11, 33),
-                  Color.fromARGB(255, 0, 0, 0),
-                  Color.fromARGB(255, 0, 12, 56),
-                ],
-              ),
-            ),
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  margin: const EdgeInsets.only(top: 10, bottom: 20),
-                  width: 40,
-                  height: 4,
-                ),
+        builder: (context, scrollController) => FutureBuilder<List<Coin>>(
+          future: _coinsForActiveWallet(),
+          builder: (context, snap) {
+            final coins = snap.data ?? const <Coin>[];
 
-                // Header
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Select Cryptocurrency',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Coin list (from provider)
-                Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: coins.length,
-                    itemBuilder: (context, index) {
-                      final c = coins[index];
-                      final details = _dummyDetails[c.id] ??
-                          {
-                            'price': '0.00',
-                            'balance': '0.00',
-                            'usdBalance': '0.00'
-                          };
-
-                      final isSelected = selectedCoinId == c.id;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          tileColor: isSelected
-                              ? const Color(0xFF2A2D3A)
-                              : const Color(0xFF1F2329),
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: (c.assetPath.isNotEmpty)
-                                  ? Image.asset(c.assetPath,
-                                      width: 22, height: 22)
-                                  : const Icon(Icons.currency_bitcoin,
-                                      color: Colors.white, size: 18),
+            return ClipRect(
+              child: Container(
+                decoration: const BoxDecoration(gradient: kSheetGrad),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 20),
+                      width: 40,
+                      height: 4,
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Select Cryptocurrency',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          title: Text(
-                            c.symbol,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            c.name,
-                            style: const TextStyle(
-                                color: Color(0xFF6B7280), fontSize: 12),
-                          ),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${details['balance']} ${c.symbol}',
-                                style: const TextStyle(
-                                    color: Color(0xFF6B7280), fontSize: 12),
-                              ),
-                            ],
-                          ),
-                          onTap: () {
-                            setState(() {
-                              selectedCoinId = c.id;
-                              _isCardFlipped = false;
-                              _flipController.reset();
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    if (snap.connectionState == ConnectionState.waiting)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    if (snap.hasError)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'Failed to load wallet coins.\n${snap.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    if (snap.connectionState == ConnectionState.done &&
+                        coins.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'No coins for this wallet.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    if (coins.isNotEmpty)
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: coins.length,
+                          itemBuilder: (context, index) {
+                            final c = coins[index];
+                            final isSelected = selectedCoinId == c.id;
+                            final current = _getCurrentCoinData();
 
-                              // Reset Lightning state appropriately
-                              _lightningState = 'sync';
-                              _isLightningComplete = false;
-                            });
-                            _startLightningTimer();
-                            Navigator.pop(context);
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: ListTile(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                tileColor: isSelected
+                                    ? kTile
+                                    : const Color(0xFF1F2329),
+                                leading: SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: Center(
+                                    child: (c.assetPath.isNotEmpty)
+                                        ? Image.asset(c.assetPath,
+                                            width: 22, height: 22)
+                                        : const Icon(Icons.currency_bitcoin,
+                                            color: Colors.white, size: 18),
+                                  ),
+                                ),
+                                title: Text(
+                                  c.symbol,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                                subtitle: Text(
+                                  c.name,
+                                  style: const TextStyle(
+                                      color: kMuted, fontSize: 12),
+                                ),
+                                trailing: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${selectedCoinId == c.id ? current['balance'] : '0.00'} ${c.symbol}',
+                                      style: const TextStyle(
+                                          color: kMuted, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  await _updateSelectedCoin(c.id);
+                                },
+                              ),
+                            );
                           },
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
 
-// ---------------- Transaction Details Screen (unchanged UI; coin icon color tuned) ------------
+// Transaction Details Screen
 class TransactionDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> transaction;
 
@@ -1862,21 +1769,6 @@ class TransactionDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSwapDetails(BuildContext context) {
-    final swapDetails = transaction['swapDetails'] as Map<String, dynamic>;
-    return Column(
-      children: [
-        _buildTransactionDetailItem(context, 'From',
-            '${swapDetails['fromAmount']} ${swapDetails['fromCoin']}'),
-        _buildTransactionDetailItem(context, 'To',
-            '${swapDetails['toAmount']} ${swapDetails['toCoin']}'),
-        _buildTransactionDetailItem(context, 'Exchange Rate',
-            '1 ${swapDetails['fromCoin']} = ${swapDetails['rate']} ${swapDetails['toCoin']}'),
-        _buildTransactionDetailItem(context, 'Swap ID', swapDetails['swapId']),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final coinBadgeColor = _getCoinColor();
@@ -1902,7 +1794,6 @@ class TransactionDetailsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
             Text(
               _getTransactionTitle(),
               style: const TextStyle(
@@ -1911,15 +1802,11 @@ class TransactionDetailsScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-
-            // Date
             Text(
               transaction['dateTime'] ?? '',
               style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
             ),
             const SizedBox(height: 16),
-
-            // Status
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
@@ -1934,10 +1821,7 @@ class TransactionDetailsScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold),
               ),
             ),
-
             const SizedBox(height: 24),
-
-            // Amount + Coin badge
             Row(
               children: [
                 Container(
@@ -1957,71 +1841,24 @@ class TransactionDetailsScreen extends StatelessWidget {
                       fontSize: 20,
                       fontWeight: FontWeight.w600),
                 ),
-                if ((transaction['coin'] ?? '')
-                    .toString()
-                    .startsWith('BTC-LN')) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                        color: Colors.purple,
-                        borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Lightning',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
               ],
             ),
-
             const SizedBox(height: 32),
-
             const Text('Transaction details',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w500)),
             const SizedBox(height: 16),
-
-            if ((transaction['type'] ?? '') == 'swap') ...[
-              _buildSwapDetails(context),
-            ] else ...[
-              if (transaction['block'] != null)
-                _buildTransactionDetailItem(
-                    context, 'Block', transaction['block']?.toString() ?? '-'),
+            if (transaction['block'] != null)
               _buildTransactionDetailItem(
-                  context, 'To', transaction['to'] ?? '-'),
-              _buildTransactionDetailItem(
-                  context, 'From', transaction['from'] ?? '-'),
-              _buildTransactionDetailItem(
-                  context, 'Hash', transaction['hash'] ?? '-'),
-            ],
-
-            if (transaction['coin'].toString().startsWith('BTC-LN') &&
-                transaction['lightningDetails'] != null) ...[
-              const SizedBox(height: 32),
-              Row(
-                children: const [
-                  Icon(Icons.flash_on, color: Colors.purple, size: 16),
-                  SizedBox(width: 8),
-                  Text('Lightning details',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ...((transaction['lightningDetails'] as Map).entries)
-                  .map<Widget>((entry) {
-                return _buildTransactionDetailItem(
-                    context, entry.key, entry.value?.toString() ?? '-');
-              }).toList(),
-            ],
-
+                  context, 'Block', transaction['block']?.toString() ?? '-'),
+            _buildTransactionDetailItem(
+                context, 'To', transaction['to'] ?? '-'),
+            _buildTransactionDetailItem(
+                context, 'From', transaction['from'] ?? '-'),
+            _buildTransactionDetailItem(
+                context, 'Hash', transaction['hash'] ?? '-'),
             if (transaction['feeDetails'] != null) ...[
               const SizedBox(height: 32),
               const Text('Fee Details',
@@ -2036,7 +1873,6 @@ class TransactionDetailsScreen extends StatelessWidget {
                     context, entry.key, entry.value?.toString() ?? '-');
               }).toList(),
             ],
-
             const SizedBox(height: 100),
           ],
         ),

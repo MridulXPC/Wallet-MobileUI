@@ -7,7 +7,7 @@ import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart'; // ✅ Provider source of truth
-import 'package:cryptowallet/services/api_service.dart'; // ✅ AuthService with fetchMe & fetchTokens
+import 'package:cryptowallet/services/api_service.dart'; // ✅ AuthService with fetchTokens
 import 'package:flutter/foundation.dart' show debugPrint;
 
 /// ----------------------------------------------
@@ -610,16 +610,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     return null;
   }
 
-  // 🔥 Load assets via API (fetchMe + fetchTokens) and map to rows
-  //     ICONS ALWAYS FROM CoinStore
+  // 🔥 Load assets via API (fetchTokens) and map to rows — ICONS ALWAYS FROM CoinStore
   Future<List<_AssetRow>> _loadAssetsFromApi() async {
-    // Ensure user context & token are valid (also caches userId)
-    try {
-      await AuthService.fetchMe();
-    } catch (e) {
-      debugPrint('fetchMe failed (continuing): $e');
-    }
-
     try {
       final tokens = await AuthService.fetchTokens();
       final store = context.read<CoinStore>();

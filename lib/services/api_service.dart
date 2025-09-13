@@ -413,7 +413,7 @@ class AuthService {
     }
   }
 
-  // ===================== USER: /api/auth/me =====================
+  // ===================== USER ID (local cache only; /auth/me removed) =====================
 
   static Future<void> _saveUserId(String userId) async {
     final prefs = await SharedPreferences.getInstance();
@@ -429,84 +429,10 @@ class AuthService {
     }
   }
 
-  /// GET /api/auth/me -> returns "user" map and caches _id
-  static Future<Map<String, dynamic>> fetchMe() async {
-    final uri = Uri.parse('$_baseUrl/api/auth/me');
-
-    final t = await getStoredToken(); // <-- use real token
-    final headers = <String, String>{
-      'Accept': 'application/json',
-      if (t != null && t.isNotEmpty) 'Authorization': 'Bearer $t',
-    };
-
-    http.Response res;
-    try {
-      res = await HttpKit.getWithRetry(uri, headers: headers);
-    } on TimeoutException {
-      throw const ApiException(
-        'Network timeout: server did not respond in time. Please try again.',
-      );
-    } catch (e) {
-      throw ApiException('Network error: $e');
-    }
-
-    if (res.statusCode == 200) {
-      try {
-        final map = json.decode(res.body) as Map<String, dynamic>;
-        // Optional: cache user id if present
-        final id = (map['user']?['_id'] ?? map['_id'])?.toString();
-        if (id != null && id.isNotEmpty) await _saveUserId(id);
-        return map;
-      } catch (_) {
-        throw const ApiException('Malformed JSON from server.');
-      }
-    }
-
-    if (res.statusCode == 401) {
-      throw const ApiException('Unauthorized (401): token expired/invalid.',
-          statusCode: 401);
-    }
-    if (res.statusCode == 502 ||
-        res.statusCode == 503 ||
-        res.statusCode == 504) {
-      throw ApiException(
-          'Upstream unavailable (${res.statusCode}). Please retry.',
-          statusCode: res.statusCode);
-    }
-
-    throw ApiException(
-      'HTTP ${res.statusCode}: ${res.reasonPhrase ?? 'Unknown'}',
-      statusCode: res.statusCode,
-      details: _safeJson(res.body),
-    );
-  }
-
-  // ignore: unused_element
-  static Future<String?> _token() async {
-    // TODO: read your stored token
-    return null;
-  }
-
-  static Map<String, dynamic>? _safeJson(String body) {
-    try {
-      final v = json.decode(body);
-      return v is Map<String, dynamic> ? v : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Returns cached userId if present; else fetches it from /api/auth/me.
+  /// Returns cached userId if present; NO network call anymore.
   static Future<String?> getOrFetchUserId() async {
     final cached = await getStoredUserId();
-    if (cached != null && cached.isNotEmpty) return cached;
-
-    try {
-      final user = await fetchMe();
-      final id = user['_id']?.toString();
-      if (id != null && id.isNotEmpty) return id;
-    } catch (_) {}
-    return null;
+    return (cached != null && cached.isNotEmpty) ? cached : null;
   }
 
   // ===================== WALLETS: /api/wallet/get-wallets =====================
@@ -1000,6 +926,8 @@ class AuthService {
   }
 
   // Add to AuthService
+// Replace the whole fetchSpotPrices() with this version.
+// Replace the whole fetchSpotPrices() with this version.
   static Future<Map<String, double>> fetchSpotPrices({
     required List<String>
         symbols, // e.g. ['BTC','ETH','USDT','TRX','BNB','SOL']
@@ -1010,32 +938,104 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // Try /api/market/prices?symbols=BTC,ETH,...
-    Future<Map<String, double>> _call(String endpoint) async {
-      final q = Uri(queryParameters: {'symbols': symbols.join(',')}).query;
-      final res = await _makeRequest(
-        method: 'GET',
-        endpoint: '$endpoint?$q',
-        token: token,
-        requireAuth: true,
-      );
-      final data = _handleResponse(res);
+    // Build query once
+    final query = Uri(queryParameters: {'symbols': symbols.join(',')}).query;
 
-      // Expect { "success": true, "data": { "BTC": 43825.67, "ETH": 2641.25, ... } }
-      final map = (data['data'] ?? data) as Map;
-      return map.map((k, v) =>
-          MapEntry(k.toString().toUpperCase(), (v as num).toDouble()));
-    }
+    // Try several plausible endpoints (with and without /api)
+    final endpoints = <String>[
+      '/api/market/prices',
+      '/market/prices',
+      '/api/market/spot-prices',
+      '/market/spot-prices',
+      '/api/token/prices',
+      '/token/prices',
+    ];
 
-    try {
-      return await _call('/api/market/prices');
-    } on ApiException catch (e) {
-      if (e.statusCode == 404 || e.statusCode == 405) {
-        // fallback if your server mounts without /api
-        return await _call('/market/prices');
+    // Helper: parse various shapes into Map<String,double>
+    Map<String, double>? _parsePrices(dynamic data) {
+      // Case A: { "success": true, "data": { "BTC": 123.4, ... } }
+      if (data is Map && data['data'] is Map) {
+        final m = (data['data'] as Map);
+        return m.map((k, v) =>
+            MapEntry(k.toString().toUpperCase(), (v as num).toDouble()));
       }
-      rethrow;
+      // Case B: { "BTC": 123.4, "ETH": 234.5 }
+      if (data is Map) {
+        // ensure all values are numeric
+        final out = <String, double>{};
+        for (final entry in data.entries) {
+          final v = entry.value;
+          if (v is num || (v is String && double.tryParse(v) != null)) {
+            out[entry.key.toString().toUpperCase()] =
+                v is num ? v.toDouble() : double.parse(v as String);
+          }
+        }
+        if (out.isNotEmpty) return out;
+      }
+      // Case C: [ {"symbol":"BTC","price":123.4}, ... ]
+      if (data is List) {
+        final out = <String, double>{};
+        for (final e in data) {
+          if (e is Map) {
+            final sym = (e['symbol'] ?? e['code'] ?? e['ticker'])?.toString();
+            final price = e['price'] ?? e['priceUsd'] ?? e['usd'];
+            double? p;
+            if (price is num) p = price.toDouble();
+            if (price is String) p = double.tryParse(price);
+            if (sym != null && p != null) out[sym.toUpperCase()] = p;
+          }
+        }
+        if (out.isNotEmpty) return out;
+      }
+      return null;
     }
+
+    // Try each endpoint until one works
+    ApiException? lastErr;
+    for (final ep in endpoints) {
+      try {
+        final res = await _makeRequest(
+          method: 'GET',
+          endpoint: '$ep?$query',
+          token: token,
+          requireAuth: true,
+        );
+
+        // Accept only 2xx; otherwise try next endpoint
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          // If body isn't JSON, skip quietly (prevents "Invalid response format (404)")
+          continue;
+        }
+
+        // Try to JSON-decode and parse shapes
+        dynamic bodyJson;
+        try {
+          bodyJson = jsonDecode(res.body);
+        } catch (_) {
+          // Not JSON → try next endpoint
+          continue;
+        }
+
+        final parsed = _parsePrices(bodyJson);
+        if (parsed != null && parsed.isNotEmpty) {
+          return parsed;
+        }
+        // Parsed but empty → try next
+      } on ApiException catch (e) {
+        lastErr = e;
+        // keep looping to try the next endpoint
+      } catch (e) {
+        // non-API error; keep trying others
+      }
+    }
+
+    // Nothing worked → return empty map (don’t hard-fail UI)
+    if (lastErr != null) {
+      // You can log lastErr if you want, but don't throw
+      debugPrint(
+          'fetchSpotPrices fallback: ${lastErr.message} (Status: ${lastErr.statusCode})');
+    }
+    return const <String, double>{};
   }
 }
 
