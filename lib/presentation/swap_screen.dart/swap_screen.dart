@@ -1,14 +1,18 @@
+// lib/presentation/swap_screen.dart
 import 'dart:async';
-
-import 'package:cryptowallet/core/app_export.dart';
-import 'package:cryptowallet/presentation/bottomnavbar.dart';
-import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'package:cryptowallet/core/app_export.dart';
+import 'package:cryptowallet/presentation/bottomnavbar.dart';
+import 'package:cryptowallet/routes/app_routes.dart';
+
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/services/api_service.dart';
+
+// Your wallet store (the one you shared)
+import 'package:cryptowallet/stores/wallet_store.dart'; // LocalWallet, WalletStore
 
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});
@@ -18,14 +22,14 @@ class SwapScreen extends StatefulWidget {
 }
 
 class _SwapScreenState extends State<SwapScreen> {
-  /// We store **coinId** (must match CoinStore ids)
+  // Initial selection (must match CoinStore ids)
   String fromCoinId = 'BTC';
   String toCoinId = 'ETH';
 
   double fromAmount = 0.0;
   final TextEditingController _fromController = TextEditingController();
 
-  // Modal filter/search UI state
+  // Coin picker UI state
   String _chipFilter = 'ALL';
   String _search = '';
 
@@ -33,12 +37,12 @@ class _SwapScreenState extends State<SwapScreen> {
   double? _slippage;
 
   // Quote state
-  double? _quoteToAmount; // amount of "to" token from /swaps/getQuote
+  double? _quoteToAmount;
   String? _quoteError;
   bool _quoting = false;
   Timer? _debounce;
 
-  // Quote countdown (30s validity)
+  // Quote validity (seconds)
   Timer? _quoteCountdown;
   int _quoteSecondsLeft = 0;
 
@@ -49,9 +53,20 @@ class _SwapScreenState extends State<SwapScreen> {
 
   static const Color _pageBg = Color(0xFF0B0D1A);
 
+  // ---------- Wallet-derived capability cache ----------
+  // Fetched per active wallet and cached for this screen instance
+  String? _loadedWalletId; // which wallet the below sets belong to
+  Set<String> _supportedChains = {}; // e.g., {'ETH','TRON','BNB','BTC','SOL'}
+  Map<String, double> _balances = {}; // coinId -> balance
+
+  // Stable ref to WalletStore to avoid using BuildContext in dispose()
+  WalletStore? _walletStore;
+
   // ---------- Helpers ----------
   Coin? _coinById(BuildContext ctx, String id) =>
       ctx.read<CoinStore>().getById(id);
+
+  LocalWallet? get _activeWallet => _walletStore?.activeWallet;
 
   String _baseSymbol(String coinId) {
     final dash = coinId.indexOf('-');
@@ -64,9 +79,10 @@ class _SwapScreenState extends State<SwapScreen> {
   }
 
   /// Normalize a coinId/network into the backend chain string.
-  /// Examples:
   /// - "USDT-TRX" -> "TRON"
   /// - "BTC-LN" -> "BTC"
+  /// - "BNB-BNB" -> "BNB"
+  /// - "SOL-SOL" -> "SOL"
   /// - "ETH" -> "ETH"
   String _normalizeChain(String coinId) {
     var net = _networkPart(coinId).toUpperCase().trim();
@@ -82,6 +98,23 @@ class _SwapScreenState extends State<SwapScreen> {
     return c?.symbol ?? _baseSymbol(coinId).toUpperCase();
   }
 
+  /// Whether the *currently active wallet* supports the given coinId (via chain)
+  bool _walletSupportsCoin(String coinId) {
+    if (_supportedChains.isEmpty) {
+      // If unknown (backend didn’t return), don’t block UI: treat as supported.
+      return true;
+    }
+    final chain = _normalizeChain(coinId);
+    return _supportedChains.contains(chain);
+  }
+
+  /// Balance for a coinId from current wallet (0 if missing)
+  double _balanceFor(String coinId) {
+    final v = _balances[coinId];
+    if (v == null) return 0.0;
+    return v.toDouble();
+  }
+
   void _swapCoins() {
     setState(() {
       final tmp = fromCoinId;
@@ -93,12 +126,14 @@ class _SwapScreenState extends State<SwapScreen> {
       _quoteError = null;
     });
     _stopQuoteCountdown();
-    _scheduleQuote(); // refresh quote with new direction
+    _scheduleQuote();
   }
 
+  // ---------- Lifecycle ----------
   @override
   void initState() {
     super.initState();
+
     _fromController.addListener(() {
       final val = double.tryParse(_fromController.text) ?? 0.0;
       if (val != fromAmount) {
@@ -107,6 +142,24 @@ class _SwapScreenState extends State<SwapScreen> {
         _scheduleQuote();
       }
     });
+    // Do NOT touch Provider here; we’ll wire in didChangeDependencies().
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Safe place to access InheritedWidgets / Providers
+    final ws = context.read<WalletStore>();
+    if (_walletStore != ws) {
+      // detach old
+      _walletStore?.removeListener(_onWalletChanged);
+      // attach new
+      _walletStore = ws;
+      _walletStore!.addListener(_onWalletChanged);
+      // ensure we load capabilities for the now-current wallet
+      _refreshWalletCapabilitiesIfNeeded();
+    }
   }
 
   @override
@@ -114,7 +167,80 @@ class _SwapScreenState extends State<SwapScreen> {
     _debounce?.cancel();
     _stopQuoteCountdown();
     _fromController.dispose();
+    // Use stored ref; don’t use context here
+    _walletStore?.removeListener(_onWalletChanged);
     super.dispose();
+  }
+
+  void _onWalletChanged() {
+    if (!mounted) return;
+    _refreshWalletCapabilitiesIfNeeded();
+  }
+
+  Future<void> _refreshWalletCapabilitiesIfNeeded() async {
+    final aw = _activeWallet;
+    final wid = aw?.id;
+    if (wid == null) {
+      if (!mounted) return;
+      setState(() {
+        _loadedWalletId = null;
+        _supportedChains = {};
+        _balances = {};
+      });
+      return;
+    }
+    if (_loadedWalletId == wid) return; // already loaded
+
+    try {
+      // Replace with your real endpoints:
+      // Must return {'ETH','TRON','BNB','BTC','SOL'}-style chain codes
+      final chains = await AuthService.getWalletSupportedChains(wid);
+      // Must return balances keyed by CoinStore coinId: {'ETH':1.23,'USDT-TRX':55.6}
+      final bals = await AuthService.getWalletBalances(wid);
+
+      if (!mounted) return;
+      setState(() {
+        _loadedWalletId = wid;
+        _supportedChains = chains ?? {};
+        _balances = bals ?? {};
+      });
+
+      _fixUnsupportedSelections();
+      _stopQuoteCountdown();
+      _scheduleQuote();
+    } catch (_) {
+      // On failure, keep UI functional: allow all, zero balances
+      if (!mounted) return;
+      setState(() {
+        _loadedWalletId = wid;
+        _supportedChains = {};
+        _balances = {};
+      });
+      _fixUnsupportedSelections();
+      _stopQuoteCountdown();
+      _scheduleQuote();
+    }
+  }
+
+  void _fixUnsupportedSelections() {
+    final store = context.read<CoinStore>();
+
+    if (!_walletSupportsCoin(fromCoinId)) {
+      final firstSupported = store.coins.values
+          .map((c) => c.id)
+          .firstWhere(_walletSupportsCoin, orElse: () => fromCoinId);
+      if (firstSupported != fromCoinId) {
+        fromCoinId = firstSupported;
+      }
+    }
+    if (!_walletSupportsCoin(toCoinId)) {
+      final secondSupported = store.coins.values
+          .map((c) => c.id)
+          .firstWhere(_walletSupportsCoin, orElse: () => toCoinId);
+      if (secondSupported != toCoinId) {
+        toCoinId = secondSupported;
+      }
+    }
   }
 
   // ---------------- Slippage Bottom Sheet ----------------
@@ -132,7 +258,6 @@ class _SwapScreenState extends State<SwapScreen> {
           void select(double v) => setModal(() => local = v);
 
           Widget pill(String label, double value) {
-            final selected = local == value;
             return Expanded(
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
@@ -199,40 +324,6 @@ class _SwapScreenState extends State<SwapScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1D2133),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          CircleAvatar(
-                            radius: 14,
-                            backgroundColor: Color(0xFF2F4BA8),
-                            child:
-                                Icon(Icons.info, color: Colors.white, size: 18),
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Please note that when you adjust the slippage tolerance, '
-                              'the amount you receive after the swap can be affected',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                height: 1.35,
-                                fontSize: 8,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
@@ -275,8 +366,6 @@ class _SwapScreenState extends State<SwapScreen> {
 
   // ---------------- Coin Picker ----------------
   Future<void> _openCoinPicker({required bool isFrom}) async {
-    // ensure auth (as requested, hit /api/auth/me)
-
     _selectCoin(isFrom: isFrom);
   }
 
@@ -291,14 +380,23 @@ class _SwapScreenState extends State<SwapScreen> {
       builder: (_) {
         return StatefulBuilder(builder: (context, setModalState) {
           final store = context.read<CoinStore>();
-          final coins = store.coins.values.toList()
+
+          // All coins sorted by symbol
+          final allCoins = store.coins.values.toList()
             ..sort((a, b) => a.symbol.compareTo(b.symbol));
 
+          // Wallet-supported subset (if we know chains; otherwise show all)
+          final listForPicker = _supportedChains.isEmpty
+              ? allCoins
+              : allCoins.where((c) => _walletSupportsCoin(c.id)).toList();
+
+          // Build chip list (base symbols) from *shown* coins
           final baseSet = <String>{};
-          for (final c in coins) baseSet.add(_baseSymbol(c.id));
+          for (final c in listForPicker) baseSet.add(_baseSymbol(c.id));
           final chips = ['ALL', ...baseSet.toList()..sort()];
 
-          final filtered = coins.where((c) {
+          // Apply chip + search
+          final filtered = listForPicker.where((c) {
             final matchesChip =
                 _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
             final q = _search.trim().toLowerCase();
@@ -464,7 +562,7 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  // ---------- Swap Card ----------
+  // ---------- Swap Cards ----------
   Widget _buildSwapCard({
     required String label,
     required String coinId,
@@ -485,7 +583,7 @@ class _SwapScreenState extends State<SwapScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label + (optional) balance
+          // Label + Balance (for FROM)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -500,16 +598,16 @@ class _SwapScreenState extends State<SwapScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: const BoxDecoration(color: Colors.transparent),
-                  child: const Text(
-                    'Balance: 0.00',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  child: Text(
+                    'Balance: ${_balanceFor(coinId).toStringAsFixed(8)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // Chip + Amount
+          // Coin chip + Amount
           Row(
             children: [
               GestureDetector(
@@ -538,19 +636,27 @@ class _SwapScreenState extends State<SwapScreen> {
               const Spacer(),
 
               if (isFrom)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white24),
-                    borderRadius: BorderRadius.circular(6),
+                GestureDetector(
+                  onTap: () {
+                    final maxAmt = _balanceFor(coinId);
+                    _fromController.text =
+                        (maxAmt > 0 ? maxAmt : 0).toStringAsFixed(8);
+                    // controller listener schedules quote
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text('MAX',
+                        style: TextStyle(color: Colors.white70, fontSize: 12)),
                   ),
-                  child: const Text('MAX',
-                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               const SizedBox(width: 12),
 
-              // Amount: editable for "From", read-only (white) for "To"
+              // Amount field (editable for FROM, read-only for TO)
               Expanded(
                 child: isFrom
                     ? TextField(
@@ -607,6 +713,8 @@ class _SwapScreenState extends State<SwapScreen> {
             ],
           ),
           const SizedBox(height: 8),
+
+          // Sub-rows: USD approx / Quote string
           Align(
             alignment: Alignment.centerRight,
             child: Text(
@@ -626,7 +734,7 @@ class _SwapScreenState extends State<SwapScreen> {
             ),
           ),
 
-          // Countdown row (only for "To" card when we have a quote)
+          // Countdown (for TO)
           if (!isFrom && _quoteToAmount != null && !_quoting)
             Padding(
               padding: const EdgeInsets.only(top: 6, bottom: 10),
@@ -727,6 +835,17 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
+    // If we know chains and either coin is unsupported, stop
+    if (_supportedChains.isNotEmpty &&
+        (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
+      _stopQuoteCountdown();
+      setState(() {
+        _quoteToAmount = null;
+        _quoteError = 'Selected coins are not supported by this wallet';
+      });
+      return;
+    }
+
     _stopQuoteCountdown();
     setState(() {
       _quoting = true;
@@ -741,14 +860,11 @@ class _SwapScreenState extends State<SwapScreen> {
         chain: chain,
       );
 
-      // Some backends respond with: { success: true, data: {...} }
-      // others might return the payload at the top-level.
       final raw = res.data ?? const {};
       final Map<String, dynamic> payload = (raw['data'] is Map)
           ? (raw['data'] as Map).cast<String, dynamic>()
           : raw.cast<String, dynamic>();
 
-      // Look for common fields
       dynamic toAmt = payload['toAmount'] ??
           payload['estimatedAmountOut'] ??
           (payload['quote'] is Map ? payload['quote']['toAmount'] : null) ??
@@ -767,7 +883,7 @@ class _SwapScreenState extends State<SwapScreen> {
       });
 
       if (parsed != null) {
-        _startQuoteCountdown(30); // 🔥 start 30s validity countdown
+        _startQuoteCountdown(30);
       }
     } catch (e) {
       _stopQuoteCountdown();
@@ -788,12 +904,24 @@ class _SwapScreenState extends State<SwapScreen> {
     final toSymbol = _symbolFromId(context, toCoinId);
     final chainI = _normalizeChain(fromCoinId);
     final amount = fromAmount;
-    final slippagePct = ((_slippage ?? 0.01) * 100); // 1% default if null
+    final slippagePct = ((_slippage ?? 0.01) * 100); // default 1%
 
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Enter an amount greater than 0'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Final guard: if we know chains and selected coins are unsupported
+    if (_supportedChains.isNotEmpty &&
+        (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selected coins are not supported by this wallet'),
           backgroundColor: Colors.red,
         ),
       );
@@ -807,7 +935,7 @@ class _SwapScreenState extends State<SwapScreen> {
     });
 
     try {
-      // Resolve walletId + private_key from wallets as requested
+      // Resolve wallet credentials for chain from backend
       final creds = await AuthService.getWalletIdAndPrivateKeyForChain(chainI);
       if (creds == null ||
           (creds['walletId'] ?? '').isEmpty ||
@@ -815,7 +943,7 @@ class _SwapScreenState extends State<SwapScreen> {
         throw 'Could not resolve wallet credentials for $chainI';
       }
 
-      // (Optional) refresh quote just before swap
+      // Optional: refresh quote just before swap
       await _fetchQuote();
 
       final res = await AuthService.swapTokens(
@@ -825,7 +953,7 @@ class _SwapScreenState extends State<SwapScreen> {
         amount: amount,
         slippage: slippagePct,
         chainI: chainI,
-        privateKey: creds['private_key']!, // 👈 from fetchWallets
+        privateKey: creds['private_key']!,
       );
 
       final data = res.data ?? const {};
@@ -859,9 +987,12 @@ class _SwapScreenState extends State<SwapScreen> {
     }
   }
 
+  // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<CoinStore>();
+    final store = context.watch<CoinStore>(); // watch coins so UI updates
+
+    // If initial ids are absent in store, pick some defaults
     if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
       fromCoinId = store.coins.values.first.id;
     }
@@ -869,19 +1000,23 @@ class _SwapScreenState extends State<SwapScreen> {
       toCoinId = store.coins.values.skip(1).first.id;
     }
 
-    // ✅ Enable the swap button only when we have a valid quote & amount
+    // Ensure current selection is supported by selected wallet (if we know chains)
+    if (_supportedChains.isNotEmpty) {
+      _fixUnsupportedSelections();
+    }
+
+    // Enable swap when we have a valid quote & amount
     final bool hasQuote = (_quoteToAmount ?? 0) > 0 && !_quoting;
     final bool canSwap = hasQuote && !_swapping && fromAmount > 0;
 
     final ButtonStyle swapBtnStyle = ButtonStyle(
       backgroundColor: MaterialStateProperty.resolveWith((states) {
         if (states.contains(MaterialState.disabled)) {
-          return const Color(0xFF3A3F55); // disabled gray
+          return const Color(0xFF3A3F55);
         }
-        return const Color(0xFF6366F1); // active indigo
+        return const Color(0xFF6366F1);
       }),
-      foregroundColor:
-          MaterialStateProperty.all<Color>(Colors.white), // text/spinner color
+      foregroundColor: MaterialStateProperty.all<Color>(Colors.white),
       elevation: MaterialStateProperty.all<double>(0),
       shape: MaterialStateProperty.all<RoundedRectangleBorder>(
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -901,7 +1036,7 @@ class _SwapScreenState extends State<SwapScreen> {
         ),
         centerTitle: false,
         actions: [
-          // Tap to open slippage sheet
+          // Slippage
           InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: _showSlippageSheet,
@@ -1001,7 +1136,7 @@ class _SwapScreenState extends State<SwapScreen> {
               ),
             ],
           ),
-          // Positioned swap button between containers
+          // Swap direction button between the two cards
           Positioned(
             top: 105,
             left: 0,

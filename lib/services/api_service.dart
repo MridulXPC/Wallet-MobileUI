@@ -845,6 +845,20 @@ class AuthService {
     return any;
   }
 
+  // Should return a Set of uppercase chain codes, e.g. {'ETH','TRON','BNB','BTC','SOL'}
+  static Future<Set<String>> getWalletSupportedChains(String walletId) async {
+    // TODO: call your backend, parse, and return as a Set<String>.
+    // Return {} if unknown to allow all coins (no filtering).
+    throw UnimplementedError();
+  }
+
+// Should return balances keyed by coinId (matching CoinStore ids), e.g. {'ETH':1.23,'USDT-TRX':55.6}
+  static Future<Map<String, double>> getWalletBalances(String walletId) async {
+    // TODO: call your backend, parse map<String,double>
+    // Return {} if unknown; UI will show zero balances.
+    throw UnimplementedError();
+  }
+
   /// Returns ONLY the private key for a given chain (or null if not found).
   static Future<String?> getPrivateKeyForChain(String chain) async {
     final want = _normalizeChain(chain);
