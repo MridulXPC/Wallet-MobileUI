@@ -470,6 +470,9 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
+    // ✅ Print JWT for debugging
+    debugPrint('🔑 JWT Token: $token');
+
     final res = await _makeRequest(
       method: 'GET',
       endpoint: '/api/wallet/get-wallets',

@@ -8,6 +8,7 @@ import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart'; // for Clipboard
 
 import 'package:cryptowallet/stores/coin_store.dart';
 
@@ -39,6 +40,9 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   ExploreData? _exploreData;
   Map<String, double> _spotPrices = {};
   String? _currentWalletAddress;
+// which wallet is selected in this screen
+  String? _activeWalletName;
+  // optional: to show in UI
 
   // Cached data to avoid repeated API calls
   Map<String, ExploreData> _exploreCache = {};
@@ -122,7 +126,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         _error = null;
       });
 
-      await Future.wait([_loadTokens(), _loadSpotPrices()]);
+      await Future.wait([_loadWallets(), _loadSpotPrices()]);
 
       // Choose first available wallet token as the selected coin (if not set)
       if (_tokens.isNotEmpty) {
@@ -146,31 +150,38 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     }
   }
 
-  Future<void> _loadTokens() async {
+  String _coinIdFromChain(String chain) {
+    final c = chain.toUpperCase().trim();
+    switch (c) {
+      case 'BTC':
+        return 'BTC';
+      case 'ETH':
+        return 'ETH';
+      case 'BNB':
+        return 'BNB';
+      case 'SOL':
+        return 'SOL';
+      case 'TRON':
+      case 'TRX':
+        return 'TRX';
+      case 'XMR':
+        return 'XMR';
+      case 'USDT-ETH':
+        return 'USDT-ETH';
+      case 'USDT-TRX':
+        return 'USDT-TRX';
+      default:
+        return c; // fallback: return raw chain string
+    }
+  }
+
+  Future<void> _loadWallets() async {
     try {
-      // Try to get wallet ID and load tokens
-      final wallets = await AuthService.fetchWallets();
-      if (wallets.isNotEmpty) {
-        final walletId = wallets.first['_id']?.toString();
-        if (walletId != null) {
-          final tokens =
-              await AuthService.fetchTokensByWallet(walletId: walletId);
-          setState(() {
-            _tokens = tokens;
-          });
-        }
-      }
+      setState(() {
+// Make sure you have _wallets defined in your state
+      });
     } catch (e) {
-      debugPrint('Error loading tokens: $e');
-      // Fallback to legacy method
-      try {
-        final tokens = await AuthService.fetchTokens();
-        setState(() {
-          _tokens = tokens;
-        });
-      } catch (e2) {
-        debugPrint('Error with fallback token loading: $e2');
-      }
+      debugPrint('Error loading wallets: $e');
     }
   }
 
@@ -292,8 +303,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               'amount': tx.value?.toString() ?? '0',
               'coin': selectedCoinId,
               'dateTime': _formatDateTime(tx.timestamp as String?),
-              'from': tx.from ?? 'Unknown',
-              'to': tx.to ?? 'Unknown',
+              'from': tx.from,
+              'to': tx.to,
               'hash': tx.hash ?? '',
               'block': tx.blockNumber,
               'feeDetails': {
@@ -560,7 +571,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
           // Coin info and dropdown
           Expanded(
             child: GestureDetector(
-              onTap: _showCoinSelector,
+              onTap: _showWalletChainSelector,
               child: Row(
                 children: [
                   // Coin icon
@@ -585,12 +596,11 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Select Crypto',
-                          style: TextStyle(
-                            color: kMuted,
-                            fontSize: 11,
-                          ),
+                        Text(
+                          _activeWalletName == null
+                              ? 'Select Wallet'
+                              : _activeWalletName!,
+                          style: const TextStyle(color: kMuted, fontSize: 11),
                         ),
                         const SizedBox(height: 2),
                         Row(
@@ -616,7 +626,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
           // Dropdown button
           GestureDetector(
-            onTap: _showCoinSelector,
+            onTap: _showWalletChainSelector, // 👈 same here
             child: Container(
               width: 36,
               height: 36,
@@ -795,11 +805,28 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
+  void _copyCurrentAddress() {
+    final addr = _currentWalletAddress?.trim();
+    if (addr == null || addr.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No address available to copy')),
+      );
+      return;
+    }
+    Clipboard.setData(ClipboardData(text: addr));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Address copied')),
+    );
+  }
+
   Widget _buildActionIcons() {
     if (selectedCoinId.startsWith('USDT')) {
       return Row(
         children: [
-          _miniIconBox(Icons.copy, kTileBorder, kMuted),
+          GestureDetector(
+            onTap: _copyCurrentAddress,
+            child: _miniIconBox(Icons.copy, kTileBorder, kMuted),
+          ),
           const SizedBox(width: 8),
           GestureDetector(
             onTap: _toggleCardFlip,
@@ -810,7 +837,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     } else if (isLightningSelected) {
       return _getLightningStateWidget();
     } else {
-      return _miniIconBox(Icons.copy, kTileBorder, kMuted);
+      return GestureDetector(
+        onTap: _copyCurrentAddress,
+        child: _miniIconBox(Icons.copy, kTileBorder, kMuted),
+      );
     }
   }
 
@@ -1507,54 +1537,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     return s.isEmpty ? c : s;
   }
 
-  /// Returns Coin objects (from CoinStore) that correspond to tokens
-  /// in the ACTIVE wallet only. Falls back to CoinStore if no tokens found.
-  Future<List<Coin>> _coinsForActiveWallet() async {
-    final store = context.read<CoinStore>();
-    // 1) figure out active wallet id
-    String? activeId = context.read<WalletStore>().activeWalletId;
-    if (activeId == null || activeId.isEmpty) {
-      final wallets = await AuthService.fetchWallets();
-      if (wallets.isNotEmpty) {
-        activeId = wallets.first['_id']?.toString();
-      }
-    }
-
-    // 2) get tokens for that wallet
-    if (activeId != null && activeId.isNotEmpty) {
-      try {
-        final tokens =
-            await AuthService.fetchTokensByWallet(walletId: activeId);
-
-        // 3) map tokens -> base symbol -> Coin from store
-        final bases = <String>{};
-        for (final t in tokens) {
-          bases.add(_baseFromToken(t.symbol, t.chain));
-        }
-
-        final coins = <Coin>[];
-        for (final base in bases) {
-          final c = store.getById(base);
-          if (c != null) coins.add(c);
-        }
-
-        // if we found some, return just those
-        if (coins.isNotEmpty) {
-          coins.sort((a, b) => a.symbol.compareTo(b.symbol));
-          return coins;
-        }
-      } catch (_) {
-        // ignore and fall back
-      }
-    }
-
-    // 4) fallback: whole store (previous behavior)
-    final all = store.coins.values.toList()
-      ..sort((a, b) => a.symbol.compareTo(b.symbol));
-    return all;
-  }
-
-  void _showCoinSelector() {
+  void _showWalletChainSelector() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1563,128 +1546,175 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, scrollController) => FutureBuilder<List<Coin>>(
-          future: _coinsForActiveWallet(),
-          builder: (context, snap) {
-            final coins = snap.data ?? const <Coin>[];
+        builder: (context, scrollController) {
+          // Access CoinStore once here
+          final store = context.read<CoinStore>();
 
-            return ClipRect(
-              child: Container(
-                decoration: const BoxDecoration(gradient: kSheetGrad),
-                child: Column(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(top: 10, bottom: 20),
-                      width: 40,
-                      height: 4,
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        children: [
-                          Text(
-                            'Select Cryptocurrency',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    if (snap.connectionState == ConnectionState.waiting)
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    if (snap.hasError)
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Failed to load wallet coins.\n${snap.error}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70),
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: AuthService.fetchWallets(), // ✅ your API
+            builder: (context, snap) {
+              final wallets = snap.data ?? const <Map<String, dynamic>>[];
+
+              // Safely read the chains array from the first wallet
+              final List<dynamic> chains = (wallets.isNotEmpty &&
+                      wallets.first is Map<String, dynamic> &&
+                      (wallets.first as Map<String, dynamic>)['chains'] is List)
+                  ? (wallets.first as Map<String, dynamic>)['chains'] as List
+                  : const <dynamic>[];
+
+              return ClipRect(
+                child: Container(
+                  decoration: const BoxDecoration(gradient: kSheetGrad),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: kTile,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                    if (snap.connectionState == ConnectionState.done &&
-                        coins.isEmpty)
+                      const SizedBox(height: 16),
                       const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'No coins for this wallet.',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      ),
-                    if (coins.isNotEmpty)
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: coins.length,
-                          itemBuilder: (context, index) {
-                            final c = coins[index];
-                            final isSelected = selectedCoinId == c.id;
-                            final current = _getCurrentCoinData();
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: ListTile(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                tileColor: isSelected
-                                    ? kTile
-                                    : const Color(0xFF1F2329),
-                                leading: SizedBox(
-                                  width: 40,
-                                  height: 40,
-                                  child: Center(
-                                    child: (c.assetPath.isNotEmpty)
-                                        ? Image.asset(c.assetPath,
-                                            width: 22, height: 22)
-                                        : const Icon(Icons.currency_bitcoin,
-                                            color: Colors.white, size: 18),
-                                  ),
-                                ),
-                                title: Text(
-                                  c.symbol,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500),
-                                ),
-                                subtitle: Text(
-                                  c.name,
-                                  style: const TextStyle(
-                                      color: kMuted, fontSize: 12),
-                                ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${selectedCoinId == c.id ? current['balance'] : '0.00'} ${c.symbol}',
-                                      style: const TextStyle(
-                                          color: kMuted, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  await _updateSelectedCoin(c.id);
-                                },
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Select Network / Chain',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          },
+                            ),
+                          ],
                         ),
                       ),
-                  ],
+                      const SizedBox(height: 12),
+                      if (snap.connectionState == ConnectionState.waiting)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                      if (snap.hasError)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Failed to load wallets.\n${snap.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      if (snap.connectionState == ConnectionState.done &&
+                          chains.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No chains found in this wallet.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      if (chains.isNotEmpty)
+                        Expanded(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            itemCount: chains.length,
+                            itemBuilder: (context, i) {
+                              final c =
+                                  chains[i] as Map<String, dynamic>? ?? {};
+                              final chain = (c['chain'] ?? '')
+                                  .toString(); // e.g. ETH/BNB/SOL/BTC/TRON
+                              final addr = (c['address'] ?? '').toString();
+                              final bal = (c['balance'] ?? '0').toString();
+
+                              // Map chain -> CoinStore id and fetch icon
+                              final coinId = _coinIdFromChain(chain);
+                              final coin = store.getById(coinId);
+
+                              final isSelected = selectedCoinId == coinId;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                child: ListTile(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  tileColor: isSelected
+                                      ? kTile
+                                      : const Color(0xFF1F2329),
+                                  leading: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: (coin != null &&
+                                            coin.assetPath.isNotEmpty)
+                                        ? Image.asset(
+                                            coin.assetPath,
+                                            width: 24,
+                                            height: 24,
+                                          )
+                                        : const Icon(
+                                            Icons.language,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                  ),
+                                  title: Text(
+                                    chain,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    addr.isEmpty ? '—' : _shortenAddress(addr),
+                                    style: const TextStyle(
+                                      color: kMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  trailing: Text(
+                                    '$bal $chain',
+                                    style: const TextStyle(
+                                      color: kMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  onTap: () async {
+                                    // Close sheet, switch coin + address, then load txns
+                                    Navigator.pop(context);
+                                    setState(() {
+                                      selectedCoinId = coinId;
+                                      _currentWalletAddress = addr;
+                                      _isCardFlipped = false;
+                                      _flipController.reset();
+                                      _lightningState = 'sync';
+                                      _isLightningComplete = false;
+                                      _exploreData = null;
+                                    });
+                                    await _loadTransactionData();
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          );
+        },
       ),
     );
   }

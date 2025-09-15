@@ -1,18 +1,62 @@
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
+// android/build.gradle (project-level)
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    // Android Gradle Plugin (AGP) for JDK 17
+    classpath "com.android.tools.build:gradle:8.5.2"
+
+    // Safe to keep even if your app module uses the plugins DSL
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24"
+  }
 }
 
-rootProject.buildDir = '../build'
-subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
+/**
+ * Global dependency constraints so Lint/Jetifier never see jars compiled for newer Javas.
+ * - Byte Buddy 1.17.x -> classfile 68 (Java 24) ❌
+ * - BouncyCastle 1.80  -> classfile 65 (Java 21) ❌
+ * Pin them to Java-17-compatible versions.
+ */
+allprojects {
+  repositories {
+    google()
+    mavenCentral()
+    // maven { url "https://jitpack.io" } // only if you actually use it
+  }
+
+  configurations.all {
+    resolutionStrategy {
+      // Byte Buddy -> Java 17 compatible
+      force "net.bytebuddy:byte-buddy:1.14.12"
+      force "net.bytebuddy:byte-buddy-agent:1.14.12"
+
+      // 🔧 BouncyCastle -> Java 17 compatible (1.77)
+      force "org.bouncycastle:bcprov-jdk18on:1.77"
+      force "org.bouncycastle:bcpkix-jdk18on:1.77"
+      force "org.bouncycastle:bcutil-jdk18on:1.77"
+
+      // If any lib hard-requires the jdk18on line >=1.80, swap to the older toolchain build instead:
+      // substitute module("org.bouncycastle:bcprov-jdk18on") with module("org.bouncycastle:bcprov-jdk15to18:1.77")
+      // substitute module("org.bouncycastle:bcpkix-jdk18on") with module("org.bouncycastle:bcpkix-jdk15to18:1.77")
+      // substitute module("org.bouncycastle:bcutil-jdk18on") with module("org.bouncycastle:bcutil-jdk15to18:1.77")
+    }
+  }
 }
+
+// Keep module builds under one /build folder for faster cleans
+rootProject.buildDir = "../build"
+
 subprojects {
-    project.evaluationDependsOn(':app')
+  project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+
+subprojects {
+  project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {
-    delete rootProject.buildDir
+  delete rootProject.buildDir
 }

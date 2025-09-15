@@ -480,22 +480,22 @@ class Step2SecureWalletScreen extends StatelessWidget {
                   child: const Text('Get Started'),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () {
-                    // Handle remind me later
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content:
-                              Text('Please secure your wallet now for safety')),
-                    );
-                  },
-                  child: const Text('Remind Me Later'),
-                ),
-              ),
+              // const SizedBox(height: 12),
+              // SizedBox(
+              //   width: double.infinity,
+              //   height: 50,
+              //   child: OutlinedButton(
+              //     onPressed: () {
+              //       // Handle remind me later
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         const SnackBar(
+              //             content:
+              //                 Text('Please secure your wallet now for safety')),
+              //       );
+              //     },
+              //     child: const Text('Remind Me Later'),
+              //   ),
+              // ),
             ],
           ),
         ),

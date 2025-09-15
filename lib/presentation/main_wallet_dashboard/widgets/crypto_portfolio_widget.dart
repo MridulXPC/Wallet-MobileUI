@@ -288,7 +288,7 @@ class _CoinAvatar extends StatelessWidget {
   final String assetPath;
   final double size;
 
-  const _CoinAvatar({super.key, required this.assetPath, this.size = 44});
+  const _CoinAvatar({required this.assetPath, this.size = 44});
 
   @override
   Widget build(BuildContext context) {
