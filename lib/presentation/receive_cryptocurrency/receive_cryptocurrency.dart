@@ -47,6 +47,46 @@ class ReceiveQR extends StatefulWidget {
 class _ReceiveQRState extends State<ReceiveQR> {
   final GlobalKey _qrKey = GlobalKey();
 
+  // Heuristic address validators used by _findAddressForChain/_findAnyAddress
+  bool _looksLike(String chain, String addr) {
+    final a = addr.trim();
+
+    switch (chain) {
+      case 'ETH': // EVM (ETH)
+      case 'BNB': // EVM (BSC)
+        // 0x + 40 hex chars
+        return a.startsWith('0x') &&
+            a.length == 42 &&
+            RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(a);
+
+      case 'TRX':
+        // Tron mainnet Base58, typically 34 chars, starts with T
+        return a.startsWith('T') && a.length >= 30 && a.length <= 36;
+
+      case 'BTC':
+        // Very loose: legacy 1/3 or bech32 bc1
+        return a.startsWith('bc1') || a.startsWith('1') || a.startsWith('3');
+
+      case 'SOL':
+        // Quick base58-ish check for Solana (no 0/O/I/l), 32–44 chars, not hex
+        if (a.startsWith('0x')) return false;
+        if (a.length < 32 || a.length > 44) return false;
+        return RegExp(r'^[1-9A-HJ-NP-Za-km-z]+$').hasMatch(a);
+
+      case 'XMR':
+        // Standard address ~95 chars (integrated ~106), starts with 4 or 8
+        return (a.startsWith('4') || a.startsWith('8')) && a.length >= 90;
+
+      case 'LN':
+        // Bech32 invoice (lnbc…/lntb…) or lightning address (user@domain)
+        final lower = a.toLowerCase();
+        return lower.startsWith('ln') || a.contains('@');
+
+      default:
+        return a.isNotEmpty;
+    }
+  }
+
   // === THEME ===
   static const Color _pageBg = Color(0xFF0B0D1A);
   static const Color _qrCardBg = Colors.white;
@@ -137,7 +177,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
       String? addr = _findAddressForChain(wallet, chainCode);
 
       // Last-resort: any address we can find in wallet
-      addr ??= _findAnyAddress(wallet);
+      addr ??= _findAnyAddress(wallet, chainCode);
 
       if (addr == null || addr.isEmpty) {
         // Do not throw; keep screen usable and show a friendly error
@@ -217,130 +257,120 @@ class _ReceiveQRState extends State<ReceiveQR> {
   String? _findAddressForChain(Map<String, dynamic> wallet, String chainCode) {
     String norm(String? s) => _normalizeChain((s ?? '').toString());
 
-    // 1) Look through a chains[] array: [{chain:'BTC', address:'...'}, ...]
-    final chains = (wallet['chains'] as List?) ?? const [];
-    for (final c in chains) {
-      if (c is! Map) continue;
-      final chain = norm(c['chain']?.toString());
-      if (chain == chainCode) {
-        final addr = c['address']?.toString();
-        if (addr != null && addr.isNotEmpty) return addr;
-      }
-    }
-
-    // 2) Common flat fields by chain
-    String? byKeys(List<String> keys) {
+    String? byKeys(List<String> keys, {bool Function(String)? accept}) {
       for (final k in keys) {
         final v = wallet[k];
-        if (v is String && v.trim().isNotEmpty) return v.trim();
+        if (v is String) {
+          final s = v.trim();
+          if (s.isEmpty) continue;
+          if (accept == null || accept(s)) return s;
+        }
       }
       return null;
     }
 
+    // 1) Prefer chains[] entries
+    final chains = (wallet['chains'] as List?) ?? const [];
+    for (final c in chains) {
+      if (c is! Map) continue;
+      final chain = norm(c['chain']?.toString());
+      final addr = (c['address']?.toString() ?? '').trim();
+      if (chain == chainCode &&
+          addr.isNotEmpty &&
+          _looksLike(chainCode, addr)) {
+        return addr;
+      }
+    }
+
+    // 2) Flat fields per chain (with validation). Note how generic "address"
+    //    is only allowed for EVM chains (ETH/BNB) and BTC if it *looks* like BTC.
     switch (chainCode) {
       case 'LN':
-        return byKeys([
-          'lightningAddress',
-          'lnInvoice',
-          'lnurl',
-          'invoice',
-          'lightning',
-        ]);
+        return byKeys(
+          ['lightningAddress', 'lnInvoice', 'lnurl', 'invoice', 'lightning'],
+          accept: (s) => _looksLike('LN', s),
+        );
+
       case 'BTC':
-        return byKeys([
-          'btcAddress',
-          'bitcoinAddress',
-          'address_btc',
-          'onchainAddress',
-          'address',
-          'publicKey',
-        ]);
+        return byKeys(
+          [
+            'btcAddress',
+            'bitcoinAddress',
+            'address_btc',
+            'onchainAddress',
+            'address'
+          ],
+          accept: (s) => _looksLike('BTC', s),
+        );
+
       case 'ETH':
-        return byKeys([
-          'erc20Address',
-          'ethAddress',
-          'address_eth',
-          'evmAddress',
-          'address',
-          'publicKey',
-        ]);
-      case 'TRX':
-        return byKeys([
-          'trc20Address',
-          'trxAddress',
-          'address_trx',
-          'address',
-          'publicKey',
-        ]);
+        return byKeys(
+          [
+            'erc20Address',
+            'ethAddress',
+            'address_eth',
+            'evmAddress',
+            'address',
+            'publicKey'
+          ],
+          accept: (s) => _looksLike('ETH', s),
+        );
+
       case 'BNB':
-        return byKeys([
-          'bep20Address',
-          'bscAddress',
-          'bnbAddress',
-          'address_bnb',
-          'address',
-          'publicKey',
-        ]);
+        return byKeys(
+          [
+            'bep20Address',
+            'bscAddress',
+            'bnbAddress',
+            'address_bnb',
+            'address',
+            'publicKey'
+          ],
+          accept: (s) => _looksLike('BNB', s), // EVM format
+        );
+
+      case 'TRX':
+        return byKeys(
+          ['trc20Address', 'trxAddress', 'address_trx'],
+          accept: (s) => _looksLike('TRX', s),
+        );
+
       case 'SOL':
-        return byKeys([
-          'solAddress',
-          'solanaAddress',
-          'address_sol',
-          'address',
-          'publicKey',
-        ]);
+        return byKeys(
+          ['solAddress', 'solanaAddress', 'address_sol'],
+          accept: (s) => _looksLike('SOL', s),
+        );
+
       case 'XMR':
-        return byKeys([
-          'xmrAddress',
-          'moneroAddress',
-          'address_xmr',
-          'address',
-          'publicKey',
-        ]);
+        return byKeys(
+          ['xmrAddress', 'moneroAddress', 'address_xmr'],
+          accept: (s) => _looksLike('XMR', s),
+        );
+
       default:
-        return wallet['address']?.toString();
+        return null;
     }
   }
 
   /// Last-resort fallback to extract any address-looking field from a wallet.
-  String? _findAnyAddress(Map<String, dynamic> wallet) {
-    // Try common simple fields first
-    final flatCandidates = [
-      'address',
-      'publicKey',
-      'btcAddress',
-      'ethAddress',
-      'erc20Address',
-      'trc20Address',
-      'trxAddress',
-      'bep20Address',
-      'bscAddress',
-      'bnbAddress',
-      'solAddress',
-      'solanaAddress',
-      'xmrAddress',
-      'moneroAddress',
-      'lightningAddress',
-      'lnInvoice',
-      'lnurl',
-      'invoice',
-      'address_eth',
-      'address_trx',
-      'address_bnb',
-      'address_sol',
-      'address_xmr',
-    ];
-    for (final k in flatCandidates) {
-      final v = wallet[k];
-      if (v is String && v.trim().isNotEmpty) return v.trim();
+  String? _findAnyAddress(Map<String, dynamic> wallet, String chainCode) {
+    // Scan obvious flat fields first
+    for (final entry in wallet.entries) {
+      final v = entry.value;
+      if (v is String) {
+        final s = v.trim();
+        if (s.isEmpty) continue;
+        if (_looksLike(chainCode, s)) return s;
+      }
     }
 
-    // Then try the first non-empty address from chains[]
+    // Then scan chains[] again (already filtered by _looksLike)
     final chains = (wallet['chains'] as List?) ?? const [];
     for (final c in chains) {
       if (c is! Map) continue;
-      final addr = c['address']?.toString();
-      if (addr != null && addr.isNotEmpty) return addr;
+      final addr = (c['address']?.toString() ?? '').trim();
+      final chain = _normalizeChain((c['chain']?.toString() ?? ''));
+      if (_looksLike(chainCode, addr) && chain == chainCode) return addr;
     }
     return null;
   }

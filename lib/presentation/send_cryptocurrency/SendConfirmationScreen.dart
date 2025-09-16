@@ -1,5 +1,8 @@
 // lib/presentation/send_cryptocurrency/SendConfirmationScreen.dart
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:flutter/material.dart';
@@ -24,32 +27,39 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
   bool _saveAsContact = false;
   bool _isAddressValid = false;
   String _addressType = 'Unknown';
+  late SendFlowData _flow;
 
   @override
   void initState() {
     super.initState();
-    // prefill if the previous step already had an address (rare)
-    _addressController.text = widget.flowData.toAddress ?? '';
+
+    _flow = widget.flowData; // <-- mutable copy for this screen
+
+    // prefill if previous step already had an address
+    _addressController.text = _flow.toAddress ?? '';
     _addressController.addListener(_validateAddress);
     _validateAddress();
-  }
 
-  @override
-  void dispose() {
-    _addressController.dispose();
-    super.dispose();
+    if (_addressController.text.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final saved = await _loadSavedAddress();
+        if (!mounted) return;
+        if (saved != null && saved.isNotEmpty) {
+          _addressController.text = saved;
+        }
+      });
+    }
   }
 
   // --------- Helpers ---------
-  String get _assetSymbol => widget.flowData.assetSymbol;
-  String get _assetName => widget.flowData.assetName;
-  double get _assetPrice => widget.flowData.usdValue > 0
-      ? (widget.flowData.usdValue /
-          (double.tryParse(widget.flowData.amount) ?? 1.0)
+  String get _assetSymbol => _flow.assetSymbol;
+  String get _assetName => _flow.assetName;
+  double get _assetPrice => _flow.usdValue > 0
+      ? (_flow.usdValue /
+          (double.tryParse(_flow.amount) ?? 1.0)
               .clamp(0.00000001, double.infinity))
-      : widget.flowData.amount.isNotEmpty
-          ? widget
-              .flowData.usdValue // may be zero; only used for fiat fee approx
+      : _flow.amount.isNotEmpty
+          ? _flow.usdValue
           : 0.0;
 
   double _calculateNetworkFee() {
@@ -64,6 +74,34 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
       default:
         return 1.0;
     }
+  }
+
+  String get _coinKeyForPrefs {
+    // Always have at least the symbol
+    final sym = _assetSymbol.toUpperCase();
+
+    // If your flow carries a network/chain field (any name), we append it.
+    // This is wrapped in try/catch and uses null-aware checks to avoid crashes.
+    try {
+      final dyn = (_flow as dynamic);
+      final net = (dyn.network ?? dyn.chain ?? dyn.assetNetwork);
+      if (net is String && net.isNotEmpty) {
+        return '$sym-$net';
+      }
+    } catch (_) {
+      // ignore – we’ll just use the symbol
+    }
+    return sym;
+  }
+
+  Future<void> _saveScannedAddress(String address) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_scanned_address:$_coinKeyForPrefs', address);
+  }
+
+  Future<String?> _loadSavedAddress() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('last_scanned_address:$_coinKeyForPrefs');
   }
 
   void _validateAddress() {
@@ -98,13 +136,75 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
     }
   }
 
-  void _scanQRCode() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('QR Code scanner would open here'),
-        backgroundColor: Color(0xFF4C5563),
-      ),
-    );
+  Future<void> _scanQRCode() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      if (!mounted) return;
+      // 1) open scanner
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => QRScannerScreen(
+            onScan: (code) async {
+              final scanned = code.trim();
+
+              // Save immediately for later reuse
+              await _saveScannedAddress(scanned);
+
+              // Pop scanner first
+              if (Navigator.canPop(context)) Navigator.pop(context);
+
+              // 2) Now go to SendCryptocurrency to enter amount
+              if (!mounted) return;
+              final returned = await Navigator.push<SendFlowData?>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SendCryptocurrency(
+                    title: 'Send ${_assetSymbol}',
+                    initialCoinId:
+                        _coinKeyForPrefs, // symbol or symbol-network (safe)
+// if flow has coinId, prefer it
+                    startInUsd:
+                        false, // user enters crypto amount, tweak if you want USD first
+                    initialUsd: 0, // not used if startInUsd=false
+                    initialAddress: scanned, // prefill recipient
+                    // (Optional) you can pass any other context you need
+                  ),
+                ),
+              );
+
+              // 3) When user returns, prefill amount+address here
+              if (!mounted) return;
+              if (returned != null) {
+                setState(() {
+                  _flow =
+                      returned; // amount/asset/fiat now reflect what they chose
+                  _addressController.text =
+                      returned.toAddress ?? scanned; // keep the address
+                });
+                _validateAddress();
+              } else {
+                // If SendCryptocurrency didn't return data, still fill the scanned address
+                setState(() {
+                  _addressController.text = scanned;
+                });
+                _validateAddress();
+              }
+            },
+          ),
+        ),
+      );
+    } else if (status.isPermanentlyDenied) {
+      openAppSettings();
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera permission is required.'),
+          backgroundColor: Color(0xFF4C5563),
+        ),
+      );
+    }
   }
 
   void _openAddressBook() {
@@ -138,7 +238,7 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
     }
 
     // Take the flowData from Screen 1 and attach the entered address
-    final flowDataWithAddress = widget.flowData.copyWith(
+    final flowDataWithAddress = _flow.copyWith(
       toAddress: enteredAddress,
     );
 
@@ -154,7 +254,8 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final amountStr = widget.flowData.amount; // crypto amount as string
+    final amountStr = _flow.amount;
+
     final networkFee = _calculateNetworkFee();
     // If you want to show fiat fee: use explicit price if you have it.
     // Here we fallback to 0 if price is unknown.

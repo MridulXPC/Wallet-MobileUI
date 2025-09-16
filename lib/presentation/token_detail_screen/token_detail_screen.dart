@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
-import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +14,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
 class TokenDetailScreen extends StatefulWidget {
-  const TokenDetailScreen({super.key});
+  const TokenDetailScreen({super.key, required this.coinId});
+  final String coinId;
   @override
   State<TokenDetailScreen> createState() => _TokenDetailScreenState();
 }
@@ -272,11 +272,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     _loadChartFor(period);
   }
 
-  void _toggleBookmark() {
-    setState(() => isBookmarked = !isBookmarked);
-    HapticFeedback.lightImpact();
-  }
-
   // --------------------- Receive handling (unchanged) ---------------------
   String? _tryKeys(List<String> keys) {
     for (final k in keys) {
@@ -286,86 +281,21 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return null;
   }
 
-  ({String address, String mode, String title})? _resolveReceive() {
-    final id = _coinId.toUpperCase();
-    final base = id.contains('-') ? id.split('-').first : id;
-    final chain = id.contains('-') ? id.split('-').last : '';
-
-    if (base == 'BTC' && chain != 'LN') {
-      final addr = _tryKeys([
-        'btcAddress',
-        'bitcoinAddress',
-        'address_btc',
-        'address',
-        'onchainAddress'
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your BTC address');
-    }
-    if (base == 'BTC' && chain == 'LN') {
-      final addr = _tryKeys(
-          ['lightning', 'lightningAddress', 'lnInvoice', 'lnurl', 'invoice']);
-      if (addr == null) return null;
-      return (address: addr, mode: 'ln', title: 'Your Lightning invoice');
-    }
-    if (chain == 'ETH' || base == 'ETH') {
-      final addr =
-          _tryKeys(['erc20Address', 'ethAddress', 'address_eth', 'address']);
-      if (addr == null) return null;
-      final t =
-          base == 'USDT' ? 'Your USDT (ERC-20) address' : 'Your ETH address';
-      return (address: addr, mode: 'onchain', title: t);
-    }
-    if (chain == 'TRX' || base == 'TRX') {
-      final addr =
-          _tryKeys(['trc20Address', 'trxAddress', 'address_trx', 'address']);
-      if (addr == null) return null;
-      final t =
-          base == 'USDT' ? 'Your USDT (TRC-20) address' : 'Your TRX address';
-      return (address: addr, mode: 'onchain', title: t);
-    }
-    if (chain == 'SOL' || base == 'SOL') {
-      final addr =
-          _tryKeys(['solAddress', 'solanaAddress', 'address_sol', 'address']);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your SOL address');
-    }
-    if (chain == 'BNB' || base == 'BNB') {
-      final addr = _tryKeys([
-        'bep20Address',
-        'bscAddress',
-        'bnbAddress',
-        'address_bnb',
-        'address'
-      ]);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your BNB (BSC) address');
-    }
-    if (chain == 'XMR' || base == 'XMR') {
-      final addr =
-          _tryKeys(['xmrAddress', 'moneroAddress', 'address_xmr', 'address']);
-      if (addr == null) return null;
-      return (address: addr, mode: 'onchain', title: 'Your XMR address');
-    }
-    final generic = _tryKeys(['address']);
-    if (generic != null) {
-      return (
-        address: generic,
-        mode: 'onchain',
-        title: 'Your address to receive $name'
-      );
-    }
-    return null;
-  }
-
+// In TokenDetailScreenState
+// In _TokenDetailScreenState
   String get _coinId {
-    final explicit = (tokenData?['coinId'] ?? tokenData?['id'])?.toString();
-    if (explicit != null && explicit.isNotEmpty) return explicit;
+    // Prefer explicit coin id from the navigation args/payload, if present
+    final explicit = tokenData?['coinId']?.toString();
+    if (explicit != null && explicit.isNotEmpty) return explicit.toUpperCase();
 
-    final s = sym.toUpperCase();
+    // Then the constructor param (this is the reliable one)
+    if (widget.coinId.isNotEmpty) return widget.coinId.toUpperCase();
+
+    // Last resort: derive from symbol + chain text
+    final s = (tokenData?['symbol'] ?? '').toString().toUpperCase();
     final c = _normalizeChain(tokenData?['chain']);
-    if (c.isNotEmpty && c != s) return '$s-$c';
-    return s;
+    if (s.isNotEmpty && c.isNotEmpty && c != s) return '$s-$c';
+    return s.isNotEmpty ? s : 'BTC';
   }
 
   String _normalizeChain(dynamic v) {
@@ -400,20 +330,24 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
+// TokenDetailScreen: replace your _openReceive() with this
   void _openReceive() {
-    final res = _resolveReceive();
-    final id = _coinId;
-    final pretty = name;
-    final mode = res?.mode ?? (id.endsWith('-LN') ? 'ln' : 'onchain');
+    final id = _coinId; // e.g. BTC, BTC-LN, USDT-TRX, SOL-SOL
+    // Prefer CoinStore's display name; otherwise fallback to the symbol
+    final coin = context.read<CoinStore>().getById(id);
+    final pretty = coin?.name ?? sym; // <-- use sym, not tokenData['name']
+
+    final String? mode =
+        id.contains('-LN') ? 'ln' : (id.startsWith('BTC') ? 'onchain' : null);
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ReceiveQR(
-          title: res?.title ?? 'Your address to receive $pretty',
-          address: res?.address ?? '',
-          coinId: id,
-          mode: mode,
+          title: 'Your address to receive $pretty',
+          address: '', // let ReceiveQR resolve from wallet
+          coinId: id, // pass a VALID coin id (BTC, BTC-LN, USDT-TRX…)
+          mode: mode, // 'ln' / 'onchain' / null
           minSats: (mode == 'onchain' && id.startsWith('BTC')) ? 25000 : null,
         ),
       ),

@@ -11,8 +11,8 @@ import 'package:cryptowallet/presentation/main_wallet_dashboard/QrScannerScreen.
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
-// <-- adjust path if different
 import 'package:cryptowallet/services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
@@ -76,24 +76,30 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         : 'name:$nameOrId';
   }
 
+  int _priceDecimalsFor(String coinId) {
+    final base =
+        (coinId.contains('-') ? coinId.split('-').first : coinId).toUpperCase();
+    return base == 'TRX' ? 4 : 2;
+  }
+
   Color _dominantColor = const Color(0xFF1A73E8); // default blue
   bool _isColorReady = false;
   Timer? _debounce;
 
-  // ===== Live price from Binance WS =====
+  // ===== Live price (WS) =====
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
   Timer? _reconnectTimer;
 
-  double? _livePrice; // "c" — last price (used for the main price UI)
-  double? _changePercent24; // "P" — 24h % change
-  double? _changeAbs24; // "p" — 24h absolute change (USD)
+  double? _livePrice; // last price
+  double? _changePercent24; // 24h % change
+  double? _changeAbs24; // 24h absolute change (quote)
 
   @override
   void initState() {
     super.initState();
 
-    // Provide an immediate coin-specific fallback so there’s no shared “blue flash”.
+    // Immediate coin-specific fallback color so there’s no shared “blue flash”.
     final store = context.read<CoinStore>();
     final coin = store.getById(widget.coinId);
     final initial = _fallbackColor(widget.title ?? coin?.name ?? widget.coinId);
@@ -107,7 +113,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Precache small icon for the current coin
+    // Precache small icon
     final coin = context.read<CoinStore>().getById(widget.coinId);
     final assetPath = coin?.assetPath;
     final provider = _getAssetProvider(widget.coinId, assetPath);
@@ -115,7 +121,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       precacheImage(provider, context);
     }
 
-    // Precache BIG, soft watermark
+    // Precache BIG watermark
     final bg = context.read<CoinStore>().cardAssetFor(widget.coinId);
     if (bg != null) precacheImage(AssetImage(bg), context);
   }
@@ -137,7 +143,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
       _resolveDominantColor();
 
-      // Reconnect WS for the new coin
+      // Reconnect WS for new coin
       _disposeWs();
       _connectTickerIfSupported();
     }
@@ -270,10 +276,15 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     );
   }
 
-  // ------------------- Binance WebSocket -------------------
-  String? _binanceSymbolFor(String coinId) {
+  // ------------------- WebSockets: Binance (default) & Kraken (XMR) -------------------
+
+  /// Map coinId (or base) to a Binance symbol vs USDT.
+  /// Returns null if we should NOT stream from Binance for this coin.
+  String? _binanceSymbolFor(String coinIdOrBase) {
     // Collapse networked IDs to base symbol
-    final base = coinId.contains('-') ? coinId.split('-').first : coinId;
+    final base = coinIdOrBase.contains('-')
+        ? coinIdOrBase.split('-').first
+        : coinIdOrBase;
     switch (base.toUpperCase()) {
       case 'BTC':
         return 'btcusdt';
@@ -286,37 +297,102 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
       case 'TRX':
         return 'trxusdt';
       case 'XMR':
-        return 'xmrusdt';
-      // USDT is the quote currency; skip live feed for it
+        return null; // XMR handled by Kraken
       case 'USDT':
-        return null;
+        return null; // USDT is the quote currency; skip
       default:
         return null;
     }
   }
 
   void _connectTickerIfSupported() {
+    final base = (widget.coinId.contains('-')
+            ? widget.coinId.split('-').first
+            : widget.coinId)
+        .toUpperCase();
+
+    _disposeWs();
+
+    // XMR -> Kraken (XMR/USD)
+    if (base == 'XMR') {
+      _connectKrakenXmrUsd();
+      return;
+    }
+
+    // Others -> Binance vs USDT
     final sym = _binanceSymbolFor(widget.coinId);
     if (sym == null) return;
 
     final url = 'wss://stream.binance.com:9443/ws/$sym@ticker';
 
-    _disposeWs();
     try {
       _ws = WebSocketChannel.connect(Uri.parse(url));
       _wsSub = _ws!.stream.listen(
         (raw) {
           try {
             final data = jsonDecode(raw as String) as Map<String, dynamic>;
-            final last = double.tryParse(data['c']?.toString() ?? '');
-            final pct = double.tryParse(data['P']?.toString() ?? '');
-            final abs = double.tryParse(data['p']?.toString() ?? '');
+            final last = double.tryParse('${data['c']}');
+            final pct = double.tryParse('${data['P']}');
+            final abs = double.tryParse('${data['p']}');
 
-            if (last != null && mounted) {
+            if (!mounted) return;
+            setState(() {
+              if (last != null) _livePrice = last;
+              if (pct != null) _changePercent24 = pct;
+              if (abs != null) _changeAbs24 = abs;
+            });
+          } catch (_) {}
+        },
+        onDone: _scheduleReconnect,
+        onError: (_) => _scheduleReconnect(),
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
+  void _connectKrakenXmrUsd() {
+    try {
+      _ws = WebSocketChannel.connect(Uri.parse('wss://ws.kraken.com'));
+      _ws!.sink.add(jsonEncode({
+        "event": "subscribe",
+        "pair": ["XMR/USD"],
+        "subscription": {"name": "ticker"}
+      }));
+
+      _wsSub = _ws!.stream.listen(
+        (raw) {
+          try {
+            final data = jsonDecode(raw as String);
+            // Kraken ticker payload is an array: [channelId, {fields...}, "ticker", "XMR/USD"]
+            if (data is List && data.length > 1 && data[1] is Map) {
+              final m = (data[1] as Map).cast<String, dynamic>();
+
+              // Last trade price 'c' => ["price","lot"]
+              final lastStr = (m['c'] is List && (m['c'] as List).isNotEmpty)
+                  ? '${m['c'][0]}'
+                  : null;
+              final last = lastStr != null ? double.tryParse(lastStr) : null;
+
+              // Derive 24h change from 24h open 'o' => [todayOpen, 24hOpen]
+              double? pct;
+              double? abs;
+              if (m['o'] is List &&
+                  (m['o'] as List).length >= 2 &&
+                  last != null) {
+                final open24 = double.tryParse('${m['o'][1]}');
+                if (open24 != null && open24 > 0) {
+                  abs = last - open24;
+                  pct = (abs / open24) * 100.0;
+                }
+              }
+
+              if (!mounted) return;
               setState(() {
-                _livePrice = last;
-                _changePercent24 = pct ?? _changePercent24;
-                _changeAbs24 = abs ?? _changeAbs24;
+                if (last != null) _livePrice = last;
+                if (pct != null) _changePercent24 = pct;
+                if (abs != null) _changeAbs24 = abs;
               });
             }
           } catch (_) {}
@@ -349,7 +425,8 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
 
   // ------------------- UI helpers -------------------
   // Always show at least 4 decimals for the last price.
-  String _formatLastPrice(double v) => v.toStringAsFixed(4);
+  String _formatLastPrice(double v) =>
+      v.toStringAsFixed(_priceDecimalsFor(widget.coinId));
 
   // ------------------- Actions -------------------
 
@@ -389,52 +466,24 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         MaterialPageRoute(
           builder: (_) => QRScannerScreen(
             onScan: (code) async {
-              try {
-                String? token = await AuthService.getStoredToken();
+              // 1) persist scanned value for later use
+              await _saveScannedAddress(coinId: widget.coinId, address: code);
 
-                if (token == null) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          '❌ Authentication required. Please login first.'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                  return;
-                }
-
-                final result = await AuthService.authorizeWebSession(
-                  sessionId: code,
-                  token: token,
-                );
-
-                if (!mounted) return;
-                if (result.success) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SessionInfoScreen(sessionId: code),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          result.message ?? '❌ Failed to authorize session'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                }
-              } catch (_) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content:
-                          Text('❌ An error occurred during authorization')),
-                );
-                Navigator.pop(context);
-              }
+              // 2) navigate to Send with preselected asset + prefilled address
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SendCryptocurrency(
+                    title: 'Send ${widget.title ?? widget.coinId}',
+                    initialCoinId: widget.coinId, // keep same asset
+                    startInUsd: false, // usually "crypto" tab for sending
+                    initialUsd: 0, // unused in this path
+                    // ⬇️ add this optional param in SendCryptocurrency if missing
+                    initialAddress: code, // prefill recipient/address field
+                  ),
+                ),
+              );
             },
           ),
         ),
@@ -447,6 +496,21 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
         const SnackBar(content: Text('Camera permission is required.')),
       );
     }
+  }
+
+  Future<void> _saveScannedAddress({
+    required String coinId,
+    required String address,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    // store by full coinId (e.g., "BTC", "USDT-TRX", "ETH-ERC20")
+    await prefs.setString('last_scanned_address:$coinId', address);
+  }
+
+// optional: handy if you ever want to read it back in this widget
+  Future<String?> _getLastScannedAddress(String coinId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('last_scanned_address:$coinId');
   }
 
   // Open Send screen with USD prefill
@@ -515,25 +579,36 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
     );
 
     // Live or fallback price
-    final livePrice = _livePrice ?? widget.currentPrice;
+    // Live or fallback price
+// Live or fallback price (force tether to $1.00)
+    final base = (widget.coinId.contains('-')
+            ? widget.coinId.split('-').first
+            : widget.coinId)
+        .toUpperCase();
+
+    final livePrice =
+        base == 'USDT' ? 1.0 : (_livePrice ?? widget.currentPrice);
 
     // Compose “▲/▼X.XX% (+$Y.YYYY)” from P and p
     final pct = _changePercent24; // 24h % change
     final abs = _changeAbs24; // 24h absolute change ($)
     final isUp = (pct ?? 0) >= 0;
+    // final decimals = _priceDecimalsFor(widget.coinId);
 
     String changeLine;
-    if (pct == null && abs == null) {
+    if (base == 'USDT') {
+      changeLine = 'Stable at \$1.00';
+    } else if (pct == null && abs == null) {
       changeLine = '—';
     } else {
       final pctPart = (pct == null)
           ? '—'
           : '${isUp ? '▲' : '▼'}${pct.abs().toStringAsFixed(2)}%';
 
-      // four decimals for the +/- $ value
+      final decimals = _priceDecimalsFor(widget.coinId);
       final absPart = (abs == null)
           ? ''
-          : ' (${abs >= 0 ? '+' : '-'}\$${abs.abs().toStringAsFixed(4)})';
+          : ' (${abs >= 0 ? '+' : '-'}\$${abs.abs().toStringAsFixed(decimals)})';
 
       changeLine = '$pctPart$absPart';
     }
@@ -563,7 +638,7 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
               IconButton(
                 icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
                 onPressed: _openQRScanner,
-                tooltip: 'Scan',
+                tooltip: 'Scan & Send',
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

@@ -80,66 +80,65 @@ class AppRoutes {
     // Wallet Features
 // Helper: turn "BTC-LN" -> "BTC"
     receiveCrypto: (context) {
-      final args = ModalRoute.of(context)?.settings.arguments;
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      final Map<String, dynamic> args =
+          (raw is Map) ? Map<String, dynamic>.from(raw) : const {};
 
-      // defaults
-      String? coinId; // e.g. "BTC", "BTC-LN"
-      String? mode; // "onchain" | "invoice" | "ln" | "lightning"
-      String? titleOverride; // optional explicit title
+      // Args (all optional)
+      final String idRaw = (args['coinId'] as String? ?? 'BTC')
+          .toUpperCase(); // e.g. BTC, BTC-LN, USDT-TRX
+      final String? modeArg =
+          args['mode'] as String?; // onchain | ln | lightning | invoice
+      final String? titleOverride = args['title'] as String?;
+      final String? address =
+          args['address'] as String?; // optional direct address/QR data
+      final int? initialSats = args['initialSats'] is num
+          ? (args['initialSats'] as num).toInt()
+          : null;
 
-      if (args is Map) {
-        coinId = args['coinId'] as String?;
-        mode = args['mode'] as String?;
-        titleOverride = args['title'] as String?;
-      }
+      // Symbol (first part of "BTC-LN" -> "BTC")
+      final String symbol = idRaw.split('-').first;
 
-      // Normalize coin id & symbol
-      final id = (coinId ?? 'BTC').toUpperCase(); // "BTC-LN" -> "BTC-LN"
-      final symbol = id.split('-').first; // "BTC-LN" -> "BTC"
-
-      // Normalize mode; default by coin
-      late final String normalizedMode;
-      if (mode != null) {
-        final m = mode!.toLowerCase();
-        normalizedMode = (m == 'invoice' || m == 'ln' || m == 'lightning')
-            ? 'invoice'
-            : 'onchain';
-      } else {
-        normalizedMode = id.startsWith('BTC-LN') ? 'invoice' : 'onchain';
-      }
+      // Normalize mode for ReceiveQR: we pass only 'onchain' or 'ln'
+      final String modeNormalized = () {
+        if (modeArg == null) {
+          return idRaw.contains('-LN') ? 'ln' : 'onchain';
+        }
+        final m = modeArg.toLowerCase();
+        if (m == 'ln' || m == 'lightning' || m == 'invoice') return 'ln';
+        return 'onchain';
+      }();
 
       // Title
-      final computedTitle = titleOverride ??
-          (normalizedMode == 'invoice'
+      final String title = titleOverride ??
+          (modeNormalized == 'ln'
               ? 'Set amount to receive $symbol'
               : 'Your address to receive $symbol');
 
-      // Optional min sats for BTC on-chain
+      // Optional min sats (only for BTC on-chain)
       final int? minSats =
-          (normalizedMode == 'onchain' && symbol == 'BTC') ? 25000 : null;
+          (modeNormalized == 'onchain' && symbol == 'BTC') ? 25000 : null;
 
       return ReceiveQR(
-        title: "Your address to receive BTC",
-        address: "bc1pht4p7c7gxqjlpkf28t3n...04uvww6jlq5n373aqt8amed",
-        coinId: "BTC",
-        mode: "onchain",
-        initialSats: 0,
-        minSats: 25000,
+        title: title,
+        address:
+            address ?? '', // let ReceiveQR resolve from active wallet if empty
+        coinId: idRaw, // the exact coin (e.g., BTC-LN, USDT-TRX)
+        mode: modeNormalized, // 'onchain' | 'ln'
+        initialSats: initialSats, // optional prefill
+        minSats: minSats, // floor for BTC on-chain
       );
     },
 
     receiveBTCLightning: (context) {
       final raw = ModalRoute.of(context)?.settings.arguments;
-
-      // Safe map extraction
       final Map<String, dynamic> args =
           (raw is Map) ? Map<String, dynamic>.from(raw) : const {};
 
-      // ---- Back-compat (old) ----
-      // If someone still passes { title, address }, we’ll treat `address` as the QR data.
+      // Back-compat: if someone passed { address } previously, treat it as QR data
       final String? legacyAddress = args['address'] as String?;
 
-      // ---- New fields (for the Charge / invoice flow) ----
+      // New flow fields (all optional with safe defaults)
       final String title = (args['title'] as String?) ?? 'Charge';
       final String accountLabel =
           (args['accountLabel'] as String?) ?? 'LN - Main Account';
@@ -149,16 +148,15 @@ class AppRoutes {
       final bool isLightning = (args['isLightning'] as bool?) ?? true;
 
       final String amount = (args['amount'] as String?) ?? '0';
-      final String symbol = (args['symbol'] as String?) ?? 'BTC';
+      final String symbol =
+          ((args['symbol'] as String?) ?? 'BTC').toUpperCase();
       final double fiatValue = (args['fiatValue'] is num)
           ? (args['fiatValue'] as num).toDouble()
           : 0.0;
 
-      // What to encode in the QR. In the new flow this should be the amount (or LN invoice later).
-      final String qrData = (args['qrData'] as String?) ??
-          legacyAddress // fallback to legacy
-          ??
-          amount; // final fallback
+      // Prefer explicit qrData; else fall back to legacy address; else use amount
+      final String qrData =
+          (args['qrData'] as String?) ?? legacyAddress ?? amount;
 
       return ReceiveQRbtclightning(
         title: title,
@@ -167,15 +165,17 @@ class AppRoutes {
         iconAsset: iconAsset,
         isLightning: isLightning,
         amount: amount,
-        symbol: symbol,
+        symbol: symbol, // e.g. BTC
         fiatValue: fiatValue,
-        qrData: qrData,
+        qrData: qrData, // LN invoice or pre-encoded data
       );
     },
 
     sendCrypto: (context) => const SendCryptocurrency(),
     transactionHistory: (context) => const TransactionHistory(),
-    tokenDetail: (context) => const TokenDetailScreen(),
+    tokenDetail: (context) => const TokenDetailScreen(
+          coinId: '',
+        ),
     swapScreen: (context) => const SwapScreen(),
     walletInfoScreen: (context) => WalletInfoScreen(),
 

@@ -320,6 +320,7 @@ class _AssetSheetScaffold extends StatelessWidget {
 class SendCryptocurrency extends StatefulWidget {
   /// Screen title (defaults to "Insert Amount")
   final String title;
+  final String? initialAddress;
 
   /// Preselect a coin/network by its CoinStore id (e.g. "BTC-LN", "BTC", "USDT-TRX")
   final String? initialCoinId;
@@ -350,6 +351,7 @@ class SendCryptocurrency extends StatefulWidget {
     this.startInUsd = false, // NEW
     this.userId,
     this.walletId,
+    this.initialAddress,
   });
 
   @override

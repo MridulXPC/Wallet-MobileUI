@@ -714,6 +714,7 @@ class AuthService {
     required String toToken,
     required double amount,
     required String chain,
+    double? slippage,
   }) async {
     final jwt = await getStoredToken();
     if (jwt == null) {
@@ -725,6 +726,7 @@ class AuthService {
       "toToken": toToken,
       "amount": amount,
       "chain": chain,
+      if (slippage != null) 'slippage': slippage, // send raw number
     };
 
     Future<AuthResponse> _call(String endpoint) async {
