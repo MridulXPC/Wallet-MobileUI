@@ -2,6 +2,7 @@
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart'; // ← navigate to review screen next
+import 'package:cryptowallet/widgets/tx_failure_card.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
@@ -486,12 +487,14 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     }
 
     if (amountCrypto > _selectedAssetBalance) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Insufficient balance'),
-          backgroundColor: Colors.red,
-        ),
+      TxFailureCard.show(
+        context,
+        title: 'Transaction failed',
+        message: 'Insufficient balance',
+        barrier: true, // nice dim+blur
+        // autoHideAfter: const Duration(seconds: 5),
       );
+
       return;
     }
 
@@ -1190,11 +1193,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                         width: double.infinity,
                         height: isSmallScreen ? 5.h : 6.h,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ElevatedButton(
@@ -1210,7 +1209,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           child: Text(
                             widget.buttonLabel ?? 'Next',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: Colors.black,
                               fontSize: isSmallScreen ? 16 : 18,
                               fontWeight: FontWeight.w600,
                             ),
