@@ -1,6 +1,6 @@
+import 'package:cryptowallet/presentation/profile_screen/chatsupport.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show rootBundle; // only used if you later load local terms/privacy text
+// only used if you later load local terms/privacy text
 
 class TechSupportScreen extends StatefulWidget {
   const TechSupportScreen({super.key});
@@ -14,14 +14,19 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
   static const _card = Color(0xFF171B2B);
   static const _faint = Color(0xFFBFC5DA);
 
-  void _comingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Open Ticket is coming soon'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
-      ),
-    );
+// inside _TechSupportScreenState
+
+  void _openTicket() {
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const SupportChatScreen(
+            baseUrll:
+                "https://app.chatwoot.com", // ← YOUR self-hosted URL (no trailing slash needed)
+            websiteToken: "QHU9yPyXWWUXeRzn3TaDqRij",
+            userId: "user-123",
+          ),
+        ));
   }
 
   void _openTerms() {
@@ -94,8 +99,9 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
             leadingIcon: Icons.chat_bubble_outline,
             title: 'Open Ticket',
             subtitle: 'Report an issue',
-            onTap: _comingSoon,
+            onTap: _openTicket, // was _comingSoon
           ),
+
           const SizedBox(height: 12),
 
           // Terms of Use

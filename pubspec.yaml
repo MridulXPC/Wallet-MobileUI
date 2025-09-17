@@ -10,7 +10,7 @@ dependencies:
   flutter_svg: ^2.0.9
   shared_preferences: ^2.2.2
   connectivity_plus: ^5.0.2
-  dio: ^5.4.0
+
   fluttertoast: ^8.2.4
   sizer: ^2.0.15
   fl_chart: ^0.65.0
@@ -31,11 +31,12 @@ dependencies:
   share_plus: ^11.1.0
   provider: ^6.1.5+1
   flutter_secure_storage: ^9.2.4
-  web_socket_channel: ^3.0.3
+  web_socket_channel: ^2.1.0
   flutter_dotenv: ^6.0.0
   local_auth: ^2.3.0
-  flutter_localizations:
-    sdk: flutter
+  webview_flutter: ^4.13.0
+
+
 
 dev_dependencies:
   flutter_test:

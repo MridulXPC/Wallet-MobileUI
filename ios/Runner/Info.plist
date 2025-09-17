@@ -26,6 +26,7 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -39,25 +40,31 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ✅ Correct ATS block: put NSAllowsArbitraryLoads INSIDE this dict (only if you truly need HTTP) -->
 	<key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true />
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+
+	<!-- ✅ Usage descriptions belong at the root, not inside NSAppTransportSecurity -->
 	<key>NSCameraUsageDescription</key>
-    <string>This app requires access to the camera to scan QR codes for web login.</string>	
-    </dict>
+	<string>This app requires access to the camera to scan QR codes for web login.</string>
 	<key>NSFaceIDUsageDescription</key>
-<string>We use Face ID to help you securely access your wallet.</string>
+	<string>We use Face ID to help you securely access your wallet.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app requires access to your location to provide location-based services.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to your photo library to save and manage images.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>This app requires Bluetooth access for device connectivity.</string>
+
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
