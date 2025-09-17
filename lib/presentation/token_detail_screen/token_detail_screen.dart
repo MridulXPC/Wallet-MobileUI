@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
+import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -635,7 +636,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // ------------------ Holdings tab (unchanged UI) ------------------
+// ------------------ Holdings tab (now uses BalanceStore) ------------------
   Widget _buildHoldingsTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 3.w),
@@ -661,129 +662,87 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   List<Widget> _buildCoinHoldings() {
+    final bs = context.watch<BalanceStore>();
     final store = context.read<CoinStore>();
 
-    List<Map<String, dynamic>> rows;
-    if (sym.toUpperCase() == 'USDT') {
-      final usdt = store.getById('USDT');
-      final usdtEth = store.getById('USDT-ETH');
-      final usdtTrx = store.getById('USDT-TRX');
-
-      rows = [
-        _variantRow(
-          id: 'USDT-ETH',
-          name: 'USDT (Ethereum)',
-          network: 'ERC-20 • Ethereum Network',
-          iconPath: usdtEth?.assetPath,
-          fallbackIcon: Icons.monetization_on,
-          fallbackColor: Colors.green,
-        ),
-        _variantRow(
-          id: 'USDT-TRX',
-          name: 'USDT (Tron)',
-          network: 'TRC-20 • Tron Network',
-          iconPath: usdtTrx?.assetPath,
-          fallbackIcon: Icons.monetization_on,
-          fallbackColor: Colors.green,
-        ),
-        _variantRow(
-          id: 'USDT-GASFREE',
-          name: 'USDT (Gas Free)',
-          network: 'USDT',
-          iconPath: usdt?.assetPath,
-          fallbackIcon: Icons.local_gas_station,
-          fallbackColor: Colors.green,
-          borderColor: Colors.green,
-        ),
-      ];
-    } else if (sym.toUpperCase() == 'SOL') {
-      final solSol = store.getById('SOL-SOL');
-      rows = [
-        _variantRow(
-          id: 'SOL-SOL',
-          name: 'Solana',
-          network: 'Solana Network',
-          iconPath: solSol?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.orange,
-        ),
-      ];
-    } else if (sym.toUpperCase() == 'TRX') {
-      final trxTrx = store.getById('TRX-TRX');
-      rows = [
-        _variantRow(
-          id: 'TRX-TRX',
-          name: 'Tron',
-          network: 'Tron Network',
-          iconPath: trxTrx?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.orange,
-        ),
-      ];
-    } else if (sym.toUpperCase() == 'XMR') {
-      final xmrXmr = store.getById('XMR-XMR');
-      rows = [
-        _variantRow(
-          id: 'XMR-XMR',
-          name: 'Monero',
-          network: 'Monero Network',
-          iconPath: xmrXmr?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.orange,
-        ),
-      ];
-    } else if (sym.toUpperCase() == 'ETH') {
-      final ethEth = store.getById('ETH-ETH');
-      rows = [
-        _variantRow(
-          id: 'ETH-ETH',
-          name: 'Ethereum',
-          network: 'Ethereum Network',
-          iconPath: ethEth?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.blue,
-        ),
-      ];
-    } else if (sym.toUpperCase() == 'BTC') {
-      final btc = store.getById('BTC');
-      final btcLn = store.getById('BTC-LN');
-      rows = [
-        _variantRow(
-          id: 'BTC',
-          name: 'Bitcoin',
-          network: 'Bitcoin Network',
-          iconPath: btc?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.orange,
-        ),
-        _variantRow(
-          id: 'BTC-LN',
-          name: 'Bitcoin Lightning',
-          network: 'Lightning Network',
-          iconPath: btcLn?.assetPath,
-          fallbackIcon: Icons.flash_on,
-          fallbackColor: Colors.yellow,
-        ),
-      ];
-    } else {
-      final bnbbnb = store.getById('BNB-BNB');
-      rows = [
-        _variantRow(
-          id: 'BNB',
-          name: 'BNB-BNB',
-          network: 'BNB Chain',
-          iconPath: bnbbnb?.assetPath,
-          fallbackIcon: Icons.currency_bitcoin,
-          fallbackColor: Colors.orange,
+    // while loading (first entry to screen, or 30s refresh)
+    if (bs.loading && bs.rows.isEmpty) {
+      return const [
+        Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
         ),
       ];
     }
 
-    return rows.map<Widget>((v) {
-      final bool isGasFree = (v['id'] == 'USDT-GASFREE');
-      final Color outline = isGasFree
-          ? (v['borderColor'] as Color? ?? const Color(0xFF22C55E))
-          : Colors.white.withOpacity(0.1);
+    final wantedSym = sym.toUpperCase();
+
+    // keep only rows for this coin's symbol (e.g., all USDT variants)
+    final rowsForCoin = bs.rows.where((r) {
+      final s = (r.symbol.isNotEmpty
+              ? r.symbol
+              : (r.token.isNotEmpty ? r.token : r.blockchain))
+          .toUpperCase();
+      return s == wantedSym;
+    }).toList();
+
+    if (rowsForCoin.isEmpty) {
+      return [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(40),
+          decoration: BoxDecoration(
+            color: cardBackground,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            'No $wantedSym balances found for this wallet.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: greyColor, fontSize: 14),
+          ),
+        ),
+      ];
+    }
+
+    // Build one card per chain variant we have a balance for
+    return rowsForCoin.map((r) {
+      // Normalize info
+      final chainRaw = (r.blockchain).toUpperCase(); // e.g. ETH, BNB, SOL, TRX
+      final chainNorm =
+          _normalizeChain(chainRaw); // ETH / BNB / SOL / TRX / BTC / LN
+      final balance = double.tryParse(r.balance) ?? 0.0;
+      final usd = (r.value ?? 0.0);
+
+      // Pick a coin id to grab the icon/name from CoinStore
+      // USDT -> USDT-ETH / USDT-TRX / ...
+      // native coins -> ETH-ETH, SOL-SOL, TRX-TRX, BNB-BNB (fallback to symbol if not found)
+      String coinIdGuess;
+      if (wantedSym == 'USDT') {
+        coinIdGuess = 'USDT-$chainNorm';
+      } else if (wantedSym == 'BTC' && chainNorm == 'LN') {
+        coinIdGuess = 'BTC-LN';
+      } else if (wantedSym == 'BTC') {
+        coinIdGuess = 'BTC';
+      } else {
+        coinIdGuess = '$wantedSym-$chainNorm';
+      }
+
+      final coinForIcon =
+          store.getById(coinIdGuess) ?? store.getById(wantedSym);
+
+      final icon = coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+      final title = coinForIcon?.name ??
+          (wantedSym == 'USDT' ? 'USDT (${_chainUiName(chainNorm)})' : name);
+
+      // Network subtitle
+      final networkSubtitle = wantedSym == 'USDT'
+          ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
+          : '${_chainUiName(chainNorm)} Network';
 
       return Container(
         margin: EdgeInsets.only(bottom: 2.h),
@@ -791,32 +750,23 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         decoration: BoxDecoration(
           color: cardBackground,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: outline,
-            width: isGasFree ? 2 : 1,
-          ),
+          border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
         ),
         child: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: (v['icon'] as String?)?.isNotEmpty == true
-                  ? Image.asset(
-                      v['icon'],
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Icon(
-                        v['fallbackIcon'],
-                        color: v['iconColor'],
-                        size: 32,
-                      ),
-                    )
-                  : Icon(
-                      v['fallbackIcon'],
-                      color: v['iconColor'],
-                      size: 32,
-                    ),
+              child: Image.asset(
+                icon,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.currency_bitcoin,
+                  color: Colors.orange,
+                  size: 32,
+                ),
+              ),
             ),
             SizedBox(width: 3.w),
             Expanded(
@@ -828,7 +778,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        v['name'],
+                        title,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -836,7 +786,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                         ),
                       ),
                       Text(
-                        _getVariantBalance(v['id']),
+                        '${_formatCrypto(balance)} $wantedSym',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -851,14 +801,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        v['network'],
+                        networkSubtitle,
                         style: const TextStyle(
                           color: greyColor,
                           fontSize: 13,
                         ),
                       ),
                       Text(
-                        _getVariantFiatValue(v['id']),
+                        '\$${usd.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: greyColor,
                           fontSize: 14,
@@ -873,6 +823,52 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         ),
       );
     }).toList();
+  }
+
+/* ---------- tiny helpers for holdings ---------- */
+  String _formatCrypto(double v) {
+    var s = v.toStringAsFixed(8);
+    s = s.replaceAll(RegExp(r'0+$'), '');
+    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+    return s.isEmpty ? '0' : s;
+  }
+
+  String _chainUiName(String code) {
+    switch (code.toUpperCase()) {
+      case 'ETH':
+        return 'Ethereum';
+      case 'BNB':
+        return 'BNB Chain';
+      case 'SOL':
+        return 'Solana';
+      case 'TRX':
+        return 'Tron';
+      case 'BTC':
+        return 'Bitcoin';
+      case 'LN':
+        return 'Lightning';
+      default:
+        return code.toUpperCase();
+    }
+  }
+
+  String _networkShort(String code) {
+    switch (code.toUpperCase()) {
+      case 'ETH':
+        return 'ERC-20';
+      case 'TRX':
+        return 'TRC-20';
+      case 'BNB':
+        return 'BEP-20';
+      case 'SOL':
+        return 'SOL';
+      case 'BTC':
+        return 'BTC';
+      case 'LN':
+        return 'LN';
+      default:
+        return code.toUpperCase();
+    }
   }
 
   Map<String, dynamic> _variantRow({

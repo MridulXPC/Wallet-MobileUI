@@ -44,6 +44,38 @@ class AuthResponse {
   }
 }
 
+/// Lightweight balance row for /api/get-balance/get-balance
+class ChainBalance {
+  final String blockchain; // e.g. "ETH"
+  final String address; // wallet address for that chain
+  final String token; // e.g. "ETH"
+  final String symbol; // e.g. "ETH"
+  final String balance; // keep as string (precision)
+  final double? value; // may be 0 or null
+
+  const ChainBalance({
+    required this.blockchain,
+    required this.address,
+    required this.token,
+    required this.symbol,
+    required this.balance,
+    this.value,
+  });
+
+  factory ChainBalance.fromJson(Map<String, dynamic> json) {
+    return ChainBalance(
+      blockchain: json['blockchain']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      token: json['token']?.toString() ?? '',
+      symbol: json['symbol']?.toString() ?? '',
+      balance: json['balance']?.toString() ?? '0',
+      value: (json['value'] is num)
+          ? (json['value'] as num).toDouble()
+          : double.tryParse(json['value']?.toString() ?? ''),
+    );
+  }
+}
+
 class AuthService {
   static const String _baseUrl = 'https://vault-backend-cmjd.onrender.com';
   static const Duration _timeout = Duration(seconds: 30);
@@ -661,14 +693,14 @@ class AuthService {
     required String userId,
     required String walletAddress,
     required String toAddress,
-    required String amount,
-    required String chain,
-    String priority = "yes",
-    String? coinSymbol,
+    required String amount, // keep as string to avoid precision issues
+    required String chain, // e.g. "ETH"
+    required String token, // e.g. "ETH", separate from chain
+    String priority = "Standard",
   }) async {
     try {
       final jwt = await getStoredToken();
-      if (jwt == null) {
+      if (jwt == null || jwt.isEmpty) {
         throw const ApiException("No authentication token available");
       }
 
@@ -677,9 +709,9 @@ class AuthService {
         "walletAddress": walletAddress,
         "toAddress": toAddress,
         "amount": amount,
+        "token": token,
         "priority": priority,
         "chain": chain,
-        "token": coinSymbol ?? chain,
       };
 
       debugPrint("🌐 POST /api/transaction/send");
@@ -695,8 +727,10 @@ class AuthService {
       );
 
       debugPrint("📥 Raw response: ${response.statusCode} ${response.body}");
-      final data = _handleResponse(response);
-      debugPrint("✅ Transaction sent successfully");
+      final data = _handleResponse(response); // throws ApiException on non-2xx
+
+      // Expected keys: message, transaction{id, txHash, status}, success
+      debugPrint("✅ ${data['message'] ?? 'Transaction sent successfully'}");
       return AuthResponse.success(data: data);
     } on ApiException {
       rethrow;
@@ -704,6 +738,38 @@ class AuthService {
       debugPrint("🚨 Transaction error: $e");
       return AuthResponse.failure("Transaction failed: $e");
     }
+  }
+
+  /// Convenience: auto-fill userID & walletAddress from local cache/helpers.
+  /// - Looks up cached userID (no network) and the wallet address for the chain.
+  /// - Throws ApiException if either is unavailable.
+  static Future<AuthResponse> sendTransactionUsingCache({
+    required String toAddress,
+    required String amount,
+    required String chain,
+    required String token,
+    String priority = "Standard",
+  }) async {
+    final uid = await getOrFetchUserId();
+    if (uid == null || uid.isEmpty) {
+      throw const ApiException('No userID available (not cached).');
+    }
+
+    final fromAddress = await getOrFetchWalletAddress(chain: chain);
+    if (fromAddress == null || fromAddress.isEmpty) {
+      throw ApiException(
+          'No walletAddress found for chain=${_normalizeChain(chain)}');
+    }
+
+    return sendTransaction(
+      userId: uid,
+      walletAddress: fromAddress,
+      toAddress: toAddress,
+      amount: amount,
+      chain: chain,
+      token: token,
+      priority: priority,
+    );
   }
 
   // ===================== SWAPS =====================
@@ -857,7 +923,7 @@ class AuthService {
     throw UnimplementedError();
   }
 
-// Should return balances keyed by coinId (matching CoinStore ids), e.g. {'ETH':1.23,'USDT-TRX':55.6}
+  // Should return balances keyed by coinId (matching CoinStore ids), e.g. {'ETH':1.23,'USDT-TRX':55.6}
   static Future<Map<String, double>> getWalletBalances(String walletId) async {
     // TODO: call your backend, parse map<String,double>
     // Return {} if unknown; UI will show zero balances.
@@ -944,9 +1010,110 @@ class AuthService {
     }
   }
 
-  // Add to AuthService
-// Replace the whole fetchSpotPrices() with this version.
-// Replace the whole fetchSpotPrices() with this version.
+  // ===================== BALANCES =====================
+
+  /// GET /api/get-balance/get-balance
+  /// Returns a list like:
+  /// [
+  ///   { "blockchain":"ETH", "address":"0x...", "token":"ETH", "symbol":"ETH", "balance":"0.001...", "value":0 },
+  ///   { "blockchain":"BNB", ... },
+  ///   ...
+  /// ]
+// REPLACE your existing fetchAllChainBalances(...) with this pair:
+
+  /// New: returns both rows + total in USD (handles old/new response shapes)
+  static Future<BalancesPayload> fetchBalancesAndTotal({String? token}) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    try {
+      debugPrint('🌐 GET /api/get-balance/get-balance');
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/get-balance/get-balance',
+        token: token,
+        requireAuth: true,
+      );
+
+      debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
+      final map = _handleResponse(res);
+
+      // The API wraps payload as:
+      // { success: true, data: { balances:[...], total_balance:"245.00" } }
+      // or older: { success:true, data: [ ... ] }
+      final dynamic data = map['data'] ?? map;
+
+      List<dynamic> listDyn = const [];
+      double totalUsd = 0.0;
+
+      if (data is Map) {
+        listDyn = (data['balances'] as List?) ?? const [];
+        final t = data['total_balance'];
+        if (t is num) totalUsd = t.toDouble();
+        if (t is String) totalUsd = double.tryParse(t) ?? 0.0;
+
+        // Fallback if total not present → sum item "value"
+        if (totalUsd == 0.0 && listDyn.isNotEmpty) {
+          for (final e in listDyn.whereType<Map>()) {
+            final v = e['value'];
+            if (v is num) totalUsd += v.toDouble();
+            if (v is String) totalUsd += double.tryParse(v) ?? 0.0;
+          }
+        }
+      } else if (data is List) {
+        listDyn = data;
+        // Old shape without total; try sum of "value"
+        for (final e in listDyn.whereType<Map>()) {
+          final v = e['value'];
+          if (v is num) totalUsd += v.toDouble();
+          if (v is String) totalUsd += double.tryParse(v) ?? 0.0;
+        }
+      }
+
+      final rows = listDyn
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .map(ChainBalance.fromJson)
+          .toList(growable: false);
+
+      return BalancesPayload(rows: rows, totalUsd: totalUsd);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Failed to fetch balances: $e');
+    }
+  }
+
+  /// Back-compat: keeps your old signature working
+  static Future<List<ChainBalance>> fetchAllChainBalances(
+      {String? token}) async {
+    final payload = await fetchBalancesAndTotal(token: token);
+    return payload.rows;
+  }
+
+  /// Convenience: return { "ETH": "0.00195788941302871", "BNB": "0.0", ... }
+  static Future<Map<String, String>> fetchBalanceMapBySymbol(
+      {String? token}) async {
+    final rows = await fetchAllChainBalances(token: token);
+    final map = <String, String>{};
+    for (final r in rows) {
+      // Use symbol in uppercase as key (e.g., ETH, BNB, SOL, TRX)
+      if (r.symbol.isNotEmpty) {
+        map[r.symbol.toUpperCase()] = r.balance;
+      } else if (r.token.isNotEmpty) {
+        map[r.token.toUpperCase()] = r.balance;
+      } else if (r.blockchain.isNotEmpty) {
+        map[r.blockchain.toUpperCase()] = r.balance;
+      }
+    }
+    return map;
+  }
+
+  // ===================== MARKET PRICES =====================
+
+  /// Replace the whole fetchSpotPrices() with this version.
   static Future<Map<String, double>> fetchSpotPrices({
     required List<String>
         symbols, // e.g. ['BTC','ETH','USDT','TRX','BNB','SOL']
@@ -1050,7 +1217,6 @@ class AuthService {
 
     // Nothing worked → return empty map (don’t hard-fail UI)
     if (lastErr != null) {
-      // You can log lastErr if you want, but don't throw
       debugPrint(
           'fetchSpotPrices fallback: ${lastErr.message} (Status: ${lastErr.statusCode})');
     }
@@ -1106,4 +1272,11 @@ class HttpKit {
     }
     throw Exception('Request failed');
   }
+}
+
+/// Add near your other small models in api_service.dart
+class BalancesPayload {
+  final List<ChainBalance> rows;
+  final double totalUsd; // 0.0 if missing
+  const BalancesPayload({required this.rows, required this.totalUsd});
 }

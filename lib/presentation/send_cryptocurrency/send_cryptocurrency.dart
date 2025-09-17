@@ -1,14 +1,16 @@
 // lib/presentation/send_cryptocurrency/SendCryptocurrency.dart
+import 'dart:async';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
-import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart'; // ← navigate to review screen next
+import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
 import 'package:cryptowallet/widgets/tx_failure_card.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cryptowallet/stores/coin_store.dart'; // ✅ Provider source of truth
-import 'package:cryptowallet/services/api_service.dart'; // ✅ AuthService with fetchTokens
+import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/stores/balance_store.dart';
+import 'package:cryptowallet/services/api_service.dart'; // for fetchSpotPrices
 import 'package:flutter/foundation.dart' show debugPrint;
 
 /// ----------------------------------------------
@@ -19,10 +21,10 @@ class SendFlowData {
   final String? walletId;
 
   /// API fields
-  final String chain; // e.g. "BTC", "ETH" (maps to API "chain")
-  final String amount; // crypto amount as string (API expects string)
-  final String priority; // "yes" | "no"
-  final String? toAddress; // will be filled later
+  final String chain; // e.g. "BTC", "ETH"
+  final String amount; // crypto amount as string
+  final String priority; // "Standard" | "Fast"
+  final String? toAddress;
 
   /// UI helpers
   final double usdValue;
@@ -70,31 +72,27 @@ class SendFlowData {
   }
 }
 
-// 1. IMAGE CACHE MANAGER
+// 1) IMAGE CACHE
 class ImageCacheManager {
   static final Map<String, ImageProvider> _cachedImages = {};
 
   static ImageProvider getCachedImage(String assetPath) {
-    if (!_cachedImages.containsKey(assetPath)) {
-      _cachedImages[assetPath] = AssetImage(assetPath);
-    }
+    _cachedImages.putIfAbsent(assetPath, () => AssetImage(assetPath));
     return _cachedImages[assetPath]!;
   }
 
   static void preloadImages(List<String> assetPaths, BuildContext context) {
-    for (String path in assetPaths) {
+    for (final path in assetPaths) {
       precacheImage(AssetImage(path), context).catchError((_) {
         debugPrint('Failed to preload image: $path');
       });
     }
   }
 
-  static void clearCache() {
-    _cachedImages.clear();
-  }
+  static void clearCache() => _cachedImages.clear();
 }
 
-// 2. OPTIMIZED COIN ICON WIDGET
+// 2) ICON
 class OptimizedCoinIcon extends StatelessWidget {
   final String assetPath;
   final double size;
@@ -129,21 +127,15 @@ class OptimizedCoinIcon extends StatelessWidget {
             child: child,
           );
         },
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: const Color(0xFF1F2431),
-          child: Icon(
-            Icons.currency_bitcoin,
-            color: Colors.white,
-            size: size * 0.6,
-          ),
-        ),
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.currency_bitcoin, color: Colors.white, size: size * 0.6),
         gaplessPlayback: true,
       ),
     );
   }
 }
 
-// 3. OPTIMIZED LIST TILE WIDGET
+// 3) ASSET TILE
 class OptimizedAssetListTile extends StatelessWidget {
   final Coin coin;
   final double price;
@@ -190,7 +182,7 @@ class OptimizedAssetListTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Balance: ${balance.toStringAsFixed(4)}',
+                      'Balance: ${balance.toStringAsFixed(6)}',
                       style: const TextStyle(
                         color: Color(0xFF9CA3AF),
                         fontSize: 14,
@@ -217,14 +209,14 @@ class OptimizedAssetListTile extends StatelessWidget {
   }
 }
 
-// ---------- Local row model for API-loaded assets (but icons from CoinStore) ----------
+// Local model for selector
 class _AssetRow {
-  final String id; // e.g. "BTC" or "USDT-ETH"
-  final String symbol; // e.g. "BTC"
-  final String name; // e.g. "Bitcoin"
-  final double price; // USD price
-  final double balance; // user balance (crypto units)
-  final String assetPath; // from CoinStore.assetPath
+  final String id; // e.g. "USDT-ETH" or "ETH"
+  final String symbol; // e.g. "USDT" or "ETH"
+  final String name; // "Tether", "Ethereum"
+  final double price; // USD (spot or derived)
+  final double balance; // crypto units
+  final String assetPath;
 
   _AssetRow({
     required this.id,
@@ -236,7 +228,7 @@ class _AssetRow {
   });
 }
 
-// ---------- Bottom sheet scaffold ----------
+// SHEET SCAFFOLD
 class _AssetSheetScaffold extends StatelessWidget {
   final String title;
   final Widget child;
@@ -273,7 +265,6 @@ class _AssetSheetScaffold extends StatelessWidget {
           top: false,
           child: Column(
             children: [
-              // Handle bar
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 10),
                 height: 4,
@@ -283,8 +274,6 @@ class _AssetSheetScaffold extends StatelessWidget {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
-              // Title
               const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
@@ -296,7 +285,6 @@ class _AssetSheetScaffold extends StatelessWidget {
                   ),
                 ),
               ),
-
               if (header != null) ...[
                 header!,
                 const SizedBox(height: 10),
@@ -305,10 +293,7 @@ class _AssetSheetScaffold extends StatelessWidget {
                 chips!,
                 const SizedBox(height: 8),
               ],
-
-              // Content
               Expanded(child: child),
-
               const SizedBox(height: 20),
             ],
           ),
@@ -319,26 +304,13 @@ class _AssetSheetScaffold extends StatelessWidget {
 }
 
 class SendCryptocurrency extends StatefulWidget {
-  /// Screen title (defaults to "Insert Amount")
   final String title;
   final String? initialAddress;
-
-  /// Preselect a coin/network by its CoinStore id (e.g. "BTC-LN", "BTC", "USDT-TRX")
-  final String? initialCoinId;
-
-  /// Optional button label (defaults to "Next")
+  final String? initialCoinId; // e.g. "BTC-LN" or "ETH"
   final String? buttonLabel;
-
-  /// If true, behaves as a "Charge" screen (we'll hook next step later)
   final bool isChargeMode;
-
-  /// NEW: prefill USD amount (when opening from amount chips)
   final double? initialUsd;
-
-  /// NEW: open with USD tab selected
   final bool startInUsd;
-
-  /// (Optional) Pass from your wallet/dashboard so it flows to API
   final String? userId;
   final String? walletId;
 
@@ -348,8 +320,8 @@ class SendCryptocurrency extends StatefulWidget {
     this.initialCoinId,
     this.buttonLabel,
     this.isChargeMode = false,
-    this.initialUsd, // NEW
-    this.startInUsd = false, // NEW
+    this.initialUsd,
+    this.startInUsd = false,
     this.userId,
     this.walletId,
     this.initialAddress,
@@ -365,49 +337,16 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   double _usdValue = 0.00;
   bool _isImagesPreloaded = false;
 
-  // Selected asset properties (derived from CoinStore or API)
+  // selected
   String _selectedAsset = 'Bitcoin';
   String _selectedAssetSymbol = 'BTC';
   double _selectedAssetBalance = 0.00;
   String _selectedAssetIconPath = 'assets/currencyicons/bitcoin.png';
-  double _selectedAssetPrice = 30000.00;
+  double _selectedAssetPrice = 0.00;
 
-  // Dummy prices/balances (fallback)
-  final Map<String, double> _dummyPrices = const {
-    'BTC': 43825.67,
-    'BTC-LN': 43825.67,
-    'ETH': 2641.25,
-    'BNB': 580.00,
-    'SOL': 148.12,
-    'TRX': 0.13,
-    'USDT': 1.00,
-    'USDT-ETH': 1.00,
-    'USDT-TRX': 1.00,
-    'BNB-BNB': 580.00,
-    'ETH-ETH': 2641.25,
-    'SOL-SOL': 148.12,
-    'TRX-TRX': 0.13,
-    'XMR': 168.00,
-    'XMR-XMR': 168.00,
-  };
-
-  final Map<String, double> _dummyBalances = const {
-    'BTC': 500.0,
-    'BTC-LN': 0.0,
-    'ETH': 500.0,
-    'BNB': 0.0,
-    'SOL': 0.0,
-    'TRX': 0.0,
-    'USDT': 0.0,
-    'USDT-ETH': 0.0,
-    'USDT-TRX': 0.0,
-    'BNB-BNB': 0.0,
-    'ETH-ETH': 0.0,
-    'SOL-SOL': 0.0,
-    'TRX-TRX': 0.0,
-    'XMR': 0.0,
-    'XMR-XMR': 0.0,
-  };
+  // cached spot prices for user-held symbols
+  Map<String, double> _priceBySymbol = const {};
+  bool _loadingPrices = false;
 
   @override
   void dispose() {
@@ -415,7 +354,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     super.dispose();
   }
 
-  // ---------- Amount helpers ----------
+  // ---------- amount helpers ----------
   void _onNumberPressed(String number) {
     setState(() {
       if (_currentAmount == '0') {
@@ -450,14 +389,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     setState(() {
       if (_isCryptoSelected) {
         final amt = _selectedAssetBalance * percentage; // crypto amount
-        _currentAmount = amt
-            .toStringAsFixed(8)
-            .replaceAll(RegExp(r'0*$'), '')
-            .replaceAll(RegExp(r'\.$'), '');
+        _currentAmount = _trimCrypto(amt);
       } else {
-        final usd = _selectedAssetBalance *
-            _selectedAssetPrice *
-            percentage; // USD amount
+        final usd = _selectedAssetBalance * _selectedAssetPrice * percentage;
         _currentAmount = usd.toStringAsFixed(2);
       }
       if (_currentAmount.isEmpty) _currentAmount = '0';
@@ -470,11 +404,19 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     _usdValue = _isCryptoSelected ? val * _selectedAssetPrice : val;
   }
 
+  String _trimCrypto(double v) {
+    return v
+        .toStringAsFixed(8)
+        .replaceAll(RegExp(r'0*$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
+  }
+
   // ---------- NEXT (Review) ----------
   void _onNextPressed() {
     final entered = double.tryParse(_currentAmount) ?? 0.0;
-    final amountCrypto =
-        _isCryptoSelected ? entered : (entered / _selectedAssetPrice);
+    final amountCrypto = _isCryptoSelected
+        ? entered
+        : (entered / (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
 
     if (amountCrypto <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -491,19 +433,14 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         context,
         title: 'Transaction failed',
         message: 'Insufficient balance',
-        barrier: true, // nice dim+blur
-        // autoHideAfter: const Duration(seconds: 5),
+        barrier: true,
       );
-
       return;
     }
 
-    final amountCryptoStr = amountCrypto
-        .toStringAsFixed(8)
-        .replaceAll(RegExp(r'0*$'), '')
-        .replaceAll(RegExp(r'\.$'), '');
+    final amountCryptoStr = _trimCrypto(amountCrypto);
 
-    // 👉 If this screen is opened as "Charge" (invoice flow)
+    // Charge flow
     if (widget.isChargeMode) {
       final isLn = (widget.initialCoinId ?? _selectedAssetSymbol)
           .toUpperCase()
@@ -515,31 +452,31 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
           builder: (_) => ReceiveQRbtclightning(
             title: 'Charge',
             accountLabel: isLn ? 'LN - Main Account' : 'Main Account',
-            coinName: _selectedAsset, // e.g. "Bitcoin"
-            iconAsset: _selectedAssetIconPath, // coin icon
-            isLightning: isLn, // shows purple Lightning pill
-            amount: amountCryptoStr, // crypto amount
-            symbol: _selectedAssetSymbol, // e.g. "BTC"
+            coinName: _selectedAsset,
+            iconAsset: _selectedAssetIconPath,
+            isLightning: isLn,
+            amount: amountCryptoStr,
+            symbol: _selectedAssetSymbol,
             fiatValue: amountCrypto * _selectedAssetPrice,
-            qrData: amountCryptoStr, // 🔥 QR encodes crypto amount
+            qrData: amountCryptoStr,
           ),
         ),
       );
       return;
     }
 
-    // Default SEND flow → go to review screen with all computed info
+    // Default SEND → review
     final data = SendFlowData(
       userId: widget.userId,
       walletId: widget.walletId,
-      chain: _selectedAssetSymbol, // maps to API "chain"
-      amount: amountCryptoStr, // API expects string
-      priority: "yes", // default; can be edited next screen
+      chain: _selectedAssetSymbol,
+      amount: amountCryptoStr,
+      priority: "Standard", // can change on the confirmation view
       usdValue: amountCrypto * _selectedAssetPrice,
       assetName: _selectedAsset,
       assetSymbol: _selectedAssetSymbol,
       assetIconPath: _selectedAssetIconPath,
-      toAddress: null, // will be filled on next screen
+      toAddress: null,
     );
 
     Navigator.push(
@@ -550,168 +487,77 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     );
   }
 
-  // ---------- Selector & state updates ----------
-  void _onAssetSelected(Coin coin) {
-    final symbol = coin.symbol;
-    final price = _dummyPrices[symbol] ?? _dummyPrices[coin.id] ?? 1.0;
-    final balance = _dummyBalances[symbol] ?? _dummyBalances[coin.id] ?? 0.0;
-
-    setState(() {
-      _selectedAsset = coin.name;
-      _selectedAssetSymbol = symbol;
-      _selectedAssetBalance = balance;
-      _selectedAssetIconPath = coin.assetPath;
-      _selectedAssetPrice = price;
-    });
-    _calculateUSDValue();
-  }
-
-  // ---------- Flexible JSON pickers for VaultToken → UI ----------
-  String _pickString(Map<String, dynamic> j, List<String> keys,
-      {String def = ''}) {
-    for (final k in keys) {
-      final v = j[k];
-      if (v == null) continue;
-      if (v is String && v.trim().isNotEmpty) return v.trim();
-      return v.toString();
-    }
-    return def;
-  }
-
-  double _pickNum(Map<String, dynamic> j, List<String> keys,
-      {double def = 0.0}) {
-    for (final k in keys) {
-      final v = j[k];
-      if (v == null) continue;
-      if (v is num) return v.toDouble();
-      if (v is String) {
-        final d = double.tryParse(v);
-        if (d != null) return d;
-      }
-    }
-    return def;
-  }
-
-  // 🔎 Resolve a Coin from CoinStore (id → symbol → base id)
+  // ---------- Resolve Coin from CoinStore ----------
   Coin? _resolveCoinFromStore({
     required CoinStore store,
     required String id,
     required String symbol,
   }) {
-    // 1) Try exact id
+    // exact id
     Coin? coin = store.getById(id);
     if (coin != null) return coin;
 
-    // 2) Try by exact symbol match among values
+    // by symbol
     for (final c in store.coins.values) {
       if (c.symbol.toUpperCase() == symbol.toUpperCase()) return c;
     }
 
-    // 3) Try by base id (e.g., "USDT-ETH" -> "USDT")
+    // base id (e.g., "USDT-ETH" -> "USDT")
     final base = id.contains('-') ? id.split('-').first : id;
     coin = store.getById(base);
-    if (coin != null) return coin;
-
-    return null;
+    return coin;
   }
 
-  // 🔥 Load assets via API (fetchTokens) and map to rows — ICONS ALWAYS FROM CoinStore
-  Future<List<_AssetRow>> _loadAssetsFromApi() async {
-    try {
-      final tokens = await AuthService.fetchTokens();
-      final store = context.read<CoinStore>();
+  // ---------- Build rows from BalanceStore (+ prices) ----------
+  Future<List<_AssetRow>> _loadAssetsFromStore() async {
+    final bs = context.read<BalanceStore>();
+    // fetch prices only once per open; keep it quick
+    await _ensurePricesLoaded();
 
-      // Map VaultToken → _AssetRow via toJson/keys (field-agnostic)
-      final rows = tokens.map((t) {
-        Map<String, dynamic> j;
-        try {
-          j = (t as dynamic).toJson() as Map<String, dynamic>;
-        } catch (_) {
-          j = <String, dynamic>{};
-        }
+    final store = context.read<CoinStore>();
 
-        final rawId = _pickString(j, ['id', '_id', 'tokenId', 'symbol']);
-        final rawSymbol = _pickString(j, ['symbol', 'ticker', 'code'],
-            def: rawId.isNotEmpty ? rawId : 'BTC');
-        final rawName =
-            _pickString(j, ['name', 'tokenName', 'assetName'], def: rawSymbol);
+    final rows = <_AssetRow>[];
+    for (final r in bs.rows) {
+      final symbol = (r.symbol.isNotEmpty
+              ? r.symbol
+              : (r.token.isNotEmpty ? r.token : r.blockchain))
+          .toUpperCase();
 
-        // Price candidates — adjust if your API uses different keys
-        final price = _pickNum(
-            j,
-            [
-              'priceUsd',
-              'price',
-              'usdPrice',
-              'fiatPrice',
-              'currentPrice',
-              'lastPrice',
-              'marketPrice',
-            ],
-            def: 0.0);
+      if (symbol.isEmpty) continue;
 
-        // Balance candidates
-        final balance = _pickNum(
-            j,
-            [
-              'balance',
-              'amount',
-              'qty',
-              'quantity',
-              'free',
-              'available',
-            ],
-            def: 0.0);
+      final bal = double.tryParse(r.balance) ?? 0.0;
+      // derive price: prefer spot, else value/balance (if balance > 0)
+      double price = _priceBySymbol[symbol] ?? 0.0;
+      if (price == 0.0) {
+        final v = r.value ?? 0.0;
+        if (bal > 0.0 && v > 0.0) price = v / bal;
+      }
 
-        // 🔗 Resolve the Coin from CoinStore to get the PNG path
-        final coinFromStore = _resolveCoinFromStore(
-          store: store,
-          id: rawId.isNotEmpty ? rawId : rawSymbol,
-          symbol: rawSymbol,
-        );
+      // Resolve a Coin for icon/name
+      final resolved = _resolveCoinFromStore(
+        store: store,
+        id: symbol, // ids in store are usually base symbols
+        symbol: symbol,
+      );
 
-        final displayId =
-            coinFromStore?.id ?? (rawId.isNotEmpty ? rawId : rawSymbol);
-        final displaySymbol = coinFromStore?.symbol ?? rawSymbol;
-        final displayName = coinFromStore?.name ?? rawName;
-        final assetPath = coinFromStore?.assetPath ??
-            store.cardAssetFor(displayId) // fallback to watermark if exists
-            ??
-            'assets/currencyicons/bitcoin.png'; // last-resort default
+      final id = resolved?.id ?? symbol;
+      final name = resolved?.name ?? symbol;
+      final assetPath =
+          resolved?.assetPath ?? 'assets/currencyicons/bitcoin.png';
 
-        return _AssetRow(
-          id: displayId,
-          symbol: displaySymbol,
-          name: displayName,
-          price: price,
-          balance: balance,
-          assetPath: assetPath, // ✅ from CoinStore
-        );
-      }).toList();
-
-      return rows;
-    } catch (e) {
-      debugPrint('fetchTokens failed, falling back to CoinStore: $e');
-
-      // Fallback to current provider coins so UI still works
-      final coins = context.read<CoinStore>().coins.values.toList()
-        ..sort((a, b) => a.symbol.compareTo(b.symbol));
-
-      return coins.map((c) {
-        final symbol = c.symbol;
-        final name = c.name;
-        final price = _dummyPrices[symbol] ?? _dummyPrices[c.id] ?? 1.0;
-        final balance = _dummyBalances[symbol] ?? _dummyBalances[c.id] ?? 0.0;
-        return _AssetRow(
-          id: c.id,
-          symbol: symbol,
-          name: name,
-          price: price,
-          balance: balance,
-          assetPath: c.assetPath, // ✅ store icon
-        );
-      }).toList();
+      rows.add(_AssetRow(
+        id: id,
+        symbol: symbol,
+        name: name,
+        price: price,
+        balance: bal,
+        assetPath: assetPath,
+      ));
     }
+
+    // sort by USD value desc for convenience
+    rows.sort((a, b) => (b.price * b.balance).compareTo(a.price * a.balance));
+    return rows;
   }
 
   void _showAssetSelector() {
@@ -722,7 +568,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       enableDrag: true,
       builder: (context) {
         return FutureBuilder<List<_AssetRow>>(
-          future: _loadAssetsFromApi(),
+          future: _loadAssetsFromStore(),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const _AssetSheetScaffold(
@@ -755,12 +601,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
             final rows = snap.data ?? const <_AssetRow>[];
 
-            // Build chip list from base symbols
-            final baseSet = <String>{};
-            for (final r in rows) {
-              final base = _baseSymbol(r.id);
-              baseSet.add(base);
-            }
+            // Chips by base symbol
+            final baseSet = <String>{for (final r in rows) _baseSymbol(r.id)};
             final chips = ['ALL', ...baseSet.toList()..sort()];
 
             String search = '';
@@ -829,19 +671,18 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                     itemCount: filtered.length,
                     itemBuilder: (context, i) {
                       final r = filtered[i];
-                      // Build a Coin purely from store-driven assetPath & identity
                       final coin = Coin(
                         id: r.id,
                         symbol: r.symbol,
                         name: r.name,
-                        assetPath: r.assetPath, // ✅ from CoinStore
+                        assetPath: r.assetPath,
                       );
                       return OptimizedAssetListTile(
                         coin: coin,
                         price: r.price,
                         balance: r.balance,
                         onTap: () {
-                          _onAssetSelected(coin);
+                          _applySelectedRow(r);
                           Navigator.pop(context);
                         },
                       );
@@ -854,6 +695,17 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         );
       },
     );
+  }
+
+  void _applySelectedRow(_AssetRow r) {
+    setState(() {
+      _selectedAsset = r.name;
+      _selectedAssetSymbol = r.symbol;
+      _selectedAssetBalance = r.balance;
+      _selectedAssetIconPath = r.assetPath;
+      _selectedAssetPrice = r.price;
+    });
+    _calculateUSDValue();
   }
 
   String _baseSymbol(String coinId) {
@@ -876,70 +728,128 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
+    // Preload store icons once
     if (!_isImagesPreloaded) {
       final coins = context.read<CoinStore>().coins.values.toList();
-      final imagePaths = coins.map((coin) => coin.assetPath).toList();
-      ImageCacheManager.preloadImages(imagePaths, context);
+      final paths = coins.map((c) => c.assetPath).toList();
+      ImageCacheManager.preloadImages(paths, context);
       _isImagesPreloaded = true;
     }
 
-    // Initialize selection from Provider the first time
-    final coins = context.read<CoinStore>().coins.values.toList()
-      ..sort((a, b) => a.symbol.compareTo(b.symbol));
+    // Initialize selection based on current balances/prices
+    // (Runs again if provider tree changes, safe due to idempotent setters)
+    _initSelectionIfNeeded();
+  }
 
-    if (coins.isNotEmpty) {
-      Coin initial;
+  Future<void> _initSelectionIfNeeded() async {
+    if (!mounted) return;
 
-      if (widget.initialCoinId != null && widget.initialCoinId!.isNotEmpty) {
-        // Try to find by id (e.g. "BTC-LN")
-        initial = coins.firstWhere(
-          (c) => c.id == widget.initialCoinId,
-          orElse: () => coins.first,
-        );
-      } else {
-        // Fallback to your previous default by symbol
-        initial = coins.firstWhere(
-          (c) => c.symbol == _selectedAssetSymbol,
-          orElse: () => coins.first,
-        );
-      }
+    // Read providers up front (so we don't touch context after awaits)
+    final bs = context.read<BalanceStore>();
+    final store = context.read<CoinStore>();
 
-      _onAssetSelected(initial);
+    // Ensure balances are loaded
+    if (bs.rows.isEmpty && !bs.loading) {
+      await bs.refresh();
+    }
+    if (!mounted) return;
 
-      // Apply prefill/selection from navigation
-      if (widget.startInUsd) {
-        _isCryptoSelected = false; // show USD tab
-      }
+    // Ensure prices are loaded
+    await _ensurePricesLoaded();
+    if (!mounted) return;
+
+    // Build selection from balances
+    final bySym = bs.bySymbol;
+    String wantedId = widget.initialCoinId ?? _selectedAssetSymbol;
+    final wantedSymbol =
+        wantedId.contains('-') ? wantedId.split('-').first : wantedId;
+
+    final fallbackSym =
+        bySym.isNotEmpty ? bySym.keys.first : wantedSymbol.toUpperCase();
+
+    final chosen = bySym[wantedSymbol.toUpperCase()] ?? bySym[fallbackSym];
+
+    // Resolve coin info (icon/name) without touching context again
+    final coinResolved = _resolveCoinFromStore(
+      store: store,
+      id: wantedSymbol,
+      symbol: wantedSymbol,
+    );
+
+    final sym = wantedSymbol.toUpperCase();
+    final bal = chosen == null ? 0.0 : (double.tryParse(chosen.balance) ?? 0.0);
+
+    double price = _priceBySymbol[sym] ?? 0.0;
+    if (price == 0.0 && chosen != null) {
+      final v = chosen.value ?? 0.0;
+      if (bal > 0.0 && v > 0.0) price = v / bal;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _selectedAsset = coinResolved?.name ?? sym;
+      _selectedAssetSymbol = sym;
+      _selectedAssetBalance = bal;
+      _selectedAssetIconPath =
+          coinResolved?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+      _selectedAssetPrice = price;
+
+      // Apply initial UI prefs
+      if (widget.startInUsd) _isCryptoSelected = false;
+
       if (widget.initialUsd != null) {
         if (_isCryptoSelected) {
-          // convert USD → crypto text
-          final crypto = widget.initialUsd! / _selectedAssetPrice;
-          _currentAmount = crypto
-              .toStringAsFixed(8)
-              .replaceAll(RegExp(r'0*$'), '')
-              .replaceAll(RegExp(r'\.$'), '');
+          final crypto = widget.initialUsd! /
+              (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice);
+          _currentAmount = _trimCrypto(crypto);
         } else {
           _currentAmount = widget.initialUsd!.toStringAsFixed(2);
         }
       }
-      _calculateUSDValue();
-    }
+    });
+
+    if (!mounted) return;
+    _calculateUSDValue();
+  }
+
+  Future<void> _ensurePricesLoaded() async {
+    // Avoid duplicate loads
+    if (_priceBySymbol.isNotEmpty) return;
+
+    // Take a snapshot of symbols without using context later
+    if (!mounted) return;
+    final syms = context.read<BalanceStore>().symbols;
+    if (syms.isEmpty) return;
+
+    final prices = await AuthService.fetchSpotPrices(symbols: syms);
+    if (!mounted) return;
+
+    setState(() {
+      _priceBySymbol = prices;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // ensure rebuilds if coins update (icons/names)
-    context.watch<CoinStore>();
+    // react to updates (balances may change under us)
+    final bs = context.watch<BalanceStore>();
+    // if the selected symbol exists in the store, update the live balance
+    final row = bs.bySymbol[_selectedAssetSymbol.toUpperCase()];
+    final liveBal = row == null ? 0.0 : (double.tryParse(row.balance) ?? 0.0);
+    if (liveBal != _selectedAssetBalance) {
+      // keep the selection but update balance live
+      _selectedAssetBalance = liveBal;
+    }
 
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenHeight < 0.6 * screenWidth;
     final isTablet = screenWidth > 600;
 
-    // compute secondary line conversion when needed
     final double primaryVal = double.tryParse(_currentAmount) ?? 0.0;
-    final double cryptoAmt =
-        _isCryptoSelected ? primaryVal : (primaryVal / _selectedAssetPrice);
+    final double cryptoAmt = _isCryptoSelected
+        ? primaryVal
+        : (primaryVal / (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -987,12 +897,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           ),
                           child: Row(
                             children: [
-                              // Asset Icon (optimized)
                               _iconCircle(_selectedAssetIconPath, 40),
-
                               SizedBox(width: 3.w),
-
-                              // Account Details
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1015,13 +921,11 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                   ],
                                 ),
                               ),
-
-                              // Balance
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    _selectedAssetBalance.toStringAsFixed(4),
+                                    _selectedAssetBalance.toStringAsFixed(6),
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: isSmallScreen ? 14 : 14,
@@ -1044,7 +948,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: isSmallScreen ? 2.h : 2.h),
 
-                      // Currency Toggle Buttons
+                      // Currency Toggle
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

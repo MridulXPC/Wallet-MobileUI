@@ -15,7 +15,7 @@ class SendConfirmationView extends StatefulWidget {
 
 class _SendConfirmationViewState extends State<SendConfirmationView> {
   // UI/flow
-  late String _priority; // "yes" | "no"
+  late String _priority; // "Standard" | "Fast"  // ← UPDATED
   bool _submitting = false;
   String? _error;
 
@@ -28,12 +28,23 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   // -------- helpers --------
   String get _assetSymbol => widget.flowData.assetSymbol;
+
+  /// Normalize the token symbol we send to API:
+  /// - "USDT-ETH" -> "USDT"
+  /// - "BTC-LN"   -> "BTC"
+  /// - "ETH"      -> "ETH"
+  String get _apiToken {
+    final s = _assetSymbol.trim().toUpperCase();
+    return s.contains('-') ? s.split('-').first : s;
+  }
+
   double get _amountCrypto =>
       double.tryParse(widget.flowData.amount.trim()) ?? 0.0;
 
   double get _willReceive {
     final v = _amountCrypto - _activationFee;
     return v < 0 ? 0.0 : v;
+    // NOTE: purely a UI preview; backend sends exact amounts.
   }
 
   String get _timeText => _dateFmt.format(DateTime.now());
@@ -41,14 +52,16 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
   @override
   void initState() {
     super.initState();
-    _priority = widget.flowData.priority; // default from earlier
+    // Ensure only "Standard" | "Fast" (fallback to Standard)
+    final p = widget.flowData.priority.trim();
+    _priority = (p == 'Fast' || p == 'Standard') ? p : 'Standard'; // ← UPDATED
     _recalcFees(); // initial fee calc
   }
 
   void _recalcFees() {
-    // compute new fees; avoid setState if values unchanged to reduce rebuilds
     final base = _baseFeeForSymbol(_assetSymbol);
-    final computedNetwork = _priority == "yes" ? base * 1.5 : base;
+    final computedNetwork =
+        _priority == "Fast" ? base * 1.5 : base; // ← UPDATED
     final computedActivation = computedNetwork;
 
     if (computedNetwork != _networkFee ||
@@ -88,7 +101,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
     final toAddr = (widget.flowData.toAddress ?? '').trim();
     final amtStr = widget.flowData.amount.trim();
     debugPrint(
-        '📍 inputs -> to:$toAddr, amount:$amtStr, chain:${widget.flowData.chain}, priority:$_priority');
+        '📍 inputs -> to:$toAddr, amount:$amtStr, chain:${widget.flowData.chain}, priority:$_priority, token:$_apiToken');
 
     if (toAddr.isEmpty) {
       setState(() => _error = 'Missing recipient address.');
@@ -133,7 +146,8 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
         toAddress: toAddr,
         amount: amtStr,
         chain: widget.flowData.chain,
-        priority: _priority,
+        token: _apiToken, // ← UPDATED (new API field)
+        priority: _priority, // ← "Standard" | "Fast"
       );
       debugPrint(
           '✅ sendTransaction returned: ${res.success}  msg:${res.message}');
@@ -141,7 +155,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       if (!mounted) return;
 
       if (res.success) {
-        final txId = _extractTxId(res.data);
+        final txId = _extractTxId(res.data); // now handles transaction.txHash
         debugPrint('🔗 txId: $txId');
         await _showSuccessDialog(context, txId);
         if (!mounted) return;
@@ -160,18 +174,36 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   String? _extractTxId(Map<String, dynamic>? data) {
     if (data == null) return null;
+
+    // Prefer the explicit API shape: { transaction: { txHash, id, ... } }
+    final tx = data['transaction'];
+    if (tx is Map<String, dynamic>) {
+      final hash = tx['txHash']?.toString();
+      if (hash != null && hash.isNotEmpty) return hash;
+      final id = tx['id']?.toString();
+      if (id != null && id.isNotEmpty) return id;
+    }
+
     // Try common keys at top level
-    const keys = ['txId', 'txid', 'hash', 'transactionHash', 'id'];
+    const keys = ['txHash', 'txId', 'txid', 'hash', 'transactionHash', 'id'];
     for (final k in keys) {
       final v = data[k];
       if (v is String && v.isNotEmpty) return v;
     }
+
     // Try within nested "data" or "result"
     final nested = (data['data'] ?? data['result']);
     if (nested is Map<String, dynamic>) {
       for (final k in keys) {
         final v = nested[k];
         if (v is String && v.isNotEmpty) return v;
+      }
+      final ntx = nested['transaction'];
+      if (ntx is Map<String, dynamic>) {
+        final hash = ntx['txHash']?.toString();
+        if (hash != null && hash.isNotEmpty) return hash;
+        final id = ntx['id']?.toString();
+        if (id != null && id.isNotEmpty) return id;
       }
     }
     return null;
@@ -191,7 +223,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
               const Text("Your transaction has been submitted successfully."),
               const SizedBox(height: 8),
               if (txId != null) ...[
-                const Text("Transaction ID:"),
+                const Text("Transaction ID / Hash:"),
                 const SizedBox(height: 4),
                 SelectableText(
                   txId,
@@ -373,33 +405,37 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                         spacing: 8,
                         children: [
                           ChoiceChip(
-                            label: const Text('Regular'),
-                            selected: _priority == "no",
+                            label: const Text('Standard'),
+                            selected: _priority == "Standard",
                             onSelected: (_) {
-                              _priority = "no";
-                              _recalcFees();
+                              setState(() {
+                                _priority = "Standard"; // ← UPDATED
+                                _recalcFees();
+                              });
                             },
                             selectedColor: Colors.white,
                             labelStyle: TextStyle(
-                              color: _priority == "no"
+                              color: _priority == "Standard"
                                   ? Colors.black
-                                  : textSecondary,
+                                  : textSecondary, // ← UPDATED
                               fontWeight: FontWeight.w600,
                             ),
                             backgroundColor: const Color(0xFF121526),
                           ),
                           ChoiceChip(
-                            label: const Text('High'),
-                            selected: _priority == "yes",
+                            label: const Text('Fast'),
+                            selected: _priority == "Fast",
                             onSelected: (_) {
-                              _priority = "yes";
-                              _recalcFees();
+                              setState(() {
+                                _priority = "Fast"; // ← UPDATED
+                                _recalcFees();
+                              });
                             },
                             selectedColor: Colors.white,
                             labelStyle: TextStyle(
-                              color: _priority == "yes"
+                              color: _priority == "Fast"
                                   ? Colors.black
-                                  : textSecondary,
+                                  : textSecondary, // ← UPDATED
                               fontWeight: FontWeight.w600,
                             ),
                             backgroundColor: const Color(0xFF121526),
@@ -409,8 +445,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                     ),
                     const SizedBox(height: 8),
 
-                    _kvRow(
-                        'Fee Option', _priority == "yes" ? 'High' : 'Regular'),
+                    _kvRow('Fee Option', _priority), // ← UPDATED
                     _kvRow(
                       'Estimated Network Fee',
                       '${_networkFee.toStringAsFixed(_networkFee >= 1 ? 1 : 6)} $_assetSymbol',
@@ -474,8 +509,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Key
-          const SizedBox(width: 0), // keeps structure predictable
+          const SizedBox(width: 0),
           Expanded(
             flex: 43,
             child: Text(
@@ -487,7 +521,6 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
               ),
             ),
           ),
-          // Value
           Expanded(
             flex: 57,
             child: Text(
@@ -515,7 +548,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       child: SizedBox(
         height: 36,
         width: 36,
-        child: Icon(icon, size: 18, color: Colors.white), // ✅ use param
+        child: Icon(icon, size: 18, color: Colors.white),
       ),
     );
   }

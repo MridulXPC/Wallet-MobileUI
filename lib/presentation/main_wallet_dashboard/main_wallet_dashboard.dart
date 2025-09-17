@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/services/wallet_flow.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
@@ -13,7 +12,8 @@ import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart'; // ⬅️ for currency formatting
+
+import 'package:cryptowallet/stores/balance_store.dart';
 
 class WalletHomeScreen extends StatefulWidget {
   const WalletHomeScreen({super.key});
@@ -25,9 +25,11 @@ class WalletHomeScreen extends StatefulWidget {
 class _WalletHomeScreenState extends State<WalletHomeScreen> {
   int _selectedIndex = 0;
 
-  // ⬇️ live portfolio total (display string)
-  String _portfolioDisplay = '—';
-  bool _loadingPortfolio = false;
+  late final PageController _pageController;
+  int _currentPage = 0;
+  late final Timer _pagerTimer;
+
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   void _onItemTapped(int index) {
     if (index == 1) {
@@ -47,17 +49,13 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     });
   }
 
-  late final PageController _pageController;
-  int _currentPage = 0;
-  late final Timer _timer;
-  bool _didBootstrap = false;
-
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
 
-    _timer = Timer.periodic(const Duration(seconds: 4), (t) {
+    // auto-swipe the top card
+    _pagerTimer = Timer.periodic(const Duration(seconds: 4), (t) {
       if (!mounted) return;
       if (_pageController.hasClients) {
         _currentPage = (_currentPage + 1) % 4;
@@ -68,77 +66,21 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
         );
       }
     });
-  }
 
-  // ⬇️ Fetch wallets and compute total USD
-  Future<void> _refreshPortfolioTotal() async {
-    setState(() => _loadingPortfolio = true);
-    try {
-      final wallets = await AuthService.fetchWallets();
-      final totalUsd = _sumAllWalletsUsd(wallets);
-      final formatted = NumberFormat.currency(symbol: '\$', decimalDigits: 2)
-          .format(totalUsd);
+    // start balances polling: now + every 30s
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() => _portfolioDisplay = formatted);
-    } catch (_) {
-      // keep previous display on error
-    } finally {
-      if (mounted) setState(() => _loadingPortfolio = false);
-    }
-  }
-
-  // -------- Aggregation helpers (robust to varied shapes) --------
-  double _sumAllWalletsUsd(List<Map<String, dynamic>> wallets) {
-    double total = 0.0;
-    for (final w in wallets) {
-      total += _walletUsd(w);
-    }
-    return total;
-  }
-
-  double _walletUsd(Map<String, dynamic> w) {
-    final chains = (w['chains'] as List?) ?? const [];
-    if (chains.isNotEmpty) {
-      double sum = 0.0;
-      for (final c in chains) {
-        if (c is! Map) continue;
-        final m = c.cast<String, dynamic>();
-
-        final usdDirect = _asDouble(m['fiatValue']) ??
-            _asDouble(m['usdValue']) ??
-            _asDouble(m['balanceUSD']);
-        if (usdDirect != null) {
-          sum += usdDirect;
-          continue;
-        }
-        final bal = _asDouble(m['balance']) ?? _asDouble(m['amount']);
-        final price = _asDouble(m['priceUsd']) ??
-            _asDouble(m['usdPrice']) ??
-            _asDouble(m['price']);
-        if (bal != null && price != null) sum += bal * price;
-      }
-      return sum;
-    }
-
-    // wallet-level fallback values
-    return _asDouble(w['fiatValue']) ??
-        _asDouble(w['usdValue']) ??
-        _asDouble(w['totalUsd']) ??
-        _asDouble(w['total']) ??
-        0.0;
-  }
-
-  double? _asDouble(dynamic v) {
-    if (v == null) return null;
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v);
-    return null;
+      context.read<BalanceStore>().startAutoRefresh(
+            interval: const Duration(seconds: 30),
+          );
+    });
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _timer.cancel();
+    _pagerTimer.cancel();
+    context.read<BalanceStore>().stopAutoRefresh();
     super.dispose();
   }
 
@@ -156,8 +98,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   double getMaxY(List<List<double>> allData) {
     return allData.expand((e) => e).reduce(max) * 1.02;
   }
-
-  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   void _openChangeWalletSheet(BuildContext context) async {
     final rootCtx = context;
@@ -179,7 +119,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               if (mounted) {
                 final store = rootCtx.read<WalletStore>();
                 await store.reloadFromLocalAndActivate(w.id);
-                await _refreshPortfolioTotal(); // ⬅️ recompute after create
+                await rootCtx
+                    .read<BalanceStore>()
+                    .refresh(); // immediate update
               }
 
               ScaffoldMessenger.of(rootCtx).showSnackBar(
@@ -220,7 +162,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                           Navigator.of(rootCtx).pop();
                           if (mounted) {
                             await rootCtx.read<WalletStore>().setActive(w.id);
-                            await _refreshPortfolioTotal(); // ⬅️ recompute after switch
+                            await rootCtx.read<BalanceStore>().refresh();
                           }
                         },
                       )),
@@ -246,7 +188,11 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // keep CoinStore reactive if needed elsewhere
     context.watch<CoinStore>();
+
+    final balances = context.watch<BalanceStore>();
+    final totalDisplay = balances.totalUsdFormatted; // <-- "$246.36"
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -263,17 +209,18 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VaultHeaderCard(
-                  totalValue: _portfolioDisplay, // ⬅️ dynamic total
+                  // Shows backend total_balance (USD), auto-refreshing every 30s
+                  totalValue: totalDisplay,
                   vaultName: 'Main Wallet',
-                  onTap: () {}, // open portfolio
+                  onTap: () {},
                   onChangeWallet: () => _openChangeWalletSheet(context),
                   onActivities: () => Navigator.of(context, rootNavigator: true)
                       .pushNamed(AppRoutes.transactionHistory),
                 ),
                 const MainCoinsOnly(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: const CryptoPortfolioWidget(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: CryptoPortfolioWidget(),
                 ),
               ],
             ),
@@ -330,45 +277,6 @@ class MainCoinsOnly extends StatelessWidget {
       showArrows: false,
       showDots: false,
       scrollable: true,
-    );
-  }
-}
-
-class LegendItem extends StatelessWidget {
-  final Color color;
-  final String label;
-  final double? fontSize;
-
-  const LegendItem({
-    super.key,
-    required this.color,
-    required this.label,
-    this.fontSize,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: fontSize ?? 12,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
     );
   }
 }

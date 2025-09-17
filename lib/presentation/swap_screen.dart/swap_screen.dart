@@ -11,6 +11,7 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/wallet_store.dart'; // LocalWallet, WalletStore
+import 'package:cryptowallet/stores/balance_store.dart'; // <-- NEW: live balances
 
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});
@@ -51,12 +52,8 @@ class _SwapScreenState extends State<SwapScreen> {
 
   static const Color _pageBg = Color(0xFF0B0D1A);
 
-  // ---------- Wallet-derived capability cache ----------
+  // Track wallet id to refresh when wallet changes
   String? _loadedWalletId;
-  Set<String> _supportedChains = {}; // e.g., {'ETH','TRON','BNB','BTC','SOL'}
-  Map<String, double> _balances = {}; // coinId -> balance
-
-  // Stable ref to WalletStore to avoid using BuildContext in dispose()
   WalletStore? _walletStore;
 
   // ---------- Helpers ----------
@@ -95,21 +92,24 @@ class _SwapScreenState extends State<SwapScreen> {
     return c?.symbol ?? _baseSymbol(coinId).toUpperCase();
   }
 
-  /// Whether the *currently active wallet* supports the given coinId (via chain)
+  /// Supported = set of base symbols present in BalanceStore
   bool _walletSupportsCoin(String coinId) {
-    if (_supportedChains.isEmpty) {
-      // If unknown (backend didn’t return), don’t block UI: treat as supported.
-      return true;
-    }
-    final chain = _normalizeChain(coinId);
-    return _supportedChains.contains(chain);
+    final syms = context
+        .read<BalanceStore>()
+        .symbols
+        .map((e) => e.toUpperCase())
+        .toSet();
+    if (syms.isEmpty) return true; // unknown → don’t block UI
+    return syms.contains(_baseSymbol(coinId).toUpperCase());
   }
 
-  /// Balance for a coinId from current wallet (0 if missing)
+  /// Balance for coinId from BalanceStore (0 if missing)
   double _balanceFor(String coinId) {
-    final v = _balances[coinId];
-    if (v == null) return 0.0;
-    return v.toDouble();
+    final bs = context.read<BalanceStore>();
+    final sym = _baseSymbol(coinId).toUpperCase();
+    final row = bs.bySymbol[sym];
+    if (row == null) return 0.0;
+    return double.tryParse(row.balance) ?? 0.0;
   }
 
   bool _hasSufficientBalance(String coinId, double amount) {
@@ -165,12 +165,10 @@ class _SwapScreenState extends State<SwapScreen> {
       ),
       backgroundColor: const Color(0xFFE53935).withOpacity(0.95),
       behavior: SnackBarBehavior.floating,
-      margin:
-          const EdgeInsets.fromLTRB(16, 0, 16, 90), // float above bottom bar
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 6,
       duration: const Duration(milliseconds: 2200),
-      // Built-in slide/fade animation is used by SnackBar automatically
     );
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(snack);
@@ -207,12 +205,21 @@ class _SwapScreenState extends State<SwapScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    // Watch wallet switch → refresh balances via BalanceStore
     final ws = context.read<WalletStore>();
     if (_walletStore != ws) {
       _walletStore?.removeListener(_onWalletChanged);
       _walletStore = ws;
       _walletStore!.addListener(_onWalletChanged);
-      _refreshWalletCapabilitiesIfNeeded();
+      _refreshForActiveWallet();
+    }
+
+    // Fire a BalanceStore refresh the first time we land here
+    final bs = context.read<BalanceStore>();
+    if (!bs.loading && bs.rows.isEmpty) {
+      // No await here; it will notify and rebuild when ready
+      bs.refresh();
     }
   }
 
@@ -227,62 +234,41 @@ class _SwapScreenState extends State<SwapScreen> {
 
   void _onWalletChanged() {
     if (!mounted) return;
-    _refreshWalletCapabilitiesIfNeeded();
+    _refreshForActiveWallet();
   }
 
-  Future<void> _refreshWalletCapabilitiesIfNeeded() async {
+  Future<void> _refreshForActiveWallet() async {
     final aw = _activeWallet;
     final wid = aw?.id;
-    if (wid == null) {
-      if (!mounted) return;
-      setState(() {
-        _loadedWalletId = null;
-        _supportedChains = {};
-        _balances = {};
-      });
-      return;
-    }
-    if (_loadedWalletId == wid) return;
 
+    if (_loadedWalletId == wid) return;
+    _loadedWalletId = wid;
+
+    // Ask BalanceStore to refresh for the new wallet (your store already
+    // calls the API every 30s; this just forces an immediate refresh now).
     try {
-      final chains = await AuthService.getWalletSupportedChains(wid);
-      final bals = await AuthService.getWalletBalances(wid);
-      if (!mounted) return;
-      setState(() {
-        _loadedWalletId = wid;
-        _supportedChains = chains ?? {};
-        _balances = bals ?? {};
-      });
-      _fixUnsupportedSelections();
-      _stopQuoteCountdown();
-      _scheduleQuote();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loadedWalletId = wid;
-        _supportedChains = {};
-        _balances = {};
-      });
-      _fixUnsupportedSelections();
-      _stopQuoteCountdown();
-      _scheduleQuote();
-    }
+      await context.read<BalanceStore>().refresh();
+    } catch (_) {}
+
+    // Ensure current picks are supported by the fresh balances
+    _fixUnsupportedSelections();
+    _stopQuoteCountdown();
+    _scheduleQuote();
   }
 
   void _fixUnsupportedSelections() {
     final store = context.read<CoinStore>();
+
     if (!_walletSupportsCoin(fromCoinId)) {
-      final firstSupported = store.coins.values.map((c) => c.id).firstWhere(
-            _walletSupportsCoin,
-            orElse: () => fromCoinId,
-          );
+      final firstSupported = store.coins.values
+          .map((c) => c.id)
+          .firstWhere(_walletSupportsCoin, orElse: () => fromCoinId);
       if (firstSupported != fromCoinId) fromCoinId = firstSupported;
     }
     if (!_walletSupportsCoin(toCoinId)) {
-      final secondSupported = store.coins.values.map((c) => c.id).firstWhere(
-            _walletSupportsCoin,
-            orElse: () => toCoinId,
-          );
+      final secondSupported = store.coins.values
+          .map((c) => c.id)
+          .firstWhere(_walletSupportsCoin, orElse: () => toCoinId);
       if (secondSupported != toCoinId) toCoinId = secondSupported;
     }
   }
@@ -435,15 +421,20 @@ class _SwapScreenState extends State<SwapScreen> {
       builder: (_) {
         return StatefulBuilder(builder: (context, setModalState) {
           final store = context.read<CoinStore>();
+          final bs = context.read<BalanceStore>();
+          final supported = bs.symbols.map((e) => e.toUpperCase()).toSet();
 
           // All coins sorted by symbol
           final allCoins = store.coins.values.toList()
             ..sort((a, b) => a.symbol.compareTo(b.symbol));
 
-          // Wallet-supported subset (if we know chains; otherwise show all)
-          final listForPicker = _supportedChains.isEmpty
+          // Wallet-supported subset (if we know balances; otherwise show all)
+          final listForPicker = supported.isEmpty
               ? allCoins
-              : allCoins.where((c) => _walletSupportsCoin(c.id)).toList();
+              : allCoins.where((c) {
+                  final base = _baseSymbol(c.id).toUpperCase();
+                  return supported.contains(base);
+                }).toList();
 
           // Build chip list (base symbols) from *shown* coins
           final baseSet = <String>{};
@@ -885,7 +876,9 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
-    if (_supportedChains.isNotEmpty &&
+    final hasSupported =
+        context.read<BalanceStore>().symbols.isNotEmpty; // known?
+    if (hasSupported &&
         (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
       _stopQuoteCountdown();
       setState(() {
@@ -971,7 +964,9 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
-    if (_supportedChains.isNotEmpty &&
+    final hasSupported =
+        context.read<BalanceStore>().symbols.isNotEmpty; // known?
+    if (hasSupported &&
         (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
       _showErrorSnack('Selected coins are not supported by this wallet');
       return;
@@ -1046,7 +1041,9 @@ class _SwapScreenState extends State<SwapScreen> {
   // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<CoinStore>(); // watch coins so UI updates
+    // Watch stores so the UI updates when balances/coins change
+    final store = context.watch<CoinStore>();
+    final bs = context.watch<BalanceStore>();
 
     // If initial ids are absent in store, pick some defaults
     if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
@@ -1056,8 +1053,8 @@ class _SwapScreenState extends State<SwapScreen> {
       toCoinId = store.coins.values.skip(1).first.id;
     }
 
-    // Ensure current selection is supported by selected wallet (if we know chains)
-    if (_supportedChains.isNotEmpty) {
+    // Ensure current selection is supported by the current wallet balances
+    if (bs.symbols.isNotEmpty) {
       _fixUnsupportedSelections();
     }
 
@@ -1186,7 +1183,7 @@ class _SwapScreenState extends State<SwapScreen> {
             ],
           ),
 
-          // Swap direction button between the two cards (nudged lower so it won't overlap)
+          // Swap direction button between the two cards
           Positioned(
             top: 100,
             left: 0,

@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/stores/wallet_store.dart'; // ✅ NEW
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => CoinStore()),
         ChangeNotifierProvider(create: (_) => WalletStore()),
+        ChangeNotifierProvider(create: (_) => BalanceStore()),
       ],
       child: const MyApp(),
     ),
