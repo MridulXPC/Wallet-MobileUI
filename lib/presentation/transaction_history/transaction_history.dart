@@ -1,8 +1,11 @@
 // lib/presentation/transaction_history/transaction_history.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../services/api_service.dart';
+import '../../stores/wallet_store.dart';
 import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/transaction_card_widget.dart';
 import './widgets/transaction_detail_modal_widget.dart';
@@ -33,149 +36,39 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   bool _isSearchExpanded = false;
   bool _isLoading = false;
+  String? _error;
 
   List<String> _activeFilters = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
   List<Map<String, dynamic>> _allTransactions = [];
   List<String>? _onlyTypesFromArgs;
 
-  // Mock transaction data (added a couple of SWAP rows)
-  final List<Map<String, dynamic>> _mockTransactions = [
-    {
-      "id": "tx_001",
-      "type": "receive",
-      "asset": "BTC",
-      "amount": "0.00234567",
-      "fiatAmount": "\$156.78",
-      "timestamp": DateTime.now().subtract(const Duration(minutes: 30)),
-      "status": "confirmed",
-      "hash": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-      "fromAddress": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-      "toAddress": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
-      "fee": "0.00001234",
-      "confirmations": 6,
-      "note": ""
-    },
-    {
-      "id": "tx_002",
-      "type": "send",
-      "asset": "ETH",
-      "amount": "0.5",
-      "fiatAmount": "\$1,234.50",
-      "timestamp": DateTime.now().subtract(const Duration(hours: 2)),
-      "status": "confirmed",
-      "hash": "0x742d35cc6e4c4e0c4e4e4e4e4e4e4e4e4e4e4e4e",
-      "fromAddress": "0x742d35...",
-      "toAddress": "0x8ba1f1095...",
-      "fee": "0.002",
-      "confirmations": 12,
-      "note": "Payment for services"
-    },
-    {
-      "id": "tx_003",
-      "type": "buy",
-      "asset": "BTC",
-      "amount": "0.01",
-      "fiatAmount": "\$670.00",
-      "timestamp": DateTime.now().subtract(const Duration(hours: 5)),
-      "status": "pending",
-      "hash": "pending",
-      "fromAddress": "Coinbase Exchange",
-      "toAddress": "bc1qw508d6qejx...",
-      "fee": "0.00",
-      "confirmations": 0,
-      "note": ""
-    },
-    {
-      "id": "tx_004",
-      "type": "sell",
-      "asset": "ETH",
-      "amount": "1.0",
-      "fiatAmount": "\$2,469.00",
-      "timestamp": DateTime.now().subtract(const Duration(days: 1)),
-      "status": "confirmed",
-      "hash": "0x8ba1f109...",
-      "fromAddress": "0x742d35...",
-      "toAddress": "Binance Exchange",
-      "fee": "0.003",
-      "confirmations": 25,
-      "note": "Profit taking"
-    },
-    {
-      "id": "tx_005",
-      "type": "receive",
-      "asset": "USDT",
-      "amount": "500.00",
-      "fiatAmount": "\$500.00",
-      "timestamp": DateTime.now().subtract(const Duration(days: 2)),
-      "status": "confirmed",
-      "hash": "0x9cb2f10...",
-      "fromAddress": "0x8ba1f109...",
-      "toAddress": "0x742d35...",
-      "fee": "0.00",
-      "confirmations": 50,
-      "note": "Freelance payment"
-    },
-    {
-      "id": "tx_006",
-      "type": "send",
-      "asset": "BTC",
-      "amount": "0.005",
-      "fiatAmount": "\$335.00",
-      "timestamp": DateTime.now().subtract(const Duration(days: 3)),
-      "status": "confirmed",
-      "hash": "1B2zP1eP...",
-      "fromAddress": "bc1qw508d6qejx...",
-      "toAddress": "bc1qxy2kgdygjr...",
-      "fee": "0.00000567",
-      "confirmations": 100,
-      "note": "Gift to friend"
-    },
-    // NEW: swap examples
-    {
-      "id": "tx_007",
-      "type": "swap",
-      "asset": "BTC",
-      "amount": "0.002",
-      "fiatAmount": "\$134.00",
-      "timestamp":
-          DateTime.now().subtract(const Duration(hours: 3, minutes: 10)),
-      "status": "confirmed",
-      "hash": "swap_0x001",
-      "fromAddress": "ETH",
-      "toAddress": "BTC",
-      "fee": "0.000001",
-      "confirmations": 22,
-      "note": "ETH → BTC"
-    },
-    {
-      "id": "tx_008",
-      "type": "swap",
-      "asset": "USDT",
-      "amount": "250",
-      "fiatAmount": "\$250.00",
-      "timestamp": DateTime.now().subtract(const Duration(days: 1, hours: 4)),
-      "status": "confirmed",
-      "hash": "swap_0x002",
-      "fromAddress": "BTC",
-      "toAddress": "USDT",
-      "fee": "15 TRX",
-      "confirmations": 18,
-      "note": "BTC → USDT"
-    },
-  ];
+  String? _lastWalletId; // refetch when active wallet changes
 
   @override
   void initState() {
     super.initState();
-    _allTransactions = List.from(_mockTransactions);
-    _filteredTransactions = List.from(_mockTransactions);
     _scrollController.addListener(_onScroll);
+
+    // Initial fetch after first frame so context is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = context.read<WalletStore>().activeWalletId;
+      _lastWalletId = id;
+      _fetchTransactions(walletId: id);
+    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    // Watch for wallet id changes; refetch if changed
+    final currentId = context.watch<WalletStore>().activeWalletId;
+    if (currentId != _lastWalletId) {
+      _lastWalletId = currentId;
+      _fetchTransactions(walletId: currentId);
+    }
+
     // Allow passing types via Navigator arguments too.
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
@@ -197,7 +90,111 @@ class _TransactionHistoryState extends State<TransactionHistory>
     super.dispose();
   }
 
-  // ---------------- internal ----------------
+  // ---------------- data fetch ----------------
+
+  Future<void> _fetchTransactions({required String? walletId}) async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // If walletId is null/empty, try to pick first from backend
+      String? useId = walletId;
+      if (useId == null || useId.isEmpty) {
+        final wallets = await AuthService.fetchWallets();
+        if (wallets.isNotEmpty) {
+          useId = wallets.first['_id']?.toString();
+        }
+      }
+
+      if (useId == null || useId.isEmpty) {
+        setState(() {
+          _allTransactions = const [];
+          _filteredTransactions = const [];
+          _isLoading = false;
+          _error = 'No wallet available.';
+        });
+        return;
+      }
+
+      // Fetch from backend
+      final records = await AuthService.fetchTransactionHistoryByWallet(
+        walletId: useId,
+        limit: 200, // adjust as desired
+      );
+
+      // Map TxRecord -> Map<String,dynamic> used by UI widgets
+      final mapped = records.map(_mapTxRecordToUi).toList();
+
+      // Sort newest first (in case backend doesn’t)
+      mapped.sort((a, b) {
+        final ta = a['timestamp'] as DateTime?;
+        final tb = b['timestamp'] as DateTime?;
+        if (ta == null && tb == null) return 0;
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return tb.compareTo(ta);
+      });
+
+      setState(() {
+        _allTransactions = mapped;
+        _filteredTransactions = _applyActiveFilters(mapped);
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _allTransactions = const [];
+        _filteredTransactions = const [];
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Map<String, dynamic> _mapTxRecordToUi(TxRecord r) {
+    // Derive a UI "type" that your chips & cards expect.
+    // We prefer explicit direction/type if provided; otherwise infer.
+    final raw = (r.direction ?? '').toLowerCase();
+    String type;
+    if (raw == 'in' || raw == 'receive' || raw == 'received') {
+      type = 'receive';
+    } else if (raw == 'out' || raw == 'send' || raw == 'sent') {
+      type = 'send';
+    } else if (raw == 'swap' || raw == 'exchange') {
+      type = 'swap';
+    } else if (raw == 'buy' || raw == 'purchase') {
+      type = 'buy';
+    } else if (raw == 'sell') {
+      type = 'sell';
+    } else {
+      // fallback based on presence of from/to
+      type = 'transfer';
+    }
+
+    // Map fields your UI uses
+    return {
+      "id": r.id ?? r.txHash ?? UniqueKey().toString(),
+      "type": type,
+      "asset": r.token ?? r.chain ?? '',
+      "amount": r.amount ?? '0',
+      "fiatAmount":
+          r.amountUsd != null ? '\$${r.amountUsd!.toStringAsFixed(2)}' : '',
+      "timestamp": r.timestamp ?? DateTime.now(),
+      "status": (r.status ?? '').toLowerCase(),
+      "hash": r.txHash ?? 'pending',
+      "fromAddress": r.from ?? '',
+      "toAddress": r.to ?? '',
+      "fee": r.fee ?? '',
+      // Optional/extras your UI tolerates:
+      "confirmations": null,
+      "note": "",
+    };
+  }
+
+  // ---------------- internal (UI helpers) ----------------
 
   void _applyInitialTypeFilter(List<String> allowedTypes) {
     setState(() {
@@ -221,12 +218,9 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   void _loadMoreTransactions() {
+    // If your API supports paging, call fetch with page/limit here.
     if (_isLoading) return;
-    setState(() => _isLoading = true);
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-    });
+    // No-op for now (list already fetched with a sensible limit).
   }
 
   void _toggleSearch() {
@@ -250,25 +244,14 @@ class _TransactionHistoryState extends State<TransactionHistory>
           final hash = (t['hash'] ?? '').toString().toLowerCase();
           final amount = (t['amount'] ?? '').toString().toLowerCase();
           final address = (t['toAddress'] ?? '').toString().toLowerCase();
-          return hash.contains(q) || amount.contains(q) || address.contains(q);
+          final asset = (t['asset'] ?? '').toString().toLowerCase();
+          return hash.contains(q) ||
+              amount.contains(q) ||
+              address.contains(q) ||
+              asset.contains(q);
         }).toList();
       }
     });
-  }
-
-  void _showFilterBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => FilterBottomSheetWidget(
-        onFiltersApplied: (filters) {
-          setState(() => _activeFilters = filters);
-          _applyFilters();
-        },
-        activeFilters: _activeFilters,
-      ),
-    );
   }
 
   void _applyFilters() {
@@ -281,9 +264,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
   List<Map<String, dynamic>> _applyActiveFilters(
       List<Map<String, dynamic>> source) {
     if (_activeFilters.isEmpty) return List.from(source);
-    final want = _activeFilters
-        .map((f) => f.toLowerCase())
-        .toSet(); // e.g. {send, receive, buy, sell, swap}
+    final want = _activeFilters.map((f) => f.toLowerCase()).toSet();
     return source
         .where((t) => want.contains((t['type'] ?? '').toString().toLowerCase()))
         .toList();
@@ -306,7 +287,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   Future<void> _refreshTransactions() async {
-    await Future.delayed(const Duration(seconds: 1));
+    await _fetchTransactions(walletId: _lastWalletId);
     setState(() {
       _filteredTransactions =
           _applyActiveFilters(_allTransactions); // respect active filters
@@ -316,7 +297,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
   List<Map<String, dynamic>> _groupTransactionsByDate() {
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (var t in _filteredTransactions) {
-      final date = t['timestamp'] as DateTime;
+      final date = (t['timestamp'] ?? DateTime.now()) as DateTime;
       final key = _dateKey(date);
       grouped.putIfAbsent(key, () => []).add(t);
     }
@@ -342,12 +323,12 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   @override
   Widget build(BuildContext context) {
-    final grouped = _groupTransactionsByDate();
+    _groupTransactionsByDate();
 
     return Scaffold(
-      backgroundColor: Color(0xFF0B0D1A),
+      backgroundColor: const Color(0xFF0B0D1A),
       appBar: AppBar(
-        backgroundColor: Color(0xFF0B0D1A),
+        backgroundColor: const Color(0xFF0B0D1A),
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
@@ -359,52 +340,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
         ),
         title: Text('Transaction History',
             style: AppTheme.darkTheme.textTheme.titleLarge),
-        actions: [
-          // IconButton(
-          //   onPressed: _toggleSearch,
-          //   icon: CustomIconWidget(
-          //     iconName: _isSearchExpanded ? 'close' : 'search',
-          //     color: AppTheme.darkTheme.colorScheme.onSurface,
-          //     size: 24,
-          //   ),
-          // ),
-          // IconButton(
-          //   onPressed: _showFilterBottomSheet,
-          //   icon: Stack(
-          //     children: [
-          //       CustomIconWidget(
-          //         iconName: 'filter_list',
-          //         color: AppTheme.darkTheme.colorScheme.onSurface,
-          //         size: 24,
-          //       ),
-          //       if (_activeFilters.isNotEmpty)
-          //         Positioned(
-          //           right: 0,
-          //           top: 0,
-          //           child: Container(
-          //             padding: EdgeInsets.all(1.w),
-          //             decoration: BoxDecoration(
-          //               color: AppTheme.info,
-          //               shape: BoxShape.circle,
-          //             ),
-          //             constraints:
-          //                 BoxConstraints(minWidth: 4.w, minHeight: 4.w),
-          //             child: Text(
-          //               '${_activeFilters.length}',
-          //               style: TextStyle(
-          //                 color: AppTheme.onPrimary,
-          //                 fontSize: 8.sp,
-          //                 fontWeight: FontWeight.bold,
-          //               ),
-          //               textAlign: TextAlign.center,
-          //             ),
-          //           ),
-          //         ),
-          //     ],
-          //   ),
-          // ),
-          // SizedBox(width: 2.w),
-        ],
+        actions: [],
       ),
       body: Column(
         children: [
@@ -421,7 +357,8 @@ class _TransactionHistoryState extends State<TransactionHistory>
                       onChanged: _filterTransactions,
                       style: AppTheme.darkTheme.textTheme.bodyMedium,
                       decoration: InputDecoration(
-                        hintText: 'Search by hash, amount, or address...',
+                        hintText:
+                            'Search by hash, amount, address, or asset...',
                         prefixIcon: CustomIconWidget(
                           iconName: 'search',
                           color: AppTheme.darkTheme.colorScheme.onSurface
@@ -480,37 +417,66 @@ class _TransactionHistoryState extends State<TransactionHistory>
               ),
             ),
 
-          // Transaction List
-          Expanded(
-            child: _filteredTransactions.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-                    onRefresh: _refreshTransactions,
-                    color: AppTheme.info,
-                    backgroundColor: AppTheme.darkTheme.colorScheme.surface,
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.symmetric(horizontal: 4.w),
-                      itemCount: grouped.length + (_isLoading ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == grouped.length) {
-                          return _buildLoadingIndicator();
-                        }
-
-                        final item = grouped[index];
-                        if (item['type'] == 'header') {
-                          return _buildDateHeader(item['title'] as String);
-                        } else {
-                          return TransactionCardWidget(
-                            transaction: item,
-                            onTap: () => _showTransactionDetail(item),
-                            onSwipeAction: (action) =>
-                                _handleSwipeAction(action, item),
-                          );
-                        }
-                      },
+          // Error banner
+          if (_error != null)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.redAccent),
+                  SizedBox(width: 2.w),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
+                        color: Colors.redAccent,
+                      ),
                     ),
                   ),
+                  TextButton(
+                    onPressed: () =>
+                        _fetchTransactions(walletId: _lastWalletId),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+
+          // Transaction List
+          Expanded(
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: AppTheme.info,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : _filteredTransactions.isEmpty
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _refreshTransactions,
+                        color: AppTheme.info,
+                        backgroundColor: AppTheme.darkTheme.colorScheme.surface,
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: EdgeInsets.symmetric(horizontal: 4.w),
+                          itemCount: _groupTransactionsByDate().length,
+                          itemBuilder: (context, index) {
+                            final grouped = _groupTransactionsByDate();
+                            final item = grouped[index];
+                            if (item['type'] == 'header') {
+                              return _buildDateHeader(item['title'] as String);
+                            } else {
+                              return TransactionCardWidget(
+                                transaction: item,
+                                onTap: () => _showTransactionDetail(item),
+                                onSwipeAction: (action) =>
+                                    _handleSwipeAction(action, item),
+                              );
+                            }
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
@@ -546,22 +512,6 @@ class _TransactionHistoryState extends State<TransactionHistory>
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 4.h),
-          ElevatedButton(
-            onPressed: () =>
-                Navigator.pushNamed(context, '/main-wallet-dashboard'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.info,
-              foregroundColor: AppTheme.onPrimary,
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-            ),
-            child: Text(
-              'Buy Crypto',
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -576,18 +526,6 @@ class _TransactionHistoryState extends State<TransactionHistory>
           color:
               AppTheme.darkTheme.colorScheme.onSurface.withValues(alpha: 0.7),
           fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Container(
-      padding: EdgeInsets.all(4.w),
-      child: Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.info,
-          strokeWidth: 2,
         ),
       ),
     );

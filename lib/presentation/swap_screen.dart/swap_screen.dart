@@ -11,7 +11,7 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/wallet_store.dart'; // LocalWallet, WalletStore
-import 'package:cryptowallet/stores/balance_store.dart'; // <-- NEW: live balances
+import 'package:cryptowallet/stores/balance_store.dart'; // live balances
 
 class SwapScreen extends StatefulWidget {
   const SwapScreen({super.key});
@@ -127,29 +127,6 @@ class _SwapScreenState extends State<SwapScreen> {
     return 20;
   }
 
-  // --- Money: avoid scientific notation, keep short & friendly
-  String _formatFiat(double v) {
-    if (v.isNaN || v.isInfinite) return '—';
-    final abs = v.abs();
-    String s;
-    if (abs < 1000000) {
-      s = v.toStringAsFixed(2);
-      final parts = s.split('.');
-      final whole = parts[0].replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-        (m) => '${m[1]},',
-      );
-      s = '$whole.${parts[1]}';
-    } else if (abs < 1e9) {
-      s = '${(v / 1e6).toStringAsFixed(2)}M';
-    } else if (abs < 1e12) {
-      s = '${(v / 1e9).toStringAsFixed(2)}B';
-    } else {
-      s = '${(v / 1e12).toStringAsFixed(2)}T';
-    }
-    return s;
-  }
-
   // Nice floating snackbar + subtle haptic
   void _showErrorSnack(String msg) {
     HapticFeedback.mediumImpact();
@@ -244,8 +221,7 @@ class _SwapScreenState extends State<SwapScreen> {
     if (_loadedWalletId == wid) return;
     _loadedWalletId = wid;
 
-    // Ask BalanceStore to refresh for the new wallet (your store already
-    // calls the API every 30s; this just forces an immediate refresh now).
+    // Ask BalanceStore to refresh for the new wallet
     try {
       await context.read<BalanceStore>().refresh();
     } catch (_) {}
@@ -405,12 +381,56 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  // ---------------- Coin Picker ----------------
-  Future<void> _openCoinPicker({required bool isFrom}) async {
-    _selectCoin(isFrom: isFrom);
+  /// Remove duplicates like ETH + ETH-ETH or BNB + BNB-BNB,
+  /// keeping the first occurrence for each (baseSymbol, **raw networkPart**) pair.
+  /// BTC vs BTC-LN remain two entries (BTC::BTC vs BTC::LN).
+  List<Coin> _dedupeCoinsByChain(List<Coin> coins) {
+    final seen = <String>{};
+    final out = <Coin>[];
+
+    for (final c in coins) {
+      final base = _baseSymbol(c.id).toUpperCase();
+      final net = _networkPart(c.id).toUpperCase(); // IMPORTANT: raw network
+      final key = '$base::$net';
+      if (seen.add(key)) out.add(c);
+    }
+    return out;
   }
 
-  void _selectCoin({required bool isFrom}) {
+  /// Try to get walletId from WalletStore; if absent, fetch from API.
+  /// ApiService.fetchWallets() returns a List<Map<String, dynamic>>.
+  Future<String?> _resolveWalletId() async {
+    // Prefer the store's active wallet (if present)
+    final storeId = _activeWallet?.id;
+    if (storeId != null && storeId.isNotEmpty) return storeId;
+
+    // Fallback: fetch from backend
+    try {
+      final wallets = await AuthService.fetchWallets();
+      if (wallets.isNotEmpty) {
+        final first = wallets.first;
+        final wid =
+            (first['walletId'] ?? first['id'] ?? first['_id'])?.toString();
+        if (wid != null && wid.isNotEmpty) return wid;
+      }
+    } catch (e) {
+      debugPrint('resolveWalletId() error: $e');
+    }
+    return null;
+  }
+
+  // ---------------- Coin Picker ----------------
+  Future<void> _openCoinPicker({required bool isFrom}) async {
+    final wid = await _resolveWalletId();
+    if (wid == null || wid.isEmpty) {
+      _selectCoinLegacy(isFrom: isFrom); // fallback UI
+    } else {
+      _selectCoinApi(isFrom: isFrom, walletId: wid); // hits fetchTokensByWallet
+    }
+  }
+
+  /// Old picker: uses local CoinStore + BalanceStore (kept as fallback)
+  void _selectCoinLegacy({required bool isFrom}) {
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1A1D29),
@@ -436,13 +456,16 @@ class _SwapScreenState extends State<SwapScreen> {
                   return supported.contains(base);
                 }).toList();
 
-          // Build chip list (base symbols) from *shown* coins
+          // 🔧 De-dupe here
+          final dedupedListForPicker = _dedupeCoinsByChain(listForPicker);
+
+          // Build chip list from *shown* coins
           final baseSet = <String>{};
-          for (final c in listForPicker) baseSet.add(_baseSymbol(c.id));
+          for (final c in dedupedListForPicker) baseSet.add(_baseSymbol(c.id));
           final chips = ['ALL', ...baseSet.toList()..sort()];
 
-          // Apply chip + search
-          final filtered = listForPicker.where((c) {
+          // Apply chip + search on the de-duped list
+          final filtered = dedupedListForPicker.where((c) {
             final matchesChip =
                 _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
             final q = _search.trim().toLowerCase();
@@ -571,6 +594,313 @@ class _SwapScreenState extends State<SwapScreen> {
             ),
           );
         });
+      },
+    );
+  }
+
+  /// Extracts coinId from VaultToken without using [].
+  String? _tokenCoinId(dynamic token) {
+    try {
+      final dyn = token as dynamic;
+      final v = dyn.coinId ?? dyn.id;
+      if (v != null) return v.toString();
+    } catch (_) {}
+    // Fallback via toJson()
+    try {
+      final m = (token as dynamic).toJson() as Map<String, dynamic>;
+      final v = m['coinId'] ?? m['id'];
+      if (v != null) return v.toString();
+    } catch (_) {}
+    return null;
+  }
+
+  /// Extracts symbol from VaultToken without using [].
+  String? _tokenSymbol(dynamic token) {
+    try {
+      final dyn = token as dynamic;
+      final v = dyn.symbol ?? dyn.ticker;
+      if (v != null) return v.toString();
+    } catch (_) {}
+    // Fallback via toJson()
+    try {
+      final m = (token as dynamic).toJson() as Map<String, dynamic>;
+      final v = m['symbol'] ?? m['ticker'];
+      if (v != null) return v.toString();
+    } catch (_) {}
+    return null;
+  }
+
+  /// API-backed picker: shows only tokens supported by the active wallet.
+  void _selectCoinApi({required bool isFrom, required String walletId}) {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1D29),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      context: context,
+      builder: (_) {
+        Future<List<Coin>>? fetchOnce;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            fetchOnce ??= () async {
+              final store = context.read<CoinStore>();
+
+              // ✅ Use ApiService here (returns List<VaultToken>)
+              final tokens =
+                  await AuthService.fetchTokensByWallet(walletId: walletId);
+
+              // Map tokens -> allowed Coin IDs in our CoinStore
+              final Set<String> allowedCoinIds = <String>{};
+
+              for (final t in tokens) {
+                final coinIdFromApi = _tokenCoinId(t);
+                final symbolFromApi = _tokenSymbol(t);
+
+                if (coinIdFromApi != null &&
+                    store.coins.containsKey(coinIdFromApi)) {
+                  allowedCoinIds.add(coinIdFromApi);
+                  continue;
+                }
+
+                if (symbolFromApi != null) {
+                  final symUp = symbolFromApi.toUpperCase();
+
+                  // Exact symbol match
+                  final bySymbol = store.coins.values.where(
+                    (c) => c.symbol.toUpperCase() == symUp,
+                  );
+                  if (bySymbol.isNotEmpty) {
+                    allowedCoinIds.addAll(bySymbol.map((c) => c.id));
+                    continue;
+                  }
+
+                  // Base symbol fallback (e.g., USDT-ERC20 / USDT-TRX => USDT)
+                  final byBase = store.coins.values.where(
+                    (c) => _baseSymbol(c.id).toUpperCase() == symUp,
+                  );
+                  if (byBase.isNotEmpty) {
+                    allowedCoinIds.addAll(byBase.map((c) => c.id));
+                  }
+                }
+              }
+
+              // Build + sort
+              final coinsForPicker = (allowedCoinIds.isEmpty
+                      ? store.coins.values
+                      : store.coins.values
+                          .where((c) => allowedCoinIds.contains(c.id)))
+                  .toList()
+                ..sort((a, b) => a.symbol.compareTo(b.symbol));
+
+              // 🔧 De-dupe here (critical)
+              final dedupedCoins = _dedupeCoinsByChain(coinsForPicker);
+
+              return dedupedCoins;
+            }();
+
+            return FutureBuilder<List<Coin>>(
+              future: fetchOnce,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return SafeArea(
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  );
+                }
+
+                if (snap.hasError) {
+                  return SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 12),
+                          const Text('Select Crypto',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 18)),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Failed to load tokens for this wallet.\n${snap.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () => setModalState(() {
+                              fetchOnce = null; // retry
+                            }),
+                            child: const Text('Retry'),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final allCoins = snap.data ?? const <Coin>[];
+
+                // Build chip list (base symbols) from *shown* coins
+                final baseSet = <String>{};
+                for (final c in allCoins) baseSet.add(_baseSymbol(c.id));
+                final chips = ['ALL', ...baseSet.toList()..sort()];
+
+                // Apply chip + search
+                final filtered = allCoins.where((c) {
+                  final matchesChip =
+                      _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
+                  final q = _search.trim().toLowerCase();
+                  final matchesSearch = q.isEmpty ||
+                      c.symbol.toLowerCase().contains(q) ||
+                      c.name.toLowerCase().contains(q) ||
+                      c.id.toLowerCase().contains(q);
+                  return matchesChip && matchesSearch;
+                }).toList();
+
+                return SafeArea(
+                  child: ClipRect(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomRight,
+                          stops: [0.0, 0.55, 1.0],
+                          colors: [
+                            Color.fromARGB(255, 6, 11, 33),
+                            Color.fromARGB(255, 0, 0, 0),
+                            Color.fromARGB(255, 0, 12, 56),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(height: 6),
+                            const Text('Select Crypto',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 18)),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Search symbol, name, or network',
+                                      hintStyle: const TextStyle(
+                                          color: Colors.white54),
+                                      prefixIcon: const Icon(Icons.search,
+                                          color: Colors.white54),
+                                      filled: true,
+                                      fillColor: const Color(0xFF2A2D3A),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                    ),
+                                    onChanged: (v) =>
+                                        setModalState(() => _search = v),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: chips.map((filter) {
+                                  final isSelected = _chipFilter == filter;
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6),
+                                    child: ChoiceChip(
+                                      label: Text(filter),
+                                      selected: isSelected,
+                                      onSelected: (_) => setModalState(
+                                          () => _chipFilter = filter),
+                                      selectedColor: Colors.blue,
+                                      labelStyle: TextStyle(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.white70,
+                                      ),
+                                      backgroundColor: const Color(0xFF2A2D3A),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 440,
+                              child: filtered.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'No tokens available for this wallet.',
+                                        style: TextStyle(color: Colors.white60),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      itemCount: filtered.length,
+                                      itemBuilder: (context, i) {
+                                        final c = filtered[i];
+                                        return ListTile(
+                                          leading: _coinAvatar(
+                                              c.assetPath, c.symbol),
+                                          title: Text(
+                                            c.symbol,
+                                            style: const TextStyle(
+                                                color: Colors.white),
+                                          ),
+                                          subtitle: Text(
+                                            c.name,
+                                            style: const TextStyle(
+                                                color: Colors.white70),
+                                          ),
+                                          trailing: Text(
+                                            _networkHint(c.id),
+                                            style: const TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 12),
+                                          ),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            setState(() {
+                                              if (isFrom) {
+                                                fromCoinId = c.id;
+                                              } else {
+                                                toCoinId = c.id;
+                                              }
+                                              _quoteToAmount = null;
+                                              _quoteError = null;
+                                            });
+                                            _stopQuoteCountdown();
+                                            _scheduleQuote();
+                                          },
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
       },
     );
   }

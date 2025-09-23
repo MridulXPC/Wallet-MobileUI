@@ -6,6 +6,9 @@ import 'package:cryptowallet/stores/wallet_store.dart'; // ⬅️ watch active w
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+// If VaultToken lives in a models file, make sure it's imported.
+// import 'package:cryptowallet/models/vault_token.dart';
+
 /// Optional: pre-cache all coin icons once (e.g., call from splash/init)
 Future<void> precacheCoinIcons(BuildContext context) async {
   final store = context.read<CoinStore>();
@@ -59,6 +62,54 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
   @override
   bool get wantKeepAlive => true;
 
+  // ---------------- Helpers ----------------
+
+  /// Normalize API/token symbol + chain to a base symbol that we use for icons.
+  String _baseSymbolFor(String? symbol, String? chain) {
+    final s = (symbol ?? '').toUpperCase();
+    final c = (chain ?? '').toUpperCase();
+
+    // Examples of vendor-normalization
+    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
+    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
+      return 'USDT';
+    }
+    return s.isEmpty ? c : s; // BTC, ETH, BNB, SOL, TRX, etc.
+  }
+
+  /// Get a coin asset path from CoinStore by base symbol (fallback to first match).
+  String _assetForSymbol(BuildContext context, String base) {
+    final store = context.read<CoinStore>();
+
+    // 1) Quick path: a coin with id == base
+    final byId = store.getById(base);
+    if (byId != null) return byId.assetPath;
+
+    // 2) Search by symbol field
+    try {
+      final match = store.coins.values.firstWhere(
+        (c) => c.symbol.toUpperCase() == base.toUpperCase(),
+      );
+      return match.assetPath;
+    } catch (_) {}
+
+    return _fallbackAsset;
+  }
+
+  String _nameForSymbol(
+      BuildContext context, String base, String? defaultName) {
+    final store = context.read<CoinStore>();
+    final byId = store.getById(base);
+    if (byId != null) return byId.name;
+    try {
+      final match = store.coins.values.firstWhere(
+        (c) => c.symbol.toUpperCase() == base.toUpperCase(),
+      );
+      return match.name;
+    } catch (_) {}
+    return defaultName ?? base;
+  }
+
   // ---------------- Fetch & map ----------------
 
   Future<void> _refreshForWallet(String? walletId) async {
@@ -68,12 +119,16 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     });
 
     try {
-      // Resolve which walletId to use (fallback to first wallet if null)
+      // Resolve which walletId to use (prefer the one passed/watched; fallback to API)
       String? useWalletId = walletId;
       if (useWalletId == null || useWalletId.isEmpty) {
         final wallets = await AuthService.fetchWallets();
         if (wallets.isNotEmpty) {
-          useWalletId = wallets.first['_id']?.toString();
+          // ✅ use walletId from the API shape you showed
+          useWalletId = wallets.first['walletId']?.toString();
+          // optional defensive fallbacks:
+          useWalletId ??= wallets.first['id']?.toString();
+          useWalletId ??= wallets.first['_id']?.toString();
         }
       }
 
@@ -86,31 +141,27 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         return;
       }
 
-      // 🔹 NEW: fetch tokens for the selected wallet via /api/token/get-tokens/:walletId
+      // 🔹 fetch tokens for the selected wallet via /api/token/get-tokens/:walletId
       final tokens =
           await AuthService.fetchTokensByWallet(walletId: useWalletId);
 
-      final store = context.read<CoinStore>();
-
-      // Map tokens → UI rows (resolve icon from CoinStore using base symbol only)
+      // Map tokens → UI rows (resolve icon + name from CoinStore using base symbol)
       _visible = tokens.map((t) {
         final base = _baseSymbolFor(t.symbol, t.chain);
-        final iconAsset =
-            store.getById(base)?.assetPath ?? _fallbackAsset; // single PNG
-        final coinName = store.getById(base)?.name ?? t.name;
+        final iconAsset = _assetForSymbol(context, base);
+        final coinName = _nameForSymbol(context, base, t.name);
 
-        final balanceStr = t.balance; // already string like "0.0000"
-        final usdVal = t.value; // double
+        final balanceStr = t.balance; // string
+        final usdVal = t.value; // double (assumed)
 
         String _formatPercent(double v) {
           final sign = v >= 0 ? '+' : '−';
           return '$sign${v.abs().toStringAsFixed(2)}%';
         }
 
-        // If backend provides change24h in token json, prefer it; else placeholder
-        double pct = t.changePercent ?? 0.0;
+        // Prefer change from backend if present
+        final pct = t.changePercent ?? 0.0;
         final isPositive = pct >= 0;
-        final changeStr = _formatPercent(pct);
 
         return {
           "id": t.id ?? '${base}_${t.chain}',
@@ -120,7 +171,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
           "balance": balanceStr,
           "usdValue": '\$${usdVal.toStringAsFixed(2)}',
           "usdBalance": usdVal.toStringAsFixed(2),
-          "change24h": changeStr,
+          "change24h": _formatPercent(pct),
           "isPositive": isPositive,
           "enabled": true,
           "chain": t.chain,
@@ -136,20 +187,6 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  // --- Always resolve a single, base-symbol asset from CoinStore ---
-  String _baseSymbolFor(String? symbol, String? chain) {
-    final s = (symbol ?? '').toUpperCase();
-    final c = (chain ?? '').toUpperCase();
-
-    // Normalize API symbols to a base symbol (no network in the icon)
-    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
-    if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
-      return 'USDT';
-    }
-    // Everything else: just the base
-    return s.isEmpty ? c : s; // BTC, ETH, BNB, SOL, TRX, XMR, etc.
   }
 
   // ---------------- UI ----------------

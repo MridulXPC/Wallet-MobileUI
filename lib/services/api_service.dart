@@ -406,6 +406,9 @@ class AuthService {
     required String walletId,
     String? token,
   }) async {
+    // 👇 print the wallet id for debugging
+    print('fetchTokensByWallet -> walletId: $walletId');
+
     token ??= await getStoredToken();
     if (token == null) {
       throw const ApiException('No authentication token available');
@@ -446,11 +449,6 @@ class AuthService {
   }
 
   // ===================== USER ID (local cache only; /auth/me removed) =====================
-
-  static Future<void> _saveUserId(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_spUserIdKey, userId);
-  }
 
   static Future<String?> getStoredUserId() async {
     try {
@@ -772,6 +770,114 @@ class AuthService {
     );
   }
 
+  /// GET /api/transaction/history/:walletId
+  /// (walletId comes from fetchWallets -> use wallet['walletId'] or fallback to ['_id'])
+  static Future<List<TxRecord>> fetchTransactionHistoryByWallet({
+    required String walletId,
+    String? chain, // 'ETH','TRON','BNB','SOL','BTC'
+    int? page,
+    int? limit,
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    // Optional query string for filters/paging
+    final qp = <String, String>{};
+    if (chain != null && chain.isNotEmpty) qp['chain'] = chain;
+    if (page != null && page > 0) qp['page'] = page.toString();
+    if (limit != null && limit > 0) qp['limit'] = limit.toString();
+    final query = qp.isEmpty ? '' : '?${Uri(queryParameters: qp).query}';
+
+    try {
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/transaction/history/$walletId$query',
+        token: token,
+        requireAuth: true,
+      );
+
+      final data = _handleResponse(res);
+      final list = _TxJson.extractList(data);
+      return list.map(TxRecord.fromJson).toList(growable: false);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(
+          'Failed to fetch transaction history for wallet $walletId: $e');
+    }
+  }
+
+  /// Backward-compatible generic method:
+  /// - If walletId is provided -> use the path form /api/transaction/history/:walletId
+  /// - Else fall back to the query version (address/chain) if needed.
+  static Future<List<TxRecord>> fetchTransactionHistory({
+    String? walletId,
+    String? address, // kept for fallback support
+    String? chain,
+    int? page,
+    int? limit,
+    String? token,
+  }) async {
+    if (walletId != null && walletId.isNotEmpty) {
+      return fetchTransactionHistoryByWallet(
+        walletId: walletId,
+        chain: chain,
+        page: page,
+        limit: limit,
+        token: token,
+      );
+    }
+
+    // Fallback: old query-style endpoint if you still need address-based lookups.
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    final qp = <String, String>{};
+    if (address != null && address.isNotEmpty) qp['address'] = address;
+    if (chain != null && chain.isNotEmpty) qp['chain'] = chain;
+    if (page != null && page > 0) qp['page'] = page.toString();
+    if (limit != null && limit > 0) qp['limit'] = limit.toString();
+    final query = qp.isEmpty ? '' : '?${Uri(queryParameters: qp).query}';
+
+    try {
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '/api/transaction/history$query',
+        token: token,
+        requireAuth: true,
+      );
+      final data = _handleResponse(res);
+      final list = _TxJson.extractList(data);
+      return list.map(TxRecord.fromJson).toList(growable: false);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Failed to fetch transaction history: $e');
+    }
+  }
+
+  /// Convenience: by address (kept for completeness; uses query fallback)
+  static Future<List<TxRecord>> fetchTransactionHistoryByAddress({
+    required String address,
+    String? chain,
+    int? page,
+    int? limit,
+    String? token,
+  }) {
+    return fetchTransactionHistory(
+      address: address,
+      chain: chain,
+      page: page,
+      limit: limit,
+      token: token,
+    );
+  }
+
   // ===================== SWAPS =====================
 
   /// POST /api/swaps/getQuote
@@ -1019,8 +1125,6 @@ class AuthService {
   ///   { "blockchain":"BNB", ... },
   ///   ...
   /// ]
-// REPLACE your existing fetchAllChainBalances(...) with this pair:
-
   /// New: returns both rows + total in USD (handles old/new response shapes)
   static Future<BalancesPayload> fetchBalancesAndTotal({String? token}) async {
     token ??= await getStoredToken();
@@ -1221,6 +1325,114 @@ class AuthService {
           'fetchSpotPrices fallback: ${lastErr.message} (Status: ${lastErr.statusCode})');
     }
     return const <String, double>{};
+  }
+}
+
+// ===================== TRANSACTIONS (model & helper) =====================
+
+/// A single transaction record — fields are tolerant to various API shapes.
+class TxRecord {
+  final String? id; // internal id
+  final String? txHash; // on-chain hash
+  final String? from;
+  final String? to;
+  final String? token; // symbol/ticker, e.g., 'ETH'
+  final String? chain; // chain code, e.g., 'ETH','TRON','BNB','SOL','BTC'
+  final String? amount; // keep string for precision
+  final double? amountUsd; // parsed USD value if provided
+  final String? status; // 'pending','success','failed'...
+  final DateTime? timestamp; // when it happened
+  final String? direction; // 'in','out' if provided
+  final String? fee; // optional network fee (string for precision)
+
+  const TxRecord({
+    this.id,
+    this.txHash,
+    this.from,
+    this.to,
+    this.token,
+    this.chain,
+    this.amount,
+    this.amountUsd,
+    this.status,
+    this.timestamp,
+    this.direction,
+    this.fee,
+  });
+
+  factory TxRecord.fromJson(Map<String, dynamic> json) {
+    // accept several possible keys
+    String? _str(dynamic v) => v?.toString();
+    double? _num(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    }
+
+    DateTime? _dt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) {
+        // treat as seconds or ms
+        final s = v > 2000000000 ? (v / 1000).round() : v; // crude guard
+        return DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+      }
+      if (v is String) {
+        try {
+          return DateTime.parse(v);
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    final id = _str(json['id'] ?? json['_id'] ?? json['txId']);
+    final hash =
+        _str(json['txHash'] ?? json['hash'] ?? json['transactionHash']);
+    final from = _str(json['from'] ?? json['sender'] ?? json['source']);
+    final to = _str(json['to'] ?? json['recipient'] ?? json['destination']);
+    final token = _str(json['token'] ?? json['symbol'] ?? json['ticker']);
+    final chain = _str(json['chain'] ?? json['network'] ?? json['blockchain']);
+    final amountStr = _str(json['amount'] ?? json['value']);
+    final amountUsd =
+        _num(json['amountUsd'] ?? json['valueUsd'] ?? json['usd']);
+    final status = _str(json['status'] ?? json['state']);
+    final ts = _dt(json['timestamp'] ?? json['time'] ?? json['createdAt']);
+    final direction =
+        _str(json['direction'] ?? json['type']); // e.g. 'in'/'out'
+    final fee = _str(json['fee'] ?? json['gasFee']);
+
+    return TxRecord(
+      id: id,
+      txHash: hash,
+      from: from,
+      to: to,
+      token: token,
+      chain: chain,
+      amount: amountStr,
+      amountUsd: amountUsd,
+      status: status,
+      timestamp: ts,
+      direction: direction,
+      fee: fee,
+    );
+  }
+}
+
+extension _TxJson on Map<String, dynamic> {
+  /// Helps grab a list out of common server shapes: {data:[...]}, {transactions:[...]}, [...]
+  static List<Map<String, dynamic>> extractList(dynamic root) {
+    List list;
+    if (root is List) {
+      list = root;
+    } else if (root is Map && root['data'] is List) {
+      list = root['data'];
+    } else if (root is Map && root['transactions'] is List) {
+      list = root['transactions'];
+    } else if (root is Map && root['result'] is List) {
+      list = root['result'];
+    } else {
+      list = const [];
+    }
+    return list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
   }
 }
 
