@@ -2,12 +2,11 @@
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/services/api_service.dart';
-import 'package:cryptowallet/stores/wallet_store.dart'; // ⬅️ watch active wallet id
+import 'package:cryptowallet/stores/wallet_store.dart';
+import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 added
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-// If VaultToken lives in a models file, make sure it's imported.
-// import 'package:cryptowallet/models/vault_token.dart';
 
 /// Optional: pre-cache all coin icons once (e.g., call from splash/init)
 Future<void> precacheCoinIcons(BuildContext context) async {
@@ -19,7 +18,7 @@ Future<void> precacheCoinIcons(BuildContext context) async {
   }
 }
 
-/// Portfolio list widget (strictly uses CoinStore icons; auto-updates when active wallet changes)
+/// Portfolio list widget (reacts to active wallet & selected currency)
 class CryptoPortfolioWidget extends StatefulWidget {
   const CryptoPortfolioWidget({super.key});
 
@@ -31,16 +30,16 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     with AutomaticKeepAliveClientMixin {
   static const String _fallbackAsset = 'assets/currencyicons/bitcoin.png';
 
+  /// Each item holds raw USD numbers; we format to selected fiat at build time.
   List<Map<String, dynamic>> _visible = [];
   bool _loading = false;
   String? _error;
 
-  String? _activeWalletIdMemo; // last seen active wallet id
+  String? _activeWalletIdMemo;
 
   @override
   void initState() {
     super.initState();
-    // Initial fetch (wallet id may be null -> fallback to first wallet)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final id = context.read<WalletStore>().activeWalletId;
       _activeWalletIdMemo = id;
@@ -64,35 +63,27 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
 
   // ---------------- Helpers ----------------
 
-  /// Normalize API/token symbol + chain to a base symbol that we use for icons.
   String _baseSymbolFor(String? symbol, String? chain) {
     final s = (symbol ?? '').toUpperCase();
     final c = (chain ?? '').toUpperCase();
 
-    // Examples of vendor-normalization
     if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
     if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
       return 'USDT';
     }
-    return s.isEmpty ? c : s; // BTC, ETH, BNB, SOL, TRX, etc.
+    return s.isEmpty ? c : s;
   }
 
-  /// Get a coin asset path from CoinStore by base symbol (fallback to first match).
   String _assetForSymbol(BuildContext context, String base) {
     final store = context.read<CoinStore>();
-
-    // 1) Quick path: a coin with id == base
     final byId = store.getById(base);
     if (byId != null) return byId.assetPath;
-
-    // 2) Search by symbol field
     try {
       final match = store.coins.values.firstWhere(
         (c) => c.symbol.toUpperCase() == base.toUpperCase(),
       );
       return match.assetPath;
     } catch (_) {}
-
     return _fallbackAsset;
   }
 
@@ -119,16 +110,13 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     });
 
     try {
-      // Resolve which walletId to use (prefer the one passed/watched; fallback to API)
       String? useWalletId = walletId;
       if (useWalletId == null || useWalletId.isEmpty) {
         final wallets = await AuthService.fetchWallets();
         if (wallets.isNotEmpty) {
-          // ✅ use walletId from the API shape you showed
-          useWalletId = wallets.first['walletId']?.toString();
-          // optional defensive fallbacks:
-          useWalletId ??= wallets.first['id']?.toString();
-          useWalletId ??= wallets.first['_id']?.toString();
+          useWalletId = wallets.first['walletId']?.toString() ??
+              wallets.first['id']?.toString() ??
+              wallets.first['_id']?.toString();
         }
       }
 
@@ -141,26 +129,32 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         return;
       }
 
-      // 🔹 fetch tokens for the selected wallet via /api/token/get-tokens/:walletId
       final tokens =
           await AuthService.fetchTokensByWallet(walletId: useWalletId);
 
-      // Map tokens → UI rows (resolve icon + name from CoinStore using base symbol)
+      // Store RAW numeric USD values; format later based on CurrencyNotifier
       _visible = tokens.map((t) {
         final base = _baseSymbolFor(t.symbol, t.chain);
         final iconAsset = _assetForSymbol(context, base);
         final coinName = _nameForSymbol(context, base, t.name);
 
-        final balanceStr = t.balance; // string
-        final usdVal = t.value; // double (assumed)
+        // Backend types defensive parsing
+        final balanceStr = (t.balance ?? '').toString();
+        final usdValNum = (t.value is num)
+            ? (t.value as num).toDouble()
+            : double.tryParse('${t.value}') ??
+                0.0; // Portfolio value for that token in USD
+        // If you also have per-token USD balance as separate field, use it; else reuse usdValNum
+        final usdBalanceNum = usdValNum;
 
         String _formatPercent(double v) {
           final sign = v >= 0 ? '+' : '−';
           return '$sign${v.abs().toStringAsFixed(2)}%';
         }
 
-        // Prefer change from backend if present
-        final pct = t.changePercent ?? 0.0;
+        final pct = (t.changePercent is num)
+            ? (t.changePercent as num).toDouble()
+            : double.tryParse('${t.changePercent}') ?? 0.0; // fallback 0
         final isPositive = pct >= 0;
 
         return {
@@ -169,10 +163,16 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
           "name": coinName,
           "icon": iconAsset,
           "balance": balanceStr,
-          "usdValue": '\$${usdVal.toStringAsFixed(2)}',
-          "usdBalance": usdVal.toStringAsFixed(2),
+
+          // RAW USD numbers kept for live conversion:
+          "usdValueNum": usdValNum,
+          "usdBalanceNum": usdBalanceNum,
+
+          // Change meta:
           "change24h": _formatPercent(pct),
           "isPositive": isPositive,
+
+          // Extra:
           "enabled": true,
           "chain": t.chain,
           "contractAddress": t.contractAddress,
@@ -340,17 +340,31 @@ class _CoinAvatar extends StatelessWidget {
   }
 }
 
-/// One row item — strictly CoinStore-driven base icon (no overlays).
+/// One row item — values formatted by CurrencyNotifier (reactive to currency).
 class _PortfolioRow extends StatelessWidget {
   final Map<String, dynamic> item;
   const _PortfolioRow({required this.item});
 
   @override
   Widget build(BuildContext context) {
+    final fx = context.watch<CurrencyNotifier>(); // 👈 react to currency/rates
+
     final String icon =
         (item["icon"] as String?) ?? 'assets/currencyicons/bitcoin.png';
-    final isPositive = item["isPositive"] ?? true;
+    final isPositive = (item["isPositive"] ?? true) as bool;
     final changeColor = isPositive ? Colors.green : Colors.red;
+
+    // Raw USD numbers stored by parent:
+    final double usdValueNum = (item["usdValueNum"] is num)
+        ? (item["usdValueNum"] as num).toDouble()
+        : 0.0;
+    final double usdBalanceNum = (item["usdBalanceNum"] is num)
+        ? (item["usdBalanceNum"] as num).toDouble()
+        : 0.0;
+
+    // Format now in selected fiat:
+    final String fiatValue = fx.formatFromUsd(usdValueNum);
+    final String fiatBalanceApprox = fx.formatFromUsd(usdBalanceNum);
 
     return InkWell(
       key: ValueKey(item["id"] ?? item["symbol"]),
@@ -377,7 +391,7 @@ class _PortfolioRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(item["usdValue"] ?? '\$0.00',
+                      Text(fiatValue,
                           style: const TextStyle(
                               color: Colors.white54, fontSize: 12)),
                       const SizedBox(width: 6),
@@ -403,7 +417,7 @@ class _PortfolioRow extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
-                Text('≈ \$${item["usdBalance"] ?? "0.00"}',
+                Text('≈ $fiatBalanceApprox',
                     style:
                         const TextStyle(color: Colors.white54, fontSize: 12)),
               ],
@@ -445,6 +459,8 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fx = context.watch<CurrencyNotifier>(); // 👈 live currency in sheet
+
     return SafeArea(
       child: Container(
         height: MediaQuery.of(context).size.height,
@@ -533,6 +549,12 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                       (token["icon"] as String?) ?? widget.fallbackAsset;
                   final String title = token["name"] ?? token["symbol"] ?? '';
 
+                  // Show value in selected fiat
+                  final double usdValNum = (token["usdValueNum"] is num)
+                      ? (token["usdValueNum"] as num).toDouble()
+                      : 0.0;
+                  final String fiatVal = fx.formatFromUsd(usdValNum);
+
                   return SwitchListTile(
                     value: token["enabled"] ?? true,
                     onChanged: (val) {
@@ -541,7 +563,7 @@ class _TokenFilterBottomSheetState extends State<TokenFilterBottomSheet> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(title,
                         style: const TextStyle(color: Colors.white)),
-                    subtitle: Text(token["usdValue"]?.toString() ?? '',
+                    subtitle: Text(fiatVal,
                         style: const TextStyle(color: Colors.grey)),
                     secondary: _CoinAvatar(assetPath: iconPath, size: 32),
                     activeColor: Colors.blueAccent,

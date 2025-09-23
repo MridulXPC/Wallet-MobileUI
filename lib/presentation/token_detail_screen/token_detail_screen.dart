@@ -14,6 +14,10 @@ import 'package:sizer/sizer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
+// 👇 NEW: currency imports
+import 'package:cryptowallet/core/currency_notifier.dart';
+import 'package:cryptowallet/core/currency_adapter.dart';
+
 class TokenDetailScreen extends StatefulWidget {
   const TokenDetailScreen({super.key, required this.coinId});
   final String coinId;
@@ -28,7 +32,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   // ---- live price state (Binance) ----
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
-  double? _livePrice; // last price
+  double? _livePrice; // last price (USDT ~ USD)
   double? _liveChangePercent; // 24h % change (+/-)
   String? _liveChangeAbs; // optional abs change text if available
 
@@ -109,7 +113,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   String get iconPath =>
       tokenData?['icon'] ?? 'assets/currencyicons/bitcoin.png';
 
-  // Fallbacks if no live stream yet
+  // Fallbacks if no live stream yet (USD)
   double get _fallbackPrice =>
       (tokenData?['price'] as num?)?.toDouble() ?? 43825.67;
   String get _fallbackChangeText =>
@@ -230,7 +234,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       for (final row in prices) {
         if (row is! List || row.length < 2) continue;
         final ts = (row[0] as num).toInt();
-        final price = (row[1] as num).toDouble();
+        final price = (row[1] as num).toDouble(); // USD
         if (cutoffMs != null && ts < cutoffMs) continue;
         points.add(FlSpot(ts.toDouble(), price));
       }
@@ -255,7 +259,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
       if (!mounted) return;
       setState(() {
-        chartData = norm;
+        chartData = norm; // USD values; axis labels hidden
         _chartLoading = false;
       });
     } catch (_) {
@@ -282,17 +286,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return null;
   }
 
-// In TokenDetailScreenState
-// In _TokenDetailScreenState
   String get _coinId {
-    // Prefer explicit coin id from the navigation args/payload, if present
     final explicit = tokenData?['coinId']?.toString();
     if (explicit != null && explicit.isNotEmpty) return explicit.toUpperCase();
-
-    // Then the constructor param (this is the reliable one)
     if (widget.coinId.isNotEmpty) return widget.coinId.toUpperCase();
-
-    // Last resort: derive from symbol + chain text
     final s = (tokenData?['symbol'] ?? '').toString().toUpperCase();
     final c = _normalizeChain(tokenData?['chain']);
     if (s.isNotEmpty && c.isNotEmpty && c != s) return '$s-$c';
@@ -331,12 +328,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
-// TokenDetailScreen: replace your _openReceive() with this
   void _openReceive() {
     final id = _coinId; // e.g. BTC, BTC-LN, USDT-TRX, SOL-SOL
-    // Prefer CoinStore's display name; otherwise fallback to the symbol
     final coin = context.read<CoinStore>().getById(id);
-    final pretty = coin?.name ?? sym; // <-- use sym, not tokenData['name']
+    final pretty = coin?.name ?? sym;
 
     final String? mode =
         id.contains('-LN') ? 'ln' : (id.startsWith('BTC') ? 'onchain' : null);
@@ -346,21 +341,24 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       MaterialPageRoute(
         builder: (_) => ReceiveQR(
           title: 'Your address to receive $pretty',
-          address: '', // let ReceiveQR resolve from wallet
-          coinId: id, // pass a VALID coin id (BTC, BTC-LN, USDT-TRX…)
-          mode: mode, // 'ln' / 'onchain' / null
+          address: '',
+          coinId: id,
+          mode: mode,
           minSats: (mode == 'onchain' && id.startsWith('BTC')) ? 25000 : null,
         ),
       ),
     );
   }
 
-  // --------------------- UI ---------------------
   @override
   Widget build(BuildContext context) {
+    // 👇 React to currency changes everywhere in this screen
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
+
     final screenWidth = MediaQuery.of(context).size.width;
     final isLarge = screenWidth > 900;
     final isTablet = screenWidth > 600;
+
     return Scaffold(
       backgroundColor: darkBackground,
       body: Column(
@@ -375,7 +373,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildTokenPriceDisplay(),
+                      _buildTokenPriceDisplay(fx), // 👈 pass adapter
                       Expanded(child: _buildPriceChart()),
                       const SizedBox(height: 6),
                       _buildTimePeriodSelector(),
@@ -425,7 +423,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildHoldingsTab(),
+                      _buildHoldingsTab(fx), // 👈 pass adapter
                       _buildHistoryTab(),
                       _buildAboutTab(),
                     ],
@@ -502,8 +500,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  Widget _buildTokenPriceDisplay() {
-    final price = _livePrice ?? _fallbackPrice;
+  // 👇 UPDATED: currency-aware price display
+  Widget _buildTokenPriceDisplay(FxAdapter fx) {
+    final usdPrice = _livePrice ?? _fallbackPrice; // USDT≈USD
+    final priceText = fx.formatFromUsd(usdPrice);
+
     final pct = _liveChangePercent;
     final isUp = (pct ?? 0) >= 0
         ? (_liveChangePercent != null ? true : _fallbackChangePositive)
@@ -512,14 +513,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
     final pctText = (pct != null)
         ? '${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(2)}%'
-        : _fallbackChangeText;
+        : _fallbackChangeText; // this already includes a $ if from fallback
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: Column(
         children: [
           Text(
-            '\$${price.toStringAsFixed(2)}',
+            priceText, // e.g., €42,123.45
             style: const TextStyle(
               color: Colors.white,
               fontSize: 26,
@@ -535,7 +536,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               const SizedBox(width: 4),
               Text(
                 _liveChangeAbs != null
-                    ? '${_liveChangeAbs!.startsWith('-') ? '' : '+'}\$${double.tryParse(_liveChangeAbs!)?.toStringAsFixed(2) ?? _liveChangeAbs} ($pctText)'
+                    // absolute change is in USDT/USD; convert & format
+                    ? '${_liveChangeAbs!.startsWith('-') ? '' : '+'}'
+                        '${fx.formatFromUsd(double.tryParse(_liveChangeAbs!) ?? 0)} ($pctText)'
                     : pctText,
                 style: TextStyle(
                   color: changeClr,
@@ -603,11 +606,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       child: LineChart(
         LineChartData(
           gridData: FlGridData(show: false),
-          titlesData: FlTitlesData(show: false),
+          titlesData: FlTitlesData(show: false), // axis labels hidden
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
-              spots: spots,
+              spots: spots, // still in USD internally
               isCurved: true,
               color: greenColor,
               barWidth: 3,
@@ -636,8 +639,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-// ------------------ Holdings tab (now uses BalanceStore) ------------------
-  Widget _buildHoldingsTab() {
+  // ------------------ Holdings tab (currency-aware) ------------------
+  Widget _buildHoldingsTab(FxAdapter fx) {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 3.w),
       child: Column(
@@ -655,17 +658,16 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               ),
             ),
           ),
-          ..._buildCoinHoldings(),
+          ..._buildCoinHoldings(fx),
         ],
       ),
     );
   }
 
-  List<Widget> _buildCoinHoldings() {
+  List<Widget> _buildCoinHoldings(FxAdapter fx) {
     final bs = context.watch<BalanceStore>();
     final store = context.read<CoinStore>();
 
-    // while loading (first entry to screen, or 30s refresh)
     if (bs.loading && bs.rows.isEmpty) {
       return const [
         Center(
@@ -682,7 +684,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
     final wantedSym = sym.toUpperCase();
 
-    // keep only rows for this coin's symbol (e.g., all USDT variants)
     final rowsForCoin = bs.rows.where((r) {
       final s = (r.symbol.isNotEmpty
               ? r.symbol
@@ -709,18 +710,13 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       ];
     }
 
-    // Build one card per chain variant we have a balance for
     return rowsForCoin.map((r) {
-      // Normalize info
-      final chainRaw = (r.blockchain).toUpperCase(); // e.g. ETH, BNB, SOL, TRX
-      final chainNorm =
-          _normalizeChain(chainRaw); // ETH / BNB / SOL / TRX / BTC / LN
-      final balance = double.tryParse(r.balance) ?? 0.0;
-      final usd = (r.value ?? 0.0);
+      final chainRaw = (r.blockchain).toUpperCase();
+      final chainNorm = _normalizeChain(chainRaw);
 
-      // Pick a coin id to grab the icon/name from CoinStore
-      // USDT -> USDT-ETH / USDT-TRX / ...
-      // native coins -> ETH-ETH, SOL-SOL, TRX-TRX, BNB-BNB (fallback to symbol if not found)
+      final balance = double.tryParse(r.balance) ?? 0.0;
+      final usd = (r.value ?? 0.0); // USD from store
+
       String coinIdGuess;
       if (wantedSym == 'USDT') {
         coinIdGuess = 'USDT-$chainNorm';
@@ -739,7 +735,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       final title = coinForIcon?.name ??
           (wantedSym == 'USDT' ? 'USDT (${_chainUiName(chainNorm)})' : name);
 
-      // Network subtitle
       final networkSubtitle = wantedSym == 'USDT'
           ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
           : '${_chainUiName(chainNorm)} Network';
@@ -796,7 +791,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                     ],
                   ),
                   SizedBox(height: 0.5.h),
-                  // network + fiat value
+                  // network + fiat value (currency-aware)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -808,7 +803,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                         ),
                       ),
                       Text(
-                        '\$${usd.toStringAsFixed(2)}',
+                        fx.formatFromUsd(usd), // 👈 convert from USD
                         style: const TextStyle(
                           color: greyColor,
                           fontSize: 14,
@@ -825,7 +820,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }).toList();
   }
 
-/* ---------- tiny helpers for holdings ---------- */
+  /* ---------- tiny helpers for holdings ---------- */
   String _formatCrypto(double v) {
     var s = v.toStringAsFixed(8);
     s = s.replaceAll(RegExp(r'0+$'), '');
@@ -905,22 +900,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       default:
         return '0.00000000 $sym';
     }
-  }
-
-  // Fiat value = parsed balance * (live price when available)
-  String _getVariantFiatValue(String variantId) {
-    final raw = _getVariantBalance(variantId);
-    final amountStr = (raw.split(' ').isNotEmpty ? raw.split(' ').first : '0')
-        .replaceAll(',', '');
-    final amount = double.tryParse(amountStr) ?? 0.0;
-
-    // Prefer live price if this variant matches the selected coin
-    final p = (variantId.startsWith(sym))
-        ? (_livePrice ?? _fallbackPrice)
-        : _dummyPrices[variantId] ?? _dummyPrices[sym] ?? _fallbackPrice;
-
-    final usd = amount * p;
-    return '\$${usd.toStringAsFixed(2)}';
   }
 
   // ------------------ History tab (demo) ------------------
@@ -1300,7 +1279,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return '${address.substring(0, 6)}...${address.substring(address.length - 6)}';
   }
 
-  // simple fallback price book for non-selected variants or offline
+  // simple fallback price book for non-selected variants or offline (USD)
   static const Map<String, double> _dummyPrices = {
     "BTC": 43825.67,
     "BTC-LN": 43825.67,

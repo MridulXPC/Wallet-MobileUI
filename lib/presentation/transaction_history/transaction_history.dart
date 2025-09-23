@@ -10,15 +10,14 @@ import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/transaction_card_widget.dart';
 import './widgets/transaction_detail_modal_widget.dart';
 
+// 👇 add this
+import 'package:cryptowallet/core/currency_notifier.dart';
+
 class TransactionHistory extends StatefulWidget {
-  /// Limit the screen to only these types (e.g. ['buy','sell','swap']).
-  /// If null/empty, all types are shown.
   final List<String>? onlyTypes;
 
   const TransactionHistory({super.key, this.onlyTypes});
 
-  /// Convenience: use this when pushing from the Activity card
-  /// to show only Buy/Sell/Swap.
   static Route<void> routeForActivity() => MaterialPageRoute(
         builder: (_) => const TransactionHistory(
           onlyTypes: ['buy', 'sell', 'swap'],
@@ -43,14 +42,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
   List<Map<String, dynamic>> _allTransactions = [];
   List<String>? _onlyTypesFromArgs;
 
-  String? _lastWalletId; // refetch when active wallet changes
+  String? _lastWalletId;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
 
-    // Initial fetch after first frame so context is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final id = context.read<WalletStore>().activeWalletId;
       _lastWalletId = id;
@@ -62,21 +60,18 @@ class _TransactionHistoryState extends State<TransactionHistory>
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Watch for wallet id changes; refetch if changed
     final currentId = context.watch<WalletStore>().activeWalletId;
     if (currentId != _lastWalletId) {
       _lastWalletId = currentId;
       _fetchTransactions(walletId: currentId);
     }
 
-    // Allow passing types via Navigator arguments too.
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     _onlyTypesFromArgs = args?['onlyTypes'] != null
         ? List<String>.from(args!['onlyTypes'] as List)
         : null;
 
-    // If either widget.onlyTypes or args.onlyTypes is set, apply it.
     final initial = widget.onlyTypes ?? _onlyTypesFromArgs;
     if (initial != null && initial.isNotEmpty) {
       _applyInitialTypeFilter(initial.map((e) => e.toLowerCase()).toList());
@@ -99,7 +94,6 @@ class _TransactionHistoryState extends State<TransactionHistory>
     });
 
     try {
-      // If walletId is null/empty, try to pick first from backend
       String? useId = walletId;
       if (useId == null || useId.isEmpty) {
         final wallets = await AuthService.fetchWallets();
@@ -118,16 +112,13 @@ class _TransactionHistoryState extends State<TransactionHistory>
         return;
       }
 
-      // Fetch from backend
       final records = await AuthService.fetchTransactionHistoryByWallet(
         walletId: useId,
-        limit: 200, // adjust as desired
+        limit: 200,
       );
 
-      // Map TxRecord -> Map<String,dynamic> used by UI widgets
       final mapped = records.map(_mapTxRecordToUi).toList();
 
-      // Sort newest first (in case backend doesn’t)
       mapped.sort((a, b) {
         final ta = a['timestamp'] as DateTime?;
         final tb = b['timestamp'] as DateTime?;
@@ -148,15 +139,11 @@ class _TransactionHistoryState extends State<TransactionHistory>
         _filteredTransactions = const [];
       });
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Map<String, dynamic> _mapTxRecordToUi(TxRecord r) {
-    // Derive a UI "type" that your chips & cards expect.
-    // We prefer explicit direction/type if provided; otherwise infer.
     final raw = (r.direction ?? '').toLowerCase();
     String type;
     if (raw == 'in' || raw == 'receive' || raw == 'received') {
@@ -170,25 +157,25 @@ class _TransactionHistoryState extends State<TransactionHistory>
     } else if (raw == 'sell') {
       type = 'sell';
     } else {
-      // fallback based on presence of from/to
       type = 'transfer';
     }
 
-    // Map fields your UI uses
+    // 👇 Store raw USD amount (double). We'll format per current currency in build().
+    final double? amtUsd = r.amountUsd;
+
     return {
       "id": r.id ?? r.txHash ?? UniqueKey().toString(),
       "type": type,
       "asset": r.token ?? r.chain ?? '',
       "amount": r.amount ?? '0',
-      "fiatAmount":
-          r.amountUsd != null ? '\$${r.amountUsd!.toStringAsFixed(2)}' : '',
+      "amountUsd": amtUsd, // <- numeric USD
+      "fiatAmount": "", // <- filled in at render time
       "timestamp": r.timestamp ?? DateTime.now(),
       "status": (r.status ?? '').toLowerCase(),
       "hash": r.txHash ?? 'pending',
       "fromAddress": r.from ?? '',
       "toAddress": r.to ?? '',
       "fee": r.fee ?? '',
-      // Optional/extras your UI tolerates:
       "confirmations": null,
       "note": "",
     };
@@ -198,9 +185,8 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   void _applyInitialTypeFilter(List<String> allowedTypes) {
     setState(() {
-      _activeFilters = allowedTypes
-          .map((t) => t[0].toUpperCase() + t.substring(1)) // for chips display
-          .toList();
+      _activeFilters =
+          allowedTypes.map((t) => t[0].toUpperCase() + t.substring(1)).toList();
 
       _filteredTransactions = _allTransactions
           .where((t) => allowedTypes.contains(
@@ -218,9 +204,8 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   void _loadMoreTransactions() {
-    // If your API supports paging, call fetch with page/limit here.
     if (_isLoading) return;
-    // No-op for now (list already fetched with a sensible limit).
+    // paging hook
   }
 
   void _toggleSearch() {
@@ -256,8 +241,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   void _applyFilters() {
     setState(() {
-      _filteredTransactions =
-          _applyActiveFilters(_allTransactions); // base on all
+      _filteredTransactions = _applyActiveFilters(_allTransactions);
     });
   }
 
@@ -289,8 +273,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
   Future<void> _refreshTransactions() async {
     await _fetchTransactions(walletId: _lastWalletId);
     setState(() {
-      _filteredTransactions =
-          _applyActiveFilters(_allTransactions); // respect active filters
+      _filteredTransactions = _applyActiveFilters(_allTransactions);
     });
   }
 
@@ -321,9 +304,19 @@ class _TransactionHistoryState extends State<TransactionHistory>
     return '${date.day}/${date.month}/${date.year}';
   }
 
+  // ---- currency helpers
+  String _formatFiat(BuildContext context, double? usd) {
+    final fx = context.read<CurrencyNotifier>();
+    if (usd == null) return fx.formatFromUsd(0);
+    return fx.formatFromUsd(usd);
+  }
+
   @override
   Widget build(BuildContext context) {
-    _groupTransactionsByDate();
+    // 👇 listen for currency changes to re-render amounts
+    context.watch<CurrencyNotifier>();
+
+    final grouped = _groupTransactionsByDate();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -460,20 +453,25 @@ class _TransactionHistoryState extends State<TransactionHistory>
                         child: ListView.builder(
                           controller: _scrollController,
                           padding: EdgeInsets.symmetric(horizontal: 4.w),
-                          itemCount: _groupTransactionsByDate().length,
+                          itemCount: grouped.length,
                           itemBuilder: (context, index) {
-                            final grouped = _groupTransactionsByDate();
                             final item = grouped[index];
+
                             if (item['type'] == 'header') {
                               return _buildDateHeader(item['title'] as String);
-                            } else {
-                              return TransactionCardWidget(
-                                transaction: item,
-                                onTap: () => _showTransactionDetail(item),
-                                onSwipeAction: (action) =>
-                                    _handleSwipeAction(action, item),
-                              );
                             }
+
+                            // 👇 Clone and inject currency-formatted fiat for the current selection
+                            final cloned = Map<String, dynamic>.from(item);
+                            final double? usd = cloned['amountUsd'] as double?;
+                            cloned['fiatAmount'] = _formatFiat(context, usd);
+
+                            return TransactionCardWidget(
+                              transaction: cloned,
+                              onTap: () => _showTransactionDetail(cloned),
+                              onSwipeAction: (action) =>
+                                  _handleSwipeAction(action, cloned),
+                            );
                           },
                         ),
                       ),

@@ -1,5 +1,6 @@
 // lib/presentation/send_cryptocurrency/SendCryptocurrency.dart
 import 'dart:async';
+import 'package:cryptowallet/core/currency_adapter.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
@@ -10,8 +11,11 @@ import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/stores/balance_store.dart';
-import 'package:cryptowallet/services/api_service.dart'; // for fetchSpotPrices
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+
+// currency notifier (wrapped by FxAdapter)
+import 'package:cryptowallet/core/currency_notifier.dart';
 
 /// ----------------------------------------------
 /// Flow model passed across the 3-screen send flow
@@ -26,7 +30,7 @@ class SendFlowData {
   final String priority; // "Standard" | "Fast"
   final String? toAddress;
 
-  /// UI helpers
+  /// UI helpers (stored in USD — render converts to selected currency)
   final double usdValue;
   final String assetName;
   final String assetSymbol;
@@ -138,6 +142,8 @@ class OptimizedCoinIcon extends StatelessWidget {
 // 3) ASSET TILE
 class OptimizedAssetListTile extends StatelessWidget {
   final Coin coin;
+
+  /// price in USD
   final double price;
   final double balance;
   final VoidCallback onTap;
@@ -152,6 +158,9 @@ class OptimizedAssetListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // listen to currency selection for live reformatting
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -193,8 +202,9 @@ class OptimizedAssetListTile extends StatelessWidget {
                   ],
                 ),
               ),
+              // price displayed in selected currency
               Text(
-                '\$${price.toStringAsFixed(2)}',
+                fx.formatFromUsd(price),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w500,
@@ -334,6 +344,8 @@ class SendCryptocurrency extends StatefulWidget {
 class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _currentAmount = '0';
   bool _isCryptoSelected = true;
+
+  /// Always store USD value here; render converts to selected currency.
   double _usdValue = 0.00;
   bool _isImagesPreloaded = false;
 
@@ -342,9 +354,11 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   String _selectedAssetSymbol = 'BTC';
   double _selectedAssetBalance = 0.00;
   String _selectedAssetIconPath = 'assets/currencyicons/bitcoin.png';
+
+  /// Asset spot price in USD
   double _selectedAssetPrice = 0.00;
 
-  // cached spot prices for user-held symbols
+  // cached spot prices for user-held symbols (USD)
   Map<String, double> _priceBySymbol = const {};
   bool _loadingPrices = false;
 
@@ -362,7 +376,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       } else {
         _currentAmount += number;
       }
-      _calculateUSDValue();
+      _recomputeUsdFromInput();
     });
   }
 
@@ -381,27 +395,41 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       } else {
         _currentAmount = '0';
       }
-      _calculateUSDValue();
+      _recomputeUsdFromInput();
     });
   }
 
   void _onPercentagePressed(double percentage) {
+    final fx = FxAdapter(context.read<CurrencyNotifier>());
     setState(() {
       if (_isCryptoSelected) {
         final amt = _selectedAssetBalance * percentage; // crypto amount
         _currentAmount = _trimCrypto(amt);
       } else {
-        final usd = _selectedAssetBalance * _selectedAssetPrice * percentage;
-        _currentAmount = usd.toStringAsFixed(2);
+        // percentage of fiat balance (convert USD balance to selected currency for the keypad)
+        final usdBal = _selectedAssetBalance * _selectedAssetPrice; // USD
+        final selectedFiatBal = fx.fromUsd(usdBal);
+        final usd = fx.toUsd(selectedFiatBal * percentage); // back to USD
+        _currentAmount = fx
+            .fromUsd(usd)
+            .toStringAsFixed(2); // keypad shows selected currency
       }
       if (_currentAmount.isEmpty) _currentAmount = '0';
-      _calculateUSDValue();
+      _recomputeUsdFromInput();
     });
   }
 
-  void _calculateUSDValue() {
+  /// Recompute the internal USD value from the current text field and toggle.
+  void _recomputeUsdFromInput() {
+    final fx = FxAdapter(context.read<CurrencyNotifier>());
     final val = double.tryParse(_currentAmount) ?? 0.0;
-    _usdValue = _isCryptoSelected ? val * _selectedAssetPrice : val;
+
+    if (_isCryptoSelected) {
+      _usdValue = val * _selectedAssetPrice; // crypto → USD
+    } else {
+      // keyed-in value is in selected fiat; convert to USD
+      _usdValue = fx.toUsd(val);
+    }
   }
 
   String _trimCrypto(double v) {
@@ -413,10 +441,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   // ---------- NEXT (Review) ----------
   void _onNextPressed() {
+    final fx = FxAdapter(context.read<CurrencyNotifier>());
+
     final entered = double.tryParse(_currentAmount) ?? 0.0;
+
+    // Resolve crypto amount no matter what mode the user is typing in.
     final amountCrypto = _isCryptoSelected
         ? entered
-        : (entered / (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
+        : (fx.toUsd(entered) /
+            (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
 
     if (amountCrypto <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -457,6 +490,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
             isLightning: isLn,
             amount: amountCryptoStr,
             symbol: _selectedAssetSymbol,
+            // Keep USD; any screen rendering should convert with CurrencyNotifier
             fiatValue: amountCrypto * _selectedAssetPrice,
             qrData: amountCryptoStr,
           ),
@@ -471,8 +505,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       walletId: widget.walletId,
       chain: _selectedAssetSymbol,
       amount: amountCryptoStr,
-      priority: "Standard", // can change on the confirmation view
-      usdValue: amountCrypto * _selectedAssetPrice,
+      priority: "Standard",
+      usdValue: amountCrypto * _selectedAssetPrice, // USD
       assetName: _selectedAsset,
       assetSymbol: _selectedAssetSymbol,
       assetIconPath: _selectedAssetIconPath,
@@ -493,16 +527,13 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     required String id,
     required String symbol,
   }) {
-    // exact id
     Coin? coin = store.getById(id);
     if (coin != null) return coin;
 
-    // by symbol
     for (final c in store.coins.values) {
       if (c.symbol.toUpperCase() == symbol.toUpperCase()) return c;
     }
 
-    // base id (e.g., "USDT-ETH" -> "USDT")
     final base = id.contains('-') ? id.split('-').first : id;
     coin = store.getById(base);
     return coin;
@@ -511,7 +542,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   // ---------- Build rows from BalanceStore (+ prices) ----------
   Future<List<_AssetRow>> _loadAssetsFromStore() async {
     final bs = context.read<BalanceStore>();
-    // fetch prices only once per open; keep it quick
     await _ensurePricesLoaded();
 
     final store = context.read<CoinStore>();
@@ -527,16 +557,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
       final bal = double.tryParse(r.balance) ?? 0.0;
       // derive price: prefer spot, else value/balance (if balance > 0)
-      double price = _priceBySymbol[symbol] ?? 0.0;
+      double price = _priceBySymbol[symbol] ?? 0.0; // USD
       if (price == 0.0) {
-        final v = r.value ?? 0.0;
+        final v = r.value ?? 0.0; // USD
         if (bal > 0.0 && v > 0.0) price = v / bal;
       }
 
-      // Resolve a Coin for icon/name
       final resolved = _resolveCoinFromStore(
         store: store,
-        id: symbol, // ids in store are usually base symbols
+        id: symbol,
         symbol: symbol,
       );
 
@@ -549,13 +578,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
         id: id,
         symbol: symbol,
         name: name,
-        price: price,
+        price: price, // USD
         balance: bal,
         assetPath: assetPath,
       ));
     }
 
-    // sort by USD value desc for convenience
     rows.sort((a, b) => (b.price * b.balance).compareTo(a.price * a.balance));
     return rows;
   }
@@ -601,7 +629,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
             final rows = snap.data ?? const <_AssetRow>[];
 
-            // Chips by base symbol
             final baseSet = <String>{for (final r in rows) _baseSymbol(r.id)};
             final chips = ['ALL', ...baseSet.toList()..sort()];
 
@@ -679,7 +706,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                       );
                       return OptimizedAssetListTile(
                         coin: coin,
-                        price: r.price,
+                        price: r
+                            .price, // USD, rendered by tile in selected currency
                         balance: r.balance,
                         onTap: () {
                           _applySelectedRow(r);
@@ -703,9 +731,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       _selectedAssetSymbol = r.symbol;
       _selectedAssetBalance = r.balance;
       _selectedAssetIconPath = r.assetPath;
-      _selectedAssetPrice = r.price;
+      _selectedAssetPrice = r.price; // USD
     });
-    _calculateUSDValue();
+    _recomputeUsdFromInput();
   }
 
   String _baseSymbol(String coinId) {
@@ -720,7 +748,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   void _toggleCurrency() {
     setState(() {
       _isCryptoSelected = !_isCryptoSelected;
-      _calculateUSDValue();
+      _recomputeUsdFromInput();
     });
   }
 
@@ -728,7 +756,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Preload store icons once
     if (!_isImagesPreloaded) {
       final coins = context.read<CoinStore>().coins.values.toList();
       final paths = coins.map((c) => c.assetPath).toList();
@@ -736,29 +763,23 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       _isImagesPreloaded = true;
     }
 
-    // Initialize selection based on current balances/prices
-    // (Runs again if provider tree changes, safe due to idempotent setters)
     _initSelectionIfNeeded();
   }
 
   Future<void> _initSelectionIfNeeded() async {
     if (!mounted) return;
 
-    // Read providers up front (so we don't touch context after awaits)
     final bs = context.read<BalanceStore>();
     final store = context.read<CoinStore>();
 
-    // Ensure balances are loaded
     if (bs.rows.isEmpty && !bs.loading) {
       await bs.refresh();
     }
     if (!mounted) return;
 
-    // Ensure prices are loaded
     await _ensurePricesLoaded();
     if (!mounted) return;
 
-    // Build selection from balances
     final bySym = bs.bySymbol;
     String wantedId = widget.initialCoinId ?? _selectedAssetSymbol;
     final wantedSymbol =
@@ -769,7 +790,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
     final chosen = bySym[wantedSymbol.toUpperCase()] ?? bySym[fallbackSym];
 
-    // Resolve coin info (icon/name) without touching context again
     final coinResolved = _resolveCoinFromStore(
       store: store,
       id: wantedSymbol,
@@ -779,9 +799,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     final sym = wantedSymbol.toUpperCase();
     final bal = chosen == null ? 0.0 : (double.tryParse(chosen.balance) ?? 0.0);
 
-    double price = _priceBySymbol[sym] ?? 0.0;
+    double price = _priceBySymbol[sym] ?? 0.0; // USD
     if (price == 0.0 && chosen != null) {
-      final v = chosen.value ?? 0.0;
+      final v = chosen.value ?? 0.0; // USD
       if (bal > 0.0 && v > 0.0) price = v / bal;
     }
 
@@ -792,9 +812,8 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       _selectedAssetBalance = bal;
       _selectedAssetIconPath =
           coinResolved?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-      _selectedAssetPrice = price;
+      _selectedAssetPrice = price; // USD
 
-      // Apply initial UI prefs
       if (widget.startInUsd) _isCryptoSelected = false;
 
       if (widget.initialUsd != null) {
@@ -803,20 +822,19 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
               (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice);
           _currentAmount = _trimCrypto(crypto);
         } else {
-          _currentAmount = widget.initialUsd!.toStringAsFixed(2);
+          // keypad shows selected currency, convert USD to selected for initial display
+          final fx = FxAdapter(context.read<CurrencyNotifier>());
+          _currentAmount = fx.fromUsd(widget.initialUsd!).toStringAsFixed(2);
         }
       }
     });
 
     if (!mounted) return;
-    _calculateUSDValue();
+    _recomputeUsdFromInput();
   }
 
   Future<void> _ensurePricesLoaded() async {
-    // Avoid duplicate loads
     if (_priceBySymbol.isNotEmpty) return;
-
-    // Take a snapshot of symbols without using context later
     if (!mounted) return;
     final syms = context.read<BalanceStore>().symbols;
     if (syms.isEmpty) return;
@@ -825,19 +843,19 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     if (!mounted) return;
 
     setState(() {
-      _priceBySymbol = prices;
+      _priceBySymbol = prices; // USD
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // react to updates (balances may change under us)
+    // rebuild on currency change
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
+
     final bs = context.watch<BalanceStore>();
-    // if the selected symbol exists in the store, update the live balance
     final row = bs.bySymbol[_selectedAssetSymbol.toUpperCase()];
     final liveBal = row == null ? 0.0 : (double.tryParse(row.balance) ?? 0.0);
     if (liveBal != _selectedAssetBalance) {
-      // keep the selection but update balance live
       _selectedAssetBalance = liveBal;
     }
 
@@ -847,9 +865,16 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     final isTablet = screenWidth > 600;
 
     final double primaryVal = double.tryParse(_currentAmount) ?? 0.0;
+
+    // When fiat-tab is active, the primaryVal is in selected currency:
+    // Convert to USD, then to crypto.
     final double cryptoAmt = _isCryptoSelected
         ? primaryVal
-        : (primaryVal / (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
+        : (fx.toUsd(primaryVal) /
+            (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice));
+
+    final String balanceApproxFiat =
+        fx.formatFromUsd(_selectedAssetBalance * _selectedAssetPrice);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -933,7 +958,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                     ),
                                   ),
                                   Text(
-                                    '≈ \$${(_selectedAssetBalance * _selectedAssetPrice).toStringAsFixed(2)}',
+                                    '≈ $balanceApproxFiat',
                                     style: TextStyle(
                                       color: const Color(0xFF9CA3AF),
                                       fontSize: isSmallScreen ? 10 : 12,
@@ -948,7 +973,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
                       SizedBox(height: isSmallScreen ? 2.h : 2.h),
 
-                      // Currency Toggle
+                      // Currency Toggle (crypto vs selected fiat)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -1000,7 +1025,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                                 ),
                               ),
                               child: Text(
-                                'USD',
+                                fx.code, // show selected currency code
                                 style: TextStyle(
                                   color: !_isCryptoSelected
                                       ? Colors.white
@@ -1030,7 +1055,9 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           Text(
                             _isCryptoSelected
                                 ? _currentAmount
-                                : '\$$_currentAmount',
+                                : fx.symbol +
+                                    (double.tryParse(_currentAmount) ?? 0.0)
+                                        .toStringAsFixed(2),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 28,
@@ -1042,7 +1069,7 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
                           SizedBox(height: 0.5.h),
                           Text(
                             _isCryptoSelected
-                                ? '≈ \$${_usdValue.toStringAsFixed(2)} USD'
+                                ? '≈ ${fx.formatFromUsd(_usdValue)}'
                                 : '≈ ${cryptoAmt.toStringAsFixed(8)} $_selectedAssetSymbol',
                             style: TextStyle(
                               color: const Color(0xFF9CA3AF),

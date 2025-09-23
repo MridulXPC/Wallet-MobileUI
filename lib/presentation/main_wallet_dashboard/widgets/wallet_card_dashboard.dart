@@ -1,22 +1,21 @@
+// lib/presentation/main_wallet_dashboard/widgets/vault_header_card.dart
 import 'dart:ui';
+
+import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 added
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/wallet_picker_sheet.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/wallet_store.dart';
-import 'package:flutter/material.dart';
-
-import 'dart:ui';
-import 'package:cryptowallet/services/api_service.dart'; // ← add
-import 'package:intl/intl.dart'; // ← add
-import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class VaultHeaderCard extends StatefulWidget {
-  final String totalValue; // fallback / initial display
+  /// Fallback/initial display string (e.g., "$0.00"); used until first compute succeeds.
+  final String totalValue;
   final String vaultName;
   final VoidCallback onTap;
   final VoidCallback onChangeWallet;
-  final VoidCallback? onActivities; // optional
+  final VoidCallback? onActivities;
 
   const VaultHeaderCard({
     super.key,
@@ -24,7 +23,7 @@ class VaultHeaderCard extends StatefulWidget {
     required this.vaultName,
     required this.onTap,
     required this.onChangeWallet,
-    this.onActivities, // optional
+    this.onActivities,
   });
 
   @override
@@ -34,8 +33,8 @@ class VaultHeaderCard extends StatefulWidget {
 class _VaultHeaderCardState extends State<VaultHeaderCard> {
   bool _hidden = false;
 
-  // live-computed total (USD-formatted)
-  String? _computedTotal;
+  /// Live-computed portfolio total in **USD** (raw). We format it via CurrencyNotifier.
+  double? _computedTotalUsd;
   bool _loadingTotal = false;
 
   @override
@@ -49,9 +48,8 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
     try {
       final wallets = await AuthService.fetchWallets();
       final totalUsd = _sumAllWalletsUsd(wallets);
-      final formatted = _formatUsd(totalUsd);
       if (!mounted) return;
-      setState(() => _computedTotal = formatted);
+      setState(() => _computedTotalUsd = totalUsd);
     } catch (_) {
       // keep fallback widget.totalValue on error
     } finally {
@@ -70,14 +68,15 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
   }
 
   double _walletUsd(Map<String, dynamic> w) {
-    // If chains exist, sum chain values; else use wallet-level usd/fiat
+    // If chains exist, sum their USD values; else use wallet-level USD/fiat fields.
     final chains = (w['chains'] as List?) ?? const [];
     if (chains.isNotEmpty) {
       double sum = 0.0;
       for (final c in chains) {
         if (c is! Map) continue;
         final m = c.cast<String, dynamic>();
-        // prefer direct USD/fiat fields
+
+        // Prefer direct USD/fiat fields from API
         final usdDirect = _asDouble(m['fiatValue']) ??
             _asDouble(m['usdValue']) ??
             _asDouble(m['balanceUSD']);
@@ -85,7 +84,8 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
           sum += usdDirect;
           continue;
         }
-        // fallback: balance * price
+
+        // Fallback: balance * price (both USD)
         final bal = _asDouble(m['balance']) ?? _asDouble(m['amount']);
         final price = _asDouble(m['priceUsd']) ??
             _asDouble(m['usdPrice']) ??
@@ -97,7 +97,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
       return sum;
     }
 
-    // wallet-level fallback
+    // Wallet-level fallback
     return _asDouble(w['fiatValue']) ??
         _asDouble(w['usdValue']) ??
         _asDouble(w['totalUsd']) ??
@@ -112,14 +112,17 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
     return null;
   }
 
-  String _formatUsd(double value) {
-    final f = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
-    return f.format(value);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final display = _computedTotal ?? widget.totalValue;
+    // 👇 Watching CurrencyNotifier means the header re-renders when currency/rates change.
+    final fx = context.watch<CurrencyNotifier>();
+
+    // If we already computed a USD total, format it in the selected currency.
+    // Otherwise show the provided fallback string (already formatted).
+    final String display = (_computedTotalUsd != null)
+        ? fx.formatFromUsd(_computedTotalUsd!)
+        : widget.totalValue;
+
     final masked = _hidden ? '•••••••' : display;
 
     return GestureDetector(
@@ -230,7 +233,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                       title: widget.vaultName,
                       onChangeWallet: widget.onChangeWallet,
                       onActivities: widget.onActivities,
-                      navContext: context, // <-- pass parent context
+                      navContext: context,
                     ),
                   ],
                 ),
@@ -243,7 +246,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
   }
 }
 
-/// Reusable small eye/eye-off button (keeps tap target comfy)
+/// Reusable small eye/eye-off button
 class _EyeButton extends StatelessWidget {
   final bool hidden;
   final VoidCallback onPressed;
@@ -273,15 +276,12 @@ class _EyeButton extends StatelessWidget {
   }
 }
 
-/// Reusable three-dots popup with "Change wallet" and "Activities"
-/// - No dividers
-/// - Shows the current wallet name as a subtitle on each option
-/// - Uses root navigator so the route always resolves
+/// 3-dots popup
 class _VaultMenuButton extends StatelessWidget {
   final String title; // current wallet name
   final VoidCallback onChangeWallet;
-  final VoidCallback? onActivities; // optional
-  final BuildContext navContext; // parent context for safe navigation
+  final VoidCallback? onActivities;
+  final BuildContext navContext;
 
   const _VaultMenuButton({
     required this.title,
@@ -300,7 +300,6 @@ class _VaultMenuButton extends StatelessWidget {
       icon: const Icon(Icons.more_vert, color: Colors.white),
       onSelected: (value) {
         switch (value) {
-          // inside your _VaultMenuButton onSelected handler
           case 'change_wallet':
             openWalletPickerBottomSheet(
               navContext,
@@ -310,11 +309,11 @@ class _VaultMenuButton extends StatelessWidget {
                 await navContext.read<WalletStore>().setActive(wallet['_id']);
                 ScaffoldMessenger.of(navContext).showSnackBar(
                   SnackBar(
-                      content: Text('Active: ${wallet['name'] ?? 'Wallet'}')),
+                    content: Text('Active: ${wallet['name'] ?? 'Wallet'}'),
+                  ),
                 );
               },
             );
-
             break;
 
           case 'activities':

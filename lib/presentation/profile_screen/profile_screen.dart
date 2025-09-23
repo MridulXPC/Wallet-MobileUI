@@ -123,7 +123,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: _card,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: _stroke, width: 1),
               ),
               child: const Row(
@@ -143,32 +143,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            // const SizedBox(height: 14),
 
-            // Notification banner
-            _HubBanner(
-              leading: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.notifications_none,
-                      color: Colors.white, size: 22),
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              title: 'You have 25 unread notification',
-              onTap: () {},
-            ),
+            // // Notification banner
+            // _HubBanner(
+            //   leading: Stack(
+            //     clipBehavior: Clip.none,
+            //     children: [
+            //       const Icon(Icons.notifications_none,
+            //           color: Colors.white, size: 22),
+            //       Positioned(
+            //         right: -2,
+            //         top: -2,
+            //         child: Container(
+            //           width: 8,
+            //           height: 8,
+            //           decoration: const BoxDecoration(
+            //             color: Colors.red,
+            //             shape: BoxShape.circle,
+            //           ),
+            //         ),
+            //       ),
+            //     ],
+            //   ),
+            //   title: 'You have 25 unread notification',
+            //   onTap: () {},
+            // ),
             const SizedBox(height: 12),
 
             // Level card
@@ -192,7 +192,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.contact_page_outlined,
                     title: 'Address Book',
                     onTap: () {
-                      Navigator.pushNamed(context, AppRoutes.addressbook);
+                      // Navigator.pushNamed(context, AppRoutes.addressbook);
                     },
                   ),
                 ),

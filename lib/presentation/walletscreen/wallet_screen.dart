@@ -1,3 +1,4 @@
+// lib/presentation/wallet_info_screen.dart
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
@@ -11,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart'; // for Clipboard
 
 import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 currency
 
 class WalletInfoScreen extends StatefulWidget {
   const WalletInfoScreen({Key? key}) : super(key: key);
@@ -38,11 +40,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   String? _error;
   List<VaultToken> _tokens = [];
   ExploreData? _exploreData;
-  Map<String, double> _spotPrices = {};
+  Map<String, double> _spotPrices = {}; // USD prices by chain/symbol
   String? _currentWalletAddress;
-// which wallet is selected in this screen
+
   String? _activeWalletName;
-  // optional: to show in UI
 
   // Cached data to avoid repeated API calls
   Map<String, ExploreData> _exploreCache = {};
@@ -118,7 +119,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     super.dispose();
   }
 
-  // API Integration Methods
+  // ---------------- API Integration ----------------
+
   Future<void> _initializeWallet() async {
     try {
       setState(() {
@@ -128,7 +130,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
       await Future.wait([_loadWallets(), _loadSpotPrices()]);
 
-      // Choose first available wallet token as the selected coin (if not set)
       if (_tokens.isNotEmpty) {
         final firstBase =
             _baseFromToken(_tokens.first.symbol, _tokens.first.chain);
@@ -171,15 +172,15 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       case 'USDT-TRX':
         return 'USDT-TRX';
       default:
-        return c; // fallback: return raw chain string
+        return c;
     }
   }
 
   Future<void> _loadWallets() async {
     try {
-      setState(() {
-// Make sure you have _wallets defined in your state
-      });
+      // (Optional) You can cache wallet name here if your API returns it
+      // final wallets = await AuthService.fetchWallets();
+      setState(() {});
     } catch (e) {
       debugPrint('Error loading wallets: $e');
     }
@@ -197,12 +198,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         symbols: ['BTC', 'ETH', 'USDT', 'TRX', 'BNB', 'SOL', 'XMR'],
       );
       setState(() {
-        _spotPrices = prices; // may be empty if endpoint unavailable
+        _spotPrices = prices; // USD
         _lastPriceUpdate = now;
       });
     } catch (e) {
-      // With the tolerant fetcher above, this shouldn't throw anymore.
-      // Keep a quiet log just in case.
       debugPrint('Spot prices unavailable: $e');
     }
   }
@@ -223,7 +222,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   Future<void> _loadTransactionData() async {
     if (_currentWalletAddress == null) return;
 
-    // Check cache first
     if (_exploreCache.containsKey(_currentWalletAddress)) {
       setState(() {
         _exploreData = _exploreCache[_currentWalletAddress];
@@ -244,7 +242,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   String _getChainForCoin(String coinId) {
-    // Map your coin IDs to chain names expected by the API
     if (coinId.startsWith('BTC')) return 'BTC';
     if (coinId.startsWith('ETH')) return 'ETH';
     if (coinId.startsWith('USDT-ETH')) return 'ETH';
@@ -253,48 +250,56 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     if (coinId.startsWith('BNB')) return 'BNB';
     if (coinId.startsWith('SOL')) return 'SOL';
     if (coinId.startsWith('XMR')) return 'XMR';
-    return coinId.split('-').first; // fallback
+    return coinId.split('-').first;
   }
 
-  // Get current coin data from API or fallback to dummy
+  // ---------------- Currency helpers ----------------
+
+  /// USD price for a coin (by chain key)
+  double _priceForCoinUsd(String coinKey) {
+    final chainKey = _getChainForCoin(coinKey);
+    return _spotPrices[chainKey] ?? 0.0;
+  }
+
+  /// Formats a USD amount in the user’s selected currency
+  String _formatFiatFromUsd(BuildContext ctx, double usd) {
+    final fx = ctx.read<CurrencyNotifier>();
+    return fx.formatFromUsd(usd);
+  }
+
+  // ---------------- Current coin data (currency-aware) ----------------
+
   Map<String, String> _getCurrentCoinData() {
     final chainKey = _getChainForCoin(selectedCoinId);
 
-    // Try to get from API data first
     VaultToken? token;
     try {
       token = _tokens.firstWhere(
-        (t) => t.symbol.toUpperCase() == chainKey.toUpperCase(),
+        (t) => (t.symbol ?? '').toUpperCase() == chainKey.toUpperCase(),
         orElse: () => _tokens.firstWhere(
-          (t) => t.name.toUpperCase().contains(chainKey.toUpperCase()),
+          (t) => (t.name ?? '').toUpperCase().contains(chainKey.toUpperCase()),
         ),
       );
-    } catch (e) {
-      // Token not found, will use fallback
-    }
+    } catch (_) {}
 
-    final price = _spotPrices[chainKey] ?? 0.0;
-    final balance = token?.balance?.toString() ?? '0.00';
-    final balanceDouble = double.tryParse(balance) ?? 0.0;
-    final usdBalance = token != null && price > 0
-        ? (balanceDouble * price).toStringAsFixed(2)
-        : '0.00';
+    final priceUsd = _spotPrices[chainKey] ?? 0.0;
+    final balanceStr = token?.balance?.toString() ?? '0.00';
+    final balance = double.tryParse(balanceStr) ?? 0.0;
+    final usdBalance = priceUsd * balance;
 
     return {
-      'price': price > 0 ? price.toStringAsFixed(2) : '0.00',
-      'balance': balance,
-      'usdBalance': usdBalance,
+      'priceUsd': priceUsd > 0 ? priceUsd.toStringAsFixed(2) : '0.00',
+      'balance': balanceStr,
+      'usdBalance': usdBalance.toStringAsFixed(2),
       'address': _currentWalletAddress ?? 'Loading...',
     };
   }
 
-  // Get transactions from API data
-  List<Map<String, dynamic>> _getCurrentTransactions() {
-    if (_exploreData?.transactions == null) {
-      return []; // Return empty list instead of dummy data
-    }
+  // ---------------- Transactions mapping ----------------
 
-    // Convert API transactions to your UI format
+  List<Map<String, dynamic>> _getCurrentTransactions() {
+    if (_exploreData?.transactions == null) return [];
+
     return _exploreData!.transactions!
         .map((tx) => {
               'id': tx.hash ?? 'unknown',
@@ -320,12 +325,9 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     final fromAddr = tx.from?.toLowerCase();
     final toAddr = tx.to?.toLowerCase();
 
-    if (fromAddr == currentAddr && toAddr != currentAddr) {
-      return 'send';
-    } else if (toAddr == currentAddr && fromAddr != currentAddr) {
-      return 'receive';
-    }
-    return 'send'; // default
+    if (fromAddr == currentAddr && toAddr != currentAddr) return 'send';
+    if (toAddr == currentAddr && fromAddr != currentAddr) return 'receive';
+    return 'send';
   }
 
   String _formatDateTime(String? timestamp) {
@@ -358,7 +360,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     return months[month];
   }
 
-  // Update selected coin and reload data
+  // ---------------- Selection & lightning ----------------
+
   Future<void> _updateSelectedCoin(String newCoinId) async {
     setState(() {
       selectedCoinId = newCoinId;
@@ -372,28 +375,14 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
     _startLightningTimer();
 
-    // Reload data for new coin
     await _loadWalletAddress();
     if (_currentWalletAddress != null) {
       await _loadTransactionData();
     }
   }
 
-  // USD toggle state
-  bool _showAllInUsd = false;
-  final Set<String> _usdPerTx = <String>{};
-
-  double _priceForCoinUsd(String coinKey) {
-    final chainKey = _getChainForCoin(coinKey);
-    return _spotPrices[chainKey] ?? 0.0;
-  }
-
-  String _formatUsd(double usd) => '\$${usd.toStringAsFixed(2)}';
-
-  // Convenience getters
   bool get isLightningSelected => selectedCoinId == 'BTC-LN';
 
-  // Lightning Timer Methods
   void _startLightningTimer() {
     _lightningTimer?.cancel();
     if (isLightningSelected && !_isLightningComplete) {
@@ -455,7 +444,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     setState(() => _isCardFlipped = !_isCardFlipped);
   }
 
-  // Navigate to transaction details
+  // ---------------- Navigation ----------------
+
   void _navigateToTransactionDetails(Map<String, dynamic> transaction) {
     Navigator.push(
       context,
@@ -466,12 +456,16 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
+  // ---------------- Build ----------------
+
   @override
   Widget build(BuildContext context) {
+    // Watch for currency changes too
+    context.watch<CurrencyNotifier>(); // 👈 re-render on currency change
+
     final store = context.watch<CoinStore>();
     final coin = store.getById(selectedCoinId);
 
-    // Show loading or error state
     if (_isLoading) {
       return Scaffold(
         backgroundColor: kBg,
@@ -542,13 +536,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                   child: Column(
                     children: [
                       const SizedBox(height: 16),
-                      _buildBalanceCard(coin, details),
+                      _buildBalanceCard(coin, details), // 👈 shows fiat shadow
                       const SizedBox(height: 16),
-                      _buildAvailableRow(details),
+                      _buildAvailableRow(details), // 👈 shows fiat shadow
                       const SizedBox(height: 24),
                       _buildActionButtons(context),
                       const SizedBox(height: 24),
-                      _buildTransactionsSection(),
+                      _buildTransactionsSection(), // 👈 per-tx fiat toggle
                     ],
                   ),
                 ),
@@ -561,6 +555,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildHeader(Coin? coin, Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
     final iconPath = coin?.assetPath;
     final symbol = coin?.symbol ?? selectedCoinId;
 
@@ -568,13 +563,11 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Row(
         children: [
-          // Coin info and dropdown
           Expanded(
             child: GestureDetector(
               onTap: _showWalletChainSelector,
               child: Row(
                 children: [
-                  // Coin icon
                   Container(
                     width: 36,
                     height: 36,
@@ -590,8 +583,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Coin details
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,7 +604,21 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: kTile,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: kTileBorder),
+                              ),
+                              child: Text(
+                                fx.code, // e.g., USD / INR / EUR
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 10),
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -623,10 +628,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               ),
             ),
           ),
-
-          // Dropdown button
           GestureDetector(
-            onTap: _showWalletChainSelector, // 👈 same here
+            onTap: _showWalletChainSelector,
             child: Container(
               width: 36,
               height: 36,
@@ -665,9 +668,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildFrontCard(Coin? coin, Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
     final symbol = coin?.symbol ?? selectedCoinId;
     final address = details['address'] ?? '—';
-    final balance = details['balance'] ?? '0.00';
+    final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
+    final priceUsd = _priceForCoinUsd(selectedCoinId);
+    final usd = balance * priceUsd;
+    final fiat = usd > 0 ? fx.formatFromUsd(usd) : null;
 
     return Container(
       width: double.infinity,
@@ -681,7 +688,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with coin name and action icons
+          // Title & actions
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -696,38 +703,38 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
               _buildActionIcons(),
             ],
           ),
-
           const SizedBox(height: 6),
-
-          // Address
-          Text(
-            address,
-            style: const TextStyle(
-              color: kMuted,
-              fontSize: 11,
-            ),
-          ),
-
+          Text(address, style: const TextStyle(color: kMuted, fontSize: 11)),
           const SizedBox(height: 16),
-
-          // Balance
           Text(
-            balance,
+            balance.toStringAsFixed(8),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 42,
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (fiat != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '≈ $fiat',
+                style: const TextStyle(color: Colors.white70, fontSize: 13.5),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildBackCard(Coin? coin, Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
     final symbol = coin?.symbol ?? selectedCoinId;
     final address = details['address'] ?? '—';
-    final balance = details['balance'] ?? '0.00';
+    final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
+    final priceUsd = _priceForCoinUsd(selectedCoinId);
+    final usd = balance * priceUsd;
+    final fiat = usd > 0 ? fx.formatFromUsd(usd) : null;
 
     return Transform(
       alignment: Alignment.center,
@@ -744,7 +751,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with gasfree indicator and refresh icon
+            // Header with gasfree indicator and flip
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -776,29 +783,26 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                 ),
               ],
             ),
-
             const SizedBox(height: 6),
-
-            // Address
-            Text(
-              address,
-              style: const TextStyle(
-                color: Color(0xFF8B9B8B),
-                fontSize: 11,
-              ),
-            ),
-
+            Text(address,
+                style: const TextStyle(color: Color(0xFF8B9B8B), fontSize: 11)),
             const SizedBox(height: 16),
-
-            // Balance
             Text(
-              balance,
+              balance.toStringAsFixed(8),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 42,
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (fiat != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '≈ $fiat',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13.5),
+                ),
+              ),
           ],
         ),
       ),
@@ -921,40 +925,52 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildAvailableRow(Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
+    final bal = double.tryParse(details['balance'] ?? '0') ?? 0.0;
+    final priceUsd = _priceForCoinUsd(selectedCoinId);
+    final usd = bal * priceUsd;
+    final fiatText = usd > 0 ? fx.formatFromUsd(usd) : null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(child: _kv('Available', details['balance'] ?? '0')),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Available',
+                    style: TextStyle(color: kMuted, fontSize: 13)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      bal.toStringAsFixed(8),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    if (fiatText != null) ...[
+                      const SizedBox(width: 8),
+                      Text('($fiatText)',
+                          style:
+                              const TextStyle(color: kMuted, fontSize: 12.5)),
+                    ],
+                    const SizedBox(width: 8),
+                    const Icon(Icons.info_outline, color: kMuted, size: 16),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _kv(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: kMuted, fontSize: 13)),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500)),
-            const SizedBox(width: 8),
-            const Icon(Icons.info_outline, color: kMuted, size: 16),
-          ],
-        ),
-      ],
-    );
-  }
-
   Widget _buildActionButtons(BuildContext context) {
     if (isLightningSelected) {
-      // Lightning: Send, Receive, Scan
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 0),
         child: Row(
@@ -973,7 +989,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         ),
       );
     } else {
-      // Non-Lightning: Send, Swap, Receive
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 0),
         child: Row(
@@ -1169,7 +1184,16 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
+  // ---------------- Transactions (currency-aware) ----------------
+
+  // Global toggle: show all tx amounts in fiat (selected currency)
+  bool _showAllInFiat = false;
+
+  // Per-tx override set (ids that should show fiat when global is off, or native when global is on)
+  final Set<String> _fiatPerTx = <String>{};
+
   Widget _buildTransactionsSection() {
+    final fx = context.read<CurrencyNotifier>();
     final transactions = _getCurrentTransactions();
 
     return Column(
@@ -1192,14 +1216,14 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                 ),
               ),
             ),
-            const SizedBox(width: 24),
             const Spacer(),
             Tooltip(
-              message:
-                  _showAllInUsd ? 'Show native amounts' : 'Show all in USD',
+              message: _showAllInFiat
+                  ? 'Show native amounts'
+                  : 'Show all in ${fx.code}',
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => setState(() => _showAllInUsd = !_showAllInUsd),
+                onTap: () => setState(() => _showAllInFiat = !_showAllInFiat),
                 child: Container(
                   width: 28,
                   height: 28,
@@ -1207,13 +1231,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     color: kTile,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _showAllInUsd ? Colors.green : kTileBorder,
+                      color: _showAllInFiat ? Colors.green : kTileBorder,
                     ),
                   ),
                   child: Center(
                     child: Icon(
                       Icons.currency_exchange,
-                      color: _showAllInUsd ? Colors.green : Colors.white,
+                      color: _showAllInFiat ? Colors.green : Colors.white,
                       size: 14,
                     ),
                   ),
@@ -1256,16 +1280,23 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildTransactionItem(Map<String, dynamic> transaction) {
+    final fx = context.read<CurrencyNotifier>();
+
     final String txId = (transaction['id'] ?? '').toString();
     final String coinKey = (transaction['coin'] ?? '').toString();
-    final bool showUsd = _showAllInUsd || _usdPerTx.contains(txId);
+
+    // When global fiat is ON, tx shows fiat unless toggled off in _fiatPerTx.
+    // When global fiat is OFF, tx shows native unless toggled on in _fiatPerTx.
+    final bool showFiat =
+        _showAllInFiat ? !_fiatPerTx.contains(txId) : _fiatPerTx.contains(txId);
 
     final double amount =
         double.tryParse((transaction['amount'] ?? '0').toString()) ?? 0.0;
 
     final double priceUsd = _priceForCoinUsd(coinKey);
-    final String amountLabel = showUsd
-        ? _formatUsd(amount * priceUsd)
+    final double usdTotal = amount * priceUsd;
+    final String amountLabel = showFiat
+        ? _formatFiatFromUsd(context, usdTotal)
         : '${transaction['amount']} ${_getCoinSymbol(coinKey)}';
 
     return InkWell(
@@ -1323,7 +1354,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                         ],
                       ),
 
-                      // Right: time + amount + per-tx $ button
+                      // Right: time + amount + per-tx fiat toggle
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -1348,17 +1379,17 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                               ),
                               const SizedBox(width: 8),
                               Tooltip(
-                                message: _usdPerTx.contains(txId)
+                                message: _fiatPerTx.contains(txId)
                                     ? 'Show native amount'
-                                    : 'Show this in USD',
+                                    : 'Show this in ${fx.code}',
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(10),
                                   onTap: () {
                                     setState(() {
-                                      if (_usdPerTx.contains(txId)) {
-                                        _usdPerTx.remove(txId);
+                                      if (_fiatPerTx.contains(txId)) {
+                                        _fiatPerTx.remove(txId);
                                       } else {
-                                        _usdPerTx.add(txId);
+                                        _fiatPerTx.add(txId);
                                       }
                                     });
                                   },
@@ -1369,7 +1400,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                       color: kTile,
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
-                                        color: _usdPerTx.contains(txId)
+                                        color: _fiatPerTx.contains(txId)
                                             ? Colors.green
                                             : kTileBorder,
                                       ),
@@ -1377,7 +1408,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                     child: Center(
                                       child: Icon(
                                         Icons.monetization_on_outlined,
-                                        color: _usdPerTx.contains(txId)
+                                        color: _fiatPerTx.contains(txId)
                                             ? Colors.green
                                             : Colors.white,
                                         size: 14,
@@ -1430,7 +1461,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  // Helper methods
+  // ---------------- Misc helpers ----------------
+
   String _getTimeAgo(String dateTime) {
     try {
       final parts = dateTime.split(' ');
@@ -1547,15 +1579,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         minChildSize: 0.5,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
-          // Access CoinStore once here
           final store = context.read<CoinStore>();
 
           return FutureBuilder<List<Map<String, dynamic>>>(
-            future: AuthService.fetchWallets(), // ✅ your API
+            future: AuthService.fetchWallets(),
             builder: (context, snap) {
               final wallets = snap.data ?? const <Map<String, dynamic>>[];
 
-              // Safely read the chains array from the first wallet
               final List<dynamic> chains = (wallets.isNotEmpty &&
                       wallets.first is Map<String, dynamic> &&
                       (wallets.first as Map<String, dynamic>)['chains'] is List)
@@ -1628,12 +1658,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                             itemBuilder: (context, i) {
                               final c =
                                   chains[i] as Map<String, dynamic>? ?? {};
-                              final chain = (c['chain'] ?? '')
-                                  .toString(); // e.g. ETH/BNB/SOL/BTC/TRON
+                              final chain = (c['chain'] ?? '').toString();
                               final addr = (c['address'] ?? '').toString();
                               final bal = (c['balance'] ?? '0').toString();
 
-                              // Map chain -> CoinStore id and fetch icon
                               final coinId = _coinIdFromChain(chain);
                               final coin = store.getById(coinId);
 
@@ -1690,7 +1718,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                                     ),
                                   ),
                                   onTap: () async {
-                                    // Close sheet, switch coin + address, then load txns
                                     Navigator.pop(context);
                                     setState(() {
                                       selectedCoinId = coinId;
@@ -1720,7 +1747,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 }
 
-// Transaction Details Screen
+// ---------------- Transaction Details ----------------
+
 class TransactionDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> transaction;
 
@@ -1801,7 +1829,18 @@ class TransactionDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fx = context.watch<CurrencyNotifier>();
     final coinBadgeColor = _getCoinColor();
+
+    // If you want to show a fiat shadow here too:
+    final double amount =
+        double.tryParse((transaction['amount'] ?? '0').toString()) ?? 0.0;
+    final String coinKey = (transaction['coin'] ?? '').toString();
+    final double priceUsd =
+        context.read<_WalletInfoScreenState?>()?._priceForCoinUsd(coinKey) ??
+            0.0;
+    final String? fiat =
+        priceUsd > 0 ? fx.formatFromUsd(amount * priceUsd) : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -1864,12 +1903,28 @@ class TransactionDetailsScreen extends StatelessWidget {
                       color: Colors.white, size: 14),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  '${transaction['amount']} ${transaction['coin']}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${transaction['amount']} ${transaction['coin']}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    if (fiat != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '≈ $fiat',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

@@ -9,6 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
+// 👇 currency + provider
+import 'package:provider/provider.dart';
+import 'package:cryptowallet/core/currency_notifier.dart';
+import 'package:cryptowallet/core/currency_adapter.dart';
+
 class SendConfirmationScreen extends StatefulWidget {
   /// Pass the flow data from Screen 1 (SendCryptocurrency)
   final SendFlowData flowData;
@@ -33,7 +38,7 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
   void initState() {
     super.initState();
 
-    _flow = widget.flowData; // <-- mutable copy for this screen
+    _flow = widget.flowData; // mutable copy for this screen
 
     // prefill if previous step already had an address
     _addressController.text = _flow.toAddress ?? '';
@@ -54,6 +59,8 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
   // --------- Helpers ---------
   String get _assetSymbol => _flow.assetSymbol;
   String get _assetName => _flow.assetName;
+
+  /// Spot price (USD per coin) derived from flow (amount + usdValue)
   double get _assetPrice => _flow.usdValue > 0
       ? (_flow.usdValue /
           (double.tryParse(_flow.amount) ?? 1.0)
@@ -77,20 +84,14 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
   }
 
   String get _coinKeyForPrefs {
-    // Always have at least the symbol
     final sym = _assetSymbol.toUpperCase();
-
-    // If your flow carries a network/chain field (any name), we append it.
-    // This is wrapped in try/catch and uses null-aware checks to avoid crashes.
     try {
       final dyn = (_flow as dynamic);
       final net = (dyn.network ?? dyn.chain ?? dyn.assetNetwork);
       if (net is String && net.isNotEmpty) {
         return '$sym-$net';
       }
-    } catch (_) {
-      // ignore – we’ll just use the symbol
-    }
+    } catch (_) {}
     return sym;
   }
 
@@ -161,14 +162,10 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                 MaterialPageRoute(
                   builder: (_) => SendCryptocurrency(
                     title: 'Send ${_assetSymbol}',
-                    initialCoinId:
-                        _coinKeyForPrefs, // symbol or symbol-network (safe)
-// if flow has coinId, prefer it
-                    startInUsd:
-                        false, // user enters crypto amount, tweak if you want USD first
-                    initialUsd: 0, // not used if startInUsd=false
+                    initialCoinId: _coinKeyForPrefs, // symbol or symbol-network
+                    startInUsd: false,
+                    initialUsd: 0,
                     initialAddress: scanned, // prefill recipient
-                    // (Optional) you can pass any other context you need
                   ),
                 ),
               );
@@ -177,14 +174,11 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
               if (!mounted) return;
               if (returned != null) {
                 setState(() {
-                  _flow =
-                      returned; // amount/asset/fiat now reflect what they chose
-                  _addressController.text =
-                      returned.toAddress ?? scanned; // keep the address
+                  _flow = returned;
+                  _addressController.text = returned.toAddress ?? scanned;
                 });
                 _validateAddress();
               } else {
-                // If SendCryptocurrency didn't return data, still fill the scanned address
                 setState(() {
                   _addressController.text = scanned;
                 });
@@ -237,7 +231,6 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
       return;
     }
 
-    // Take the flowData from Screen 1 and attach the entered address
     final flowDataWithAddress = _flow.copyWith(
       toAddress: enteredAddress,
     );
@@ -254,12 +247,18 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final amountStr = _flow.amount;
+    // 👇 currency adapter that live-updates on currency change
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
 
-    final networkFee = _calculateNetworkFee();
-    // If you want to show fiat fee: use explicit price if you have it.
-    // Here we fallback to 0 if price is unknown.
-    final fiatFee = _assetPrice > 0 ? networkFee * _assetPrice : 0.0;
+    final amountStr = _flow.amount; // crypto amount as entered on previous step
+
+    // Network fee in crypto and its fiat value (USD → formatted to selected)
+    final networkFeeCrypto = _calculateNetworkFee();
+    final fiatFeeUsd = _assetPrice > 0 ? networkFeeCrypto * _assetPrice : 0.0;
+    final fiatFeeFormatted = fx.formatFromUsd(fiatFeeUsd);
+
+    // Total crypto value in USD passed from previous step; we can show selected currency too
+    final totalFiatFormatted = fx.formatFromUsd(_flow.usdValue);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
@@ -314,6 +313,16 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
                           style: const TextStyle(
                             color: Color(0xFF9CA3AF),
                             fontSize: 16,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        SizedBox(height: 0.8.h),
+                        // ≈ amount in selected fiat (from USD value carried in flow)
+                        Text(
+                          '≈ $totalFiatFormatted',
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 14,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
@@ -494,20 +503,20 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
 
                   SizedBox(height: 2.h),
 
-                  // Fee estimate (fiat)
+                  // Fee estimate (crypto + selected fiat)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Estimated FIAT value',
+                        'Estimated fee',
                         style: TextStyle(
                           color: Color(0xFF9CA3AF),
                           fontSize: 16,
                         ),
                       ),
                       Text(
-                        '${_calculateNetworkFee().toStringAsFixed(4)} $_assetSymbol'
-                        ' ≈ \$${fiatFee.toStringAsFixed(4)}',
+                        '${networkFeeCrypto.toStringAsFixed(6)} $_assetSymbol'
+                        '  •  ≈ $fiatFeeFormatted',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,

@@ -1,30 +1,35 @@
-// lib/main.dart
+import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
-import 'package:cryptowallet/stores/wallet_store.dart'; // ✅ NEW
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // ✅ Provider
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
-import '../core/app_export.dart'; // Contains AppTheme and AppRoutes
+import '../core/app_export.dart';
 import '../widgets/custom_error_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🚨 CRITICAL: Custom error handling - DO NOT REMOVE
+  // Critical: custom error handling
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return CustomErrorWidget(errorDetails: details);
   };
 
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
+  // Bootstrap currency so first frame is correct
+  final currency = CurrencyNotifier();
+  await currency.bootstrap();
+
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider<CurrencyNotifier>.value(value: currency),
         ChangeNotifierProvider(create: (_) => CoinStore()),
         ChangeNotifierProvider(create: (_) => WalletStore()),
         ChangeNotifierProvider(create: (_) => BalanceStore()),
@@ -55,7 +60,6 @@ class MyApp extends StatelessWidget {
           title: 'CryptoWallet',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            // applies Inter to all text styles
             textTheme: GoogleFonts.interTextTheme(),
           ),
           builder: (context, child) {
@@ -70,7 +74,6 @@ class MyApp extends StatelessWidget {
               ),
             );
           },
-          // Always start with splash; it can route using your app logic
           initialRoute: AppRoutes.splashScreen,
           routes: AppRoutes.routes,
         );

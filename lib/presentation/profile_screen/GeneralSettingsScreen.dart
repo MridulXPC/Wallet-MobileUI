@@ -1,6 +1,10 @@
 import 'dart:ui' show FontFeature;
+import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// NEW: listen & broadcast app-wide currency
+import 'package:provider/provider.dart';
 
 class GeneralSettingsScreen extends StatefulWidget {
   const GeneralSettingsScreen({super.key});
@@ -141,8 +145,12 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
       ),
     );
     if (picked != null && picked != _currency) {
-      setState(() => _currency = picked);
-      _saveString(_kCurr, picked);
+      setState(() => _currency = picked); // local echo
+      await _saveString(_kCurr, picked); // persist
+      if (mounted) {
+        // 🔔 broadcast globally so the whole app rebuilds where needed
+        context.read<CurrencyNotifier>().setCurrency(picked);
+      }
       _snack('Currency set to $picked');
     }
   }
@@ -163,8 +171,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
           _ => 'System'
         }}',
       );
-      // NOTE: If your app reads ThemeMode from SharedPreferences on startup
-      // or via a provider, the change will apply globally. Here we just persist.
+      // If your app uses a ThemeMode provider globally, you can broadcast here too.
     }
   }
 
@@ -191,7 +198,6 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
       _saveBool(_kNprice, _notifPrice);
       _saveBool(_kNmk, _notifMarketing);
       _snack('Notification preferences saved');
-      // Hook into your real push service here if needed.
     }
   }
 
@@ -208,6 +214,10 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 👇 Live currency from the global notifier (auto-updates without hot reload)
+    final liveCurrency =
+        context.select<CurrencyNotifier, String>((fx) => fx.code);
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -243,14 +253,6 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
             ),
           ),
 
-          // Language
-          _SettingTile.card(
-            leading: Icons.translate_rounded,
-            title: 'Language',
-            subtitle: 'Change your app language',
-            trailingValue: _language,
-            onTap: _pickLanguage,
-          ),
           const SizedBox(height: 12),
 
           // Currency
@@ -258,25 +260,9 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
             leading: Icons.attach_money_rounded,
             title: 'Currency',
             subtitle: 'Change your currency',
-            trailingValue: _currency,
+            // Show the live code from CurrencyNotifier (not just local _currency)
+            trailingValue: liveCurrency,
             onTap: _pickCurrency,
-          ),
-          const SizedBox(height: 12),
-
-          // Hide portfolio banner (switch)
-          _SettingTile.card(
-            leading: Icons.style_rounded,
-            title: 'Hide portfolio banner',
-            subtitle: 'Hide all banners in the app',
-            trailing: Switch.adaptive(
-              value: _hidePortfolioBanner,
-              activeColor: Colors.white,
-              activeTrackColor: const Color(0xFF5660FF),
-              onChanged: (v) {
-                setState(() => _hidePortfolioBanner = v);
-                _saveBool(_kHideBanner, v);
-              },
-            ),
           ),
           const SizedBox(height: 12),
 
@@ -402,7 +388,6 @@ class _SettingTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // trailing priority: custom trailing widget -> value + chevron -> chevron
               if (trailing != null)
                 trailing!
               else if (trailingValue != null)

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 currency
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -46,6 +47,9 @@ class _ExploreScreenState extends State<ExploreScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 👇 Rebuild when currency changes
+    context.watch<CurrencyNotifier>();
+
     final store = context.watch<CoinStore>();
 
     return Scaffold(
@@ -317,9 +321,18 @@ class _LoadedView extends StatelessWidget {
     required this.tab,
   });
 
+  // ---- currency helper
+  String _fiat(BuildContext context, double usd) =>
+      context.read<CurrencyNotifier>().formatFromUsd(usd);
+
   @override
   Widget build(BuildContext context) {
+    // watch currency to refresh amounts inside this subtree
+    context.watch<CurrencyNotifier>();
+
     final addressShort = _shorten(result.address);
+    final fx = context.read<CurrencyNotifier>();
+
     return Column(
       children: [
         // Header card
@@ -335,7 +348,7 @@ class _LoadedView extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // address
+                      // address + copy
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -366,14 +379,34 @@ class _LoadedView extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // value
-                      Text(
-                        _usd(result.portfolioUsd),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      // portfolio value (fiat)
+                      Row(
+                        children: [
+                          Text(
+                            _fiat(context, result.portfolioUsd),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1B1E2C),
+                              borderRadius: BorderRadius.circular(999),
+                              border:
+                                  Border.all(color: Colors.white12, width: 1),
+                            ),
+                            child: Text(
+                              fx.code,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 11),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       Wrap(
@@ -386,7 +419,7 @@ class _LoadedView extends StatelessWidget {
                     ],
                   ),
                 ),
-                // right: tiny identicon placeholder
+                // right: identicon placeholder
                 Container(
                   width: 48,
                   height: 48,
@@ -463,8 +496,9 @@ class _LoadedView extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          // 👇 fiat instead of raw USD
                           Text(
-                            _usd(h.usdValue),
+                            _fiat(context, h.usdValue),
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700),
@@ -532,8 +566,9 @@ class _LoadedView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
+                          // 👇 fiat shadow amount
                           Text(
-                            _usd(tx.usdValue),
+                            _fiat(context, tx.usdValue),
                             style: const TextStyle(
                                 color: Colors.white60, fontSize: 12),
                           ),
@@ -653,12 +688,7 @@ String _shorten(String s, {int head = 6, int tail = 6}) {
   return '${s.substring(0, head)}...${s.substring(s.length - tail)}';
 }
 
-String _usd(double n) {
-  final abs = n.abs();
-  final withSep = _thousands(n.toStringAsFixed(abs >= 1 ? 2 : 2));
-  return '\$ $withSep';
-}
-
+// (kept for generic number formatting if needed elsewhere)
 String _thousands(String s) {
   final re = RegExp(r'(\d+)(\d{3})');
   var parts = s.split('.');
@@ -738,7 +768,6 @@ class _ExploreVM extends ChangeNotifier {
 
   /* -------- robust unwrapping: Map | AuthResponse | ExploreData ---------- */
   Map<String, dynamic> _normalizeExplorePayload(Object any) {
-    // 1) If it's a Map, unwrap .data if present.
     if (any is Map) {
       final map = any.cast<String, dynamic>();
       final inner = map['data'];
@@ -746,7 +775,6 @@ class _ExploreVM extends ChangeNotifier {
       return map;
     }
 
-    // 2) If it's a typed object (AuthResponse or ExploreData), try .data first.
     final dAny = any as dynamic;
     final core = (() {
       try {
@@ -788,9 +816,8 @@ class _ExploreVM extends ChangeNotifier {
 
     final transactions = <Map<String, dynamic>>[];
     try {
-      final list = (core.transactions as List?) ??
-          (core.txs as List?) ?? // defensive alias if API changes
-          const [];
+      final list =
+          (core.transactions as List?) ?? (core.txs as List?) ?? const [];
       for (final t in list) {
         final x = t as dynamic;
         transactions.add({
@@ -888,7 +915,6 @@ class _ExploreVM extends ChangeNotifier {
   }
 
   double _toDisplayUnits(String raw, String chain) {
-    // Guard in case backend returns messages (rate-limit text, etc.)
     final d = _decimalsForChain(chain);
     final n = double.tryParse(raw);
     if (n == null) return 0.0;
@@ -922,7 +948,6 @@ class _ExploreVM extends ChangeNotifier {
       final fb = (b['formattedBalance']?.toString() ?? '').trim();
       final nb = (b['nativeBalance']?.toString() ?? '').trim();
 
-      // "NaN" -> 0
       final parsedFb = double.tryParse(fb);
       final bal = (parsedFb?.isFinite ?? false)
           ? (parsedFb ?? 0.0)

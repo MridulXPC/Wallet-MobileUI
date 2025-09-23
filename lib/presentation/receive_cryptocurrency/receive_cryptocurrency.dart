@@ -11,6 +11,10 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
+// 👇 currency support
+import 'package:cryptowallet/core/currency_notifier.dart';
+import 'package:cryptowallet/core/currency_adapter.dart';
+
 class ReceiveQR extends StatefulWidget {
   /// Big title at the top, e.g. "Your address to receive BTC"
   final String title;
@@ -105,6 +109,10 @@ class _ReceiveQRState extends State<ReceiveQR> {
   bool _loadingWallet = false;
   String? _loadErr;
 
+  // Spot price (USD per base asset, e.g., BTC). Used only for fiat preview.
+  double _spotUsd = 0.0;
+  bool _loadingSpot = false;
+
   // convenience getters
   String get _baseAddress =>
       (_address?.isNotEmpty ?? false) ? _address! : widget.address;
@@ -118,6 +126,14 @@ class _ReceiveQRState extends State<ReceiveQR> {
       (widget.coinId ?? '').toUpperCase().startsWith('BTC-LN');
 
   int get _minSatsDefault => widget.minSats ?? 25000;
+
+  /// Base symbol for price lookup (e.g., "BTC" for BTC/BTC-LN)
+  String get _baseSymbolForPrice {
+    final id = (widget.coinId ?? '').toUpperCase().trim();
+    if (_isLightning) return 'BTC';
+    if (id.isEmpty) return 'BTC';
+    return id.contains('-') ? id.split('-').first : id;
+  }
 
   @override
   void initState() {
@@ -135,6 +151,9 @@ class _ReceiveQRState extends State<ReceiveQR> {
       // fetch wallets after first frame (Provider is available)
       WidgetsBinding.instance.addPostFrameCallback((_) => _resolveAddress());
     }
+
+    // Fetch spot price once (USD). Rendering converts to selected currency.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureSpotLoaded());
   }
 
   @override
@@ -226,7 +245,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
       }
     }
 
-    // single symbol → treat symbol as chain (BTC/ETH/TRX/BNB/SOL/XMR)
+    // single symbol → treat symbol as chain
     if (id.isNotEmpty) return _normalizeChain(id);
 
     // fallback to BTC if nothing provided
@@ -282,8 +301,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
       }
     }
 
-    // 2) Flat fields per chain (with validation). Note how generic "address"
-    //    is only allowed for EVM chains (ETH/BNB) and BTC if it *looks* like BTC.
+    // 2) Flat fields per chain (with validation)
     switch (chainCode) {
       case 'LN':
         return byKeys(
@@ -375,10 +393,32 @@ class _ReceiveQRState extends State<ReceiveQR> {
     return null;
   }
 
+  // ---------------- Spot price (USD) ----------------
+
+  Future<void> _ensureSpotLoaded() async {
+    if (_loadingSpot || _spotUsd > 0) return;
+    setState(() => _loadingSpot = true);
+    try {
+      final sym = _baseSymbolForPrice;
+      final map = await AuthService.fetchSpotPrices(symbols: [sym]);
+      final v = map[sym] ?? 0.0;
+      if (!mounted) return;
+      setState(() => _spotUsd = v);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _spotUsd = 0.0);
+    } finally {
+      if (mounted) setState(() => _loadingSpot = false);
+    }
+  }
+
   // ---------------- UI ----------------
 
   @override
   Widget build(BuildContext context) {
+    // 👇 adapter rebuilds when user changes currency
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
+
     final title =
         widget.title.isEmpty ? 'Your address to receive' : widget.title;
     final minError =
@@ -388,6 +428,17 @@ class _ReceiveQRState extends State<ReceiveQR> {
 
     final isReady =
         (_address?.isNotEmpty ?? false) || widget.address.isNotEmpty;
+
+    // Fiat estimate (selected currency) for sats input (BTC/LN only)
+    String? fiatPreview;
+    if ((_isBtcOnchain || _isLightning) && _spotUsd > 0) {
+      final sats = _validSats();
+      if (sats > 0) {
+        final btc = sats / 100000000.0;
+        final usd = btc * _spotUsd;
+        fiatPreview = fx.formatFromUsd(usd);
+      }
+    }
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -565,6 +616,18 @@ class _ReceiveQRState extends State<ReceiveQR> {
                                 ),
                               ),
                             ],
+                            // 👇 Live fiat preview (selected currency) for BTC/LN
+                            if (fiatPreview != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '≈ $fiatPreview',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ],
@@ -701,6 +764,7 @@ class _ReceiveQRState extends State<ReceiveQR> {
   void _onAmountChanged() {
     setState(() {
       _qrData = _composeQrData();
+      // no need to store fiat; we compute it in build for currency reactivity
     });
   }
 

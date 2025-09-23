@@ -4,6 +4,11 @@ import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// 👇 currency + provider
+import 'package:provider/provider.dart';
+import 'package:cryptowallet/core/currency_notifier.dart';
+import 'package:cryptowallet/core/currency_adapter.dart';
+
 class SendConfirmationView extends StatefulWidget {
   final SendFlowData flowData; // must include toAddress from Screen 2
 
@@ -15,11 +20,11 @@ class SendConfirmationView extends StatefulWidget {
 
 class _SendConfirmationViewState extends State<SendConfirmationView> {
   // UI/flow
-  late String _priority; // "Standard" | "Fast"  // ← UPDATED
+  late String _priority; // "Standard" | "Fast"
   bool _submitting = false;
   String? _error;
 
-  // local preview-only fees (computed)
+  // local preview-only fees (computed, in crypto units)
   double _activationFee = 0.0;
   double _networkFee = 0.0;
 
@@ -28,6 +33,13 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   // -------- helpers --------
   String get _assetSymbol => widget.flowData.assetSymbol;
+
+  /// Spot price (USD per coin) derived from flow (amount + usdValue)
+  double get _assetPriceUsd => widget.flowData.usdValue > 0
+      ? (widget.flowData.usdValue /
+          (double.tryParse(widget.flowData.amount) ?? 1.0)
+              .clamp(0.00000001, double.infinity))
+      : 0.0;
 
   /// Normalize the token symbol we send to API:
   /// - "USDT-ETH" -> "USDT"
@@ -43,8 +55,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   double get _willReceive {
     final v = _amountCrypto - _activationFee;
-    return v < 0 ? 0.0 : v;
-    // NOTE: purely a UI preview; backend sends exact amounts.
+    return v < 0 ? 0.0 : v; // preview only
   }
 
   String get _timeText => _dateFmt.format(DateTime.now());
@@ -52,16 +63,14 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
   @override
   void initState() {
     super.initState();
-    // Ensure only "Standard" | "Fast" (fallback to Standard)
     final p = widget.flowData.priority.trim();
-    _priority = (p == 'Fast' || p == 'Standard') ? p : 'Standard'; // ← UPDATED
-    _recalcFees(); // initial fee calc
+    _priority = (p == 'Fast' || p == 'Standard') ? p : 'Standard';
+    _recalcFees(); // initial fee calc (crypto units)
   }
 
   void _recalcFees() {
     final base = _baseFeeForSymbol(_assetSymbol);
-    final computedNetwork =
-        _priority == "Fast" ? base * 1.5 : base; // ← UPDATED
+    final computedNetwork = _priority == "Fast" ? base * 1.5 : base;
     final computedActivation = computedNetwork;
 
     if (computedNetwork != _networkFee ||
@@ -90,7 +99,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       case 'TRX':
       case 'USDT-TRX':
       case 'TRX-TRX':
-        return 1.1; // demo preview for TRX units
+        return 1.1; // demo for TRX units
       default:
         return 0.0001;
     }
@@ -105,13 +114,11 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
     if (toAddr.isEmpty) {
       setState(() => _error = 'Missing recipient address.');
-      debugPrint('⛔ stop: empty toAddress');
       return;
     }
     final amt = double.tryParse(amtStr) ?? 0;
     if (amt <= 0) {
       setState(() => _error = 'Amount must be greater than 0.');
-      debugPrint('⛔ stop: amount <= 0');
       return;
     }
 
@@ -122,41 +129,33 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
     try {
       final userId = await AuthService.getOrFetchUserId();
       if (!mounted) return;
-      debugPrint('👤 userId: $userId');
       if (userId == null || userId.isEmpty) {
         setState(() => _error = 'Unable to resolve user ID.');
-        debugPrint('⛔ stop: userId null/empty');
         return;
       }
 
       final walletAddress = await AuthService.getOrFetchWalletAddress(
           chain: widget.flowData.chain);
       if (!mounted) return;
-      debugPrint('👛 walletAddress: $walletAddress');
       if (walletAddress == null || walletAddress.isEmpty) {
         setState(() => _error = 'Unable to resolve wallet address.');
-        debugPrint('⛔ stop: walletAddress null/empty');
         return;
       }
 
-      debugPrint('🚀 calling sendTransaction...');
       final res = await AuthService.sendTransaction(
         userId: userId,
         walletAddress: walletAddress,
         toAddress: toAddr,
         amount: amtStr,
         chain: widget.flowData.chain,
-        token: _apiToken, // ← UPDATED (new API field)
-        priority: _priority, // ← "Standard" | "Fast"
+        token: _apiToken,
+        priority: _priority, // "Standard" | "Fast"
       );
-      debugPrint(
-          '✅ sendTransaction returned: ${res.success}  msg:${res.message}');
 
       if (!mounted) return;
 
       if (res.success) {
-        final txId = _extractTxId(res.data); // now handles transaction.txHash
-        debugPrint('🔗 txId: $txId');
+        final txId = _extractTxId(res.data);
         await _showSuccessDialog(context, txId);
         if (!mounted) return;
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -165,7 +164,6 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       }
     } catch (e) {
       if (!mounted) return;
-      debugPrint('💥 exception in confirmAndSend: $e');
       setState(() => _error = 'Transaction error: $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -174,8 +172,6 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   String? _extractTxId(Map<String, dynamic>? data) {
     if (data == null) return null;
-
-    // Prefer the explicit API shape: { transaction: { txHash, id, ... } }
     final tx = data['transaction'];
     if (tx is Map<String, dynamic>) {
       final hash = tx['txHash']?.toString();
@@ -183,15 +179,11 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       final id = tx['id']?.toString();
       if (id != null && id.isNotEmpty) return id;
     }
-
-    // Try common keys at top level
     const keys = ['txHash', 'txId', 'txid', 'hash', 'transactionHash', 'id'];
     for (final k in keys) {
       final v = data[k];
       if (v is String && v.isNotEmpty) return v;
     }
-
-    // Try within nested "data" or "result"
     final nested = (data['data'] ?? data['result']);
     if (nested is Map<String, dynamic>) {
       for (final k in keys) {
@@ -245,6 +237,9 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
   @override
   Widget build(BuildContext context) {
+    // 👇 currency adapter — rebuilds when user changes currency
+    final fx = FxAdapter(context.watch<CurrencyNotifier>());
+
     const bg = Color(0xFF0C0D17);
     const textPrimary = Colors.white;
     const textSecondary = Color(0xFF9DA3AE);
@@ -253,6 +248,17 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
     final fromAccountLabel = '${_assetSymbol} - Main Account';
     final toAddress = (widget.flowData.toAddress ?? '').trim();
+
+    // ---- Fiat conversions (USD → selected) ----
+    final amountFiat = _amountCrypto * _assetPriceUsd; // USD
+    final willReceiveFiat = _willReceive * _assetPriceUsd; // USD
+    final networkFeeFiat = _networkFee * _assetPriceUsd; // USD
+    final activationFeeFiat = _activationFee * _assetPriceUsd; // USD
+
+    final amountFiatStr = fx.formatFromUsd(amountFiat);
+    final willReceiveFiatStr = fx.formatFromUsd(willReceiveFiat);
+    final networkFeeFiatStr = fx.formatFromUsd(networkFeeFiat);
+    final activationFeeFiatStr = fx.formatFromUsd(activationFeeFiat);
 
     return Scaffold(
       backgroundColor: bg,
@@ -318,6 +324,16 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                         letterSpacing: 1.2,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    // ≈ selected-fiat preview of will receive
+                    Text(
+                      '≈ $willReceiveFiatStr',
+                      style: const TextStyle(
+                        color: textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
 
                     const SizedBox(height: 28),
                     const Align(
@@ -337,15 +353,17 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                     _kvRow('From', fromAccountLabel),
                     _kvRow('To', toAddress),
                     _kvRow('Time', _timeText),
-                    _kvRow('Amount',
-                        '${_amountCrypto.toStringAsFixed(5)} $_assetSymbol'),
+                    _kvRow(
+                      'Amount',
+                      '${_amountCrypto.toStringAsFixed(5)} $_assetSymbol  •  ≈ $amountFiatStr',
+                    ),
                     _kvRow(
                       'Activation Fee',
-                      '(-) ${_activationFee.toStringAsFixed(_activationFee >= 1 ? 1 : 6)} $_assetSymbol',
+                      '(-) ${_activationFee.toStringAsFixed(_activationFee >= 1 ? 1 : 6)} $_assetSymbol  •  ≈ $activationFeeFiatStr',
                     ),
                     _kvRow(
                       'Will Receive',
-                      '${_willReceive.toStringAsFixed(5)} $_assetSymbol',
+                      '${_willReceive.toStringAsFixed(5)} $_assetSymbol  •  ≈ $willReceiveFiatStr',
                       strong: true,
                     ),
 
@@ -409,7 +427,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             selected: _priority == "Standard",
                             onSelected: (_) {
                               setState(() {
-                                _priority = "Standard"; // ← UPDATED
+                                _priority = "Standard";
                                 _recalcFees();
                               });
                             },
@@ -417,7 +435,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             labelStyle: TextStyle(
                               color: _priority == "Standard"
                                   ? Colors.black
-                                  : textSecondary, // ← UPDATED
+                                  : textSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                             backgroundColor: const Color(0xFF121526),
@@ -427,7 +445,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             selected: _priority == "Fast",
                             onSelected: (_) {
                               setState(() {
-                                _priority = "Fast"; // ← UPDATED
+                                _priority = "Fast";
                                 _recalcFees();
                               });
                             },
@@ -435,7 +453,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             labelStyle: TextStyle(
                               color: _priority == "Fast"
                                   ? Colors.black
-                                  : textSecondary, // ← UPDATED
+                                  : textSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                             backgroundColor: const Color(0xFF121526),
@@ -445,10 +463,10 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                     ),
                     const SizedBox(height: 8),
 
-                    _kvRow('Fee Option', _priority), // ← UPDATED
+                    _kvRow('Fee Option', _priority),
                     _kvRow(
                       'Estimated Network Fee',
-                      '${_networkFee.toStringAsFixed(_networkFee >= 1 ? 1 : 6)} $_assetSymbol',
+                      '${_networkFee.toStringAsFixed(_networkFee >= 1 ? 1 : 6)} $_assetSymbol  •  ≈ $networkFeeFiatStr',
                     ),
 
                     const SizedBox(height: 120),
