@@ -35,6 +35,8 @@ dependencies:
   flutter_dotenv: ^6.0.0
   local_auth: ^2.3.0
   webview_flutter: ^4.13.0
+  file_picker: ^10.3.3
+  socket_io_client: ^3.1.2
 
 
 

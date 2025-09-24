@@ -20,12 +20,7 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
     Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => const SupportChatScreen(
-            baseUrll:
-                "https://app.chatwoot.com", // ← YOUR self-hosted URL (no trailing slash needed)
-            websiteToken: "QHU9yPyXWWUXeRzn3TaDqRij",
-            userId: "user-123",
-          ),
+          builder: (_) => const SupportChatScreen(),
         ));
   }
 

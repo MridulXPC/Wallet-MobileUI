@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cryptowallet/services/api_service.dart'; // AuthService
 import 'package:bip39/bip39.dart' as bip39;
-import 'package:provider/provider.dart'; // ⬅️ NEW
-import 'package:cryptowallet/stores/wallet_store.dart'; // ⬅️ NEW
+import 'package:provider/provider.dart'; // ⬅️ Provider kept
+import 'package:cryptowallet/stores/wallet_store.dart'; // ⬅️ Store kept
 
 typedef WalletSelectCallback = void Function(Map<String, dynamic> wallet);
 
@@ -68,9 +68,11 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
   bool _creating = false;
   String? _error;
   List<Map<String, dynamic>> _wallets = [];
-  String? _selectedWalletId;
+  String? _selectedWalletId; // ✅ always the UUID (walletId)
 
   final _mnemonicCtrl = TextEditingController();
+  final _importNameCtrl = TextEditingController(); // ⬅️ NEW (import name)
+  final _genNameCtrl = TextEditingController(); // ⬅️ NEW (generate name)
 
   @override
   void initState() {
@@ -82,6 +84,8 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
   @override
   void dispose() {
     _mnemonicCtrl.dispose();
+    _importNameCtrl.dispose();
+    _genNameCtrl.dispose();
     super.dispose();
   }
 
@@ -98,23 +102,19 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
         _wallets = list;
         _loading = false;
 
-        // ⬇️ Selection preference order:
-        // 1) active id from widget.initialActiveWalletId if present in list
-        // 2) keep current _selectedWalletId if still present
-        // 3) fall back to first wallet
+        // Always keep the active wallet selected if present.
         final active = widget.initialActiveWalletId;
-        final hasActiveInList = active != null &&
-            _wallets.any((w) => (w['_id']?.toString()) == active);
-        final hasSelectedInList = _selectedWalletId != null &&
-            _wallets.any((w) => (w['_id']?.toString()) == _selectedWalletId);
+        bool containsId(String? id) =>
+            id != null && _wallets.any((w) => AuthService.walletIdOf(w) == id);
 
-        if (hasActiveInList) {
+        if (containsId(active)) {
           _selectedWalletId = active;
-        } else if (hasSelectedInList) {
-          // keep as-is
+        } else if (containsId(_selectedWalletId)) {
+          // keep current selection if it still exists
         } else {
-          _selectedWalletId =
-              _wallets.isNotEmpty ? _wallets.first['_id']?.toString() : null;
+          _selectedWalletId = _wallets.isNotEmpty
+              ? AuthService.walletIdOf(_wallets.first)
+              : null;
         }
       });
     } on ApiException catch (e) {
@@ -136,10 +136,6 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
   String _walletTitle(Map<String, dynamic> w) {
     final raw = w['name']?.toString().trim();
     if (raw != null && raw.isNotEmpty) return raw;
-    final id = w['_id']?.toString();
-    if (id != null && id.length > 6) {
-      return 'Wallet …${id.substring(id.length - 6)}';
-    }
     return 'Wallet';
   }
 
@@ -160,9 +156,173 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
     return '${a.substring(0, 8)}…${a.substring(a.length - 6)}';
   }
 
-  // ---------- Create flows ----------
+  // ---------- Rename (unchanged look) ----------
+  Future<void> _promptRename(Map<String, dynamic> wallet) async {
+    final id = AuthService.walletIdOf(wallet); // ✅ UUID walletId
+    if (id.isEmpty) return;
+
+    final controller =
+        TextEditingController(text: (wallet['name'] ?? '').toString().trim());
+    bool saving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !saving,
+      builder: (dctx) {
+        return StatefulBuilder(builder: (dctx, setD) {
+          Future<void> submit() async {
+            final newName = controller.text.trim();
+            if (newName.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Enter a wallet name')),
+              );
+              return;
+            }
+            setD(() => saving = true);
+            try {
+              await AuthService.updateWalletName(
+                  walletId: id, walletName: newName);
+
+              // Update in-place for immediate UI
+              final idx =
+                  _wallets.indexWhere((w) => AuthService.walletIdOf(w) == id);
+              if (idx != -1) {
+                final updated = Map<String, dynamic>.from(_wallets[idx]);
+                updated['name'] = newName;
+                updated['walletName'] = newName;
+                setState(() => _wallets[idx] = updated);
+              }
+
+              if (mounted) {
+                Navigator.of(dctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Wallet renamed to "$newName"')),
+                );
+              }
+            } catch (e) {
+              setD(() => saving = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Rename failed: $e')),
+              );
+            }
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: _sheetGradient,
+                borderRadius: BorderRadius.all(_sheetRadius),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Edit wallet name',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white60),
+                          onPressed:
+                              saving ? null : () => Navigator.of(dctx).pop(),
+                          splashRadius: 18,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.12)),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: TextField(
+                        controller: controller,
+                        enabled: !saving,
+                        decoration: _inputDecoration('Enter wallet name'),
+                        style: const TextStyle(color: Colors.white),
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => submit(),
+                        autofocus: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed:
+                                saving ? null : () => Navigator.of(dctx).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white24),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: saving ? null : submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  Colors.lightBlueAccent.withOpacity(0.18),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              side: const BorderSide(color: Colors.white24),
+                            ),
+                            child: saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  // ---------- Create flows (NOW REQUIRE NAME) ----------
+
+  /// Import with mnemonic -> dialog has 2 fields (mnemonic + wallet name)
   Future<void> _createWithPhraseDialog() async {
-    final phrase = await showDialog<String?>(
+    _mnemonicCtrl.clear();
+    _importNameCtrl.clear();
+
+    final result = await showDialog<Map<String, String>?>(
       context: context,
       builder: (ctx) => _GradientDialog(
         title: 'Import Wallet with Phrase',
@@ -178,7 +338,7 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
               controller: _mnemonicCtrl,
               minLines: 2,
               maxLines: 4,
-              textInputAction: TextInputAction.done,
+              textInputAction: TextInputAction.next,
               keyboardType: TextInputType.text,
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\s]"))
@@ -186,19 +346,48 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
               decoration: _inputDecoration('e.g. ripple lava wagon ...'),
               style: const TextStyle(color: Colors.white),
             ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Wallet Name (required)',
+                  style: TextStyle(
+                      color: Colors.white70.withOpacity(0.9), fontSize: 12)),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _importNameCtrl,
+              textInputAction: TextInputAction.done,
+              decoration: _inputDecoration('e.g. Main Wallet'),
+              style: const TextStyle(color: Colors.white),
+            ),
           ],
         ),
         primaryText: 'Import',
-        onPrimary: () => Navigator.of(ctx).pop(_mnemonicCtrl.text.trim()),
+        onPrimary: () {
+          final phrase = _mnemonicCtrl.text.trim();
+          final name = _importNameCtrl.text.trim();
+          if (phrase.isEmpty || name.isEmpty) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              const SnackBar(content: Text('Phrase and name are required')),
+            );
+            return;
+          }
+          Navigator.of(ctx).pop({'phrase': phrase, 'name': name});
+        },
         secondaryText: 'Cancel',
         onSecondary: () => Navigator.of(ctx).pop(null),
       ),
     );
 
-    if (phrase == null || phrase.isEmpty) return;
-    await _createWalletWithMnemonic(phrase, label: 'Wallet imported');
+    if (result == null) return;
+    await _createWalletWithMnemonic(
+      result['phrase']!,
+      walletName: result['name']!,
+      label: 'Wallet imported',
+    );
   }
 
+  /// Generate -> show phrase, then prompt for required name
   Future<void> _generateAndCreate() async {
     final phrase = bip39.generateMnemonic(strength: 128); // 12 words
     if (!bip39.validateMnemonic(phrase)) {
@@ -208,6 +397,7 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
       return;
     }
 
+    // Show generated phrase (read only)
     await showDialog<void>(
       context: context,
       builder: (ctx) => _GradientDialog(
@@ -221,11 +411,58 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
       ),
     );
 
-    await _createWalletWithMnemonic(phrase, label: 'Wallet created');
+    // Ask for required name
+    _genNameCtrl.clear();
+    final name = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => _GradientDialog(
+        title: 'Name your wallet',
+        child: TextField(
+          controller: _genNameCtrl,
+          autofocus: true,
+          decoration: _inputDecoration('e.g. Main Wallet'),
+          style: const TextStyle(color: Colors.white),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            final v = _genNameCtrl.text.trim();
+            if (v.isEmpty) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Wallet name is required')),
+              );
+              return;
+            }
+            Navigator.of(ctx).pop(v);
+          },
+        ),
+        primaryText: 'Save',
+        onPrimary: () {
+          final v = _genNameCtrl.text.trim();
+          if (v.isEmpty) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              const SnackBar(content: Text('Wallet name is required')),
+            );
+            return;
+          }
+          Navigator.of(ctx).pop(v);
+        },
+        secondaryText: 'Cancel',
+        onSecondary: () => Navigator.of(ctx).pop(null),
+      ),
+    );
+
+    if (name == null || name.trim().isEmpty) return;
+
+    await _createWalletWithMnemonic(
+      phrase,
+      walletName: name.trim(),
+      label: 'Wallet created',
+    );
   }
 
+  /// Create wallet, then immediately name it via PUT /api/wallet/name/:walletId
   Future<void> _createWalletWithMnemonic(
     String phrase, {
+    required String walletName,
     required String label,
   }) async {
     setState(() => _creating = true);
@@ -233,20 +470,58 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
       final res = await AuthService.submitRecoveryPhrase(phrase: phrase);
       if (!mounted) return;
 
-      if (res.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$label successfully')),
-        );
-        _mnemonicCtrl.clear();
-        await _refresh();
-
-        _selectedWalletId ??=
-            _wallets.isNotEmpty ? _wallets.first['_id']?.toString() : null;
-      } else {
+      if (!res.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(res.message ?? 'Failed to create wallet')),
         );
+        setState(() => _creating = false);
+        return;
       }
+
+      // Try to read the created walletId from response
+      String createdId = '';
+      final d = res.data;
+      try {
+        createdId = (d?['walletId'] ??
+                    d?['data']?['walletId'] ??
+                    d?['wallet']?['walletId'] ??
+                    d?['wallet']?['_id'] ??
+                    d?['_id'])
+                ?.toString() ??
+            '';
+      } catch (_) {}
+
+      // If still empty, fallback to last stored id
+      if (createdId.isEmpty) {
+        createdId = (await AuthService.getStoredWalletId()) ?? '';
+      }
+
+      // Set the name (required)
+      await AuthService.updateWalletName(
+        walletId: createdId,
+        walletName: walletName,
+      );
+
+      // Refresh and keep active wallet selected by default
+      await _refresh();
+
+      // Also update row name locally if we can find this new wallet
+      if (createdId.isNotEmpty) {
+        final idx =
+            _wallets.indexWhere((w) => AuthService.walletIdOf(w) == createdId);
+        if (idx != -1) {
+          final updated = Map<String, dynamic>.from(_wallets[idx]);
+          updated['name'] = walletName;
+          updated['walletName'] = walletName;
+          setState(() => _wallets[idx] = updated);
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$label successfully')),
+      );
+
+      // Do NOT change selection — keep active wallet selected as requested.
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -354,8 +629,8 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (_, i) {
                       final w = _wallets[i];
-                      final id = w['_id']?.toString();
-                      final isChecked = id != null && id == _selectedWalletId;
+                      final id = AuthService.walletIdOf(w); // ✅ UUID
+                      final isChecked = id == _selectedWalletId;
 
                       return _glassCard(
                         hover: true,
@@ -427,6 +702,15 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
                                                 ),
                                               ),
                                             ),
+                                          // ✏️ edit button
+                                          IconButton(
+                                            tooltip: 'Edit name',
+                                            icon: const Icon(Icons.edit,
+                                                color: Colors.white70,
+                                                size: 18),
+                                            onPressed: () => _promptRename(w),
+                                            splashRadius: 18,
+                                          ),
                                         ],
                                       ),
                                       const SizedBox(height: 2),
@@ -464,7 +748,8 @@ class _WalletPickerSheetState extends State<_WalletPickerSheet> {
                           : () {
                               final picked = _wallets.firstWhere(
                                 (w) =>
-                                    (w['_id']?.toString()) == _selectedWalletId,
+                                    AuthService.walletIdOf(w) ==
+                                    _selectedWalletId,
                                 orElse: () => {},
                               );
                               if (picked.isNotEmpty) {

@@ -1,7 +1,6 @@
-// lib/presentation/main_wallet_dashboard/widgets/vault_header_card.dart
 import 'dart:ui';
 
-import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 added
+import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/wallet_picker_sheet.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
@@ -10,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class VaultHeaderCard extends StatefulWidget {
-  /// Fallback/initial display string (e.g., "$0.00"); used until first compute succeeds.
   final String totalValue;
   final String vaultName;
   final VoidCallback onTap;
@@ -32,8 +30,6 @@ class VaultHeaderCard extends StatefulWidget {
 
 class _VaultHeaderCardState extends State<VaultHeaderCard> {
   bool _hidden = false;
-
-  /// Live-computed portfolio total in **USD** (raw). We format it via CurrencyNotifier.
   double? _computedTotalUsd;
   bool _loadingTotal = false;
 
@@ -51,13 +47,11 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
       if (!mounted) return;
       setState(() => _computedTotalUsd = totalUsd);
     } catch (_) {
-      // keep fallback widget.totalValue on error
+      // keep fallback
     } finally {
       if (mounted) setState(() => _loadingTotal = false);
     }
   }
-
-  // -------- Aggregation helpers (robust to varied shapes) --------
 
   double _sumAllWalletsUsd(List<Map<String, dynamic>> wallets) {
     double total = 0.0;
@@ -68,15 +62,12 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
   }
 
   double _walletUsd(Map<String, dynamic> w) {
-    // If chains exist, sum their USD values; else use wallet-level USD/fiat fields.
     final chains = (w['chains'] as List?) ?? const [];
     if (chains.isNotEmpty) {
       double sum = 0.0;
       for (final c in chains) {
         if (c is! Map) continue;
         final m = c.cast<String, dynamic>();
-
-        // Prefer direct USD/fiat fields from API
         final usdDirect = _asDouble(m['fiatValue']) ??
             _asDouble(m['usdValue']) ??
             _asDouble(m['balanceUSD']);
@@ -84,20 +75,14 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
           sum += usdDirect;
           continue;
         }
-
-        // Fallback: balance * price (both USD)
         final bal = _asDouble(m['balance']) ?? _asDouble(m['amount']);
         final price = _asDouble(m['priceUsd']) ??
             _asDouble(m['usdPrice']) ??
             _asDouble(m['price']);
-        if (bal != null && price != null) {
-          sum += bal * price;
-        }
+        if (bal != null && price != null) sum += bal * price;
       }
       return sum;
     }
-
-    // Wallet-level fallback
     return _asDouble(w['fiatValue']) ??
         _asDouble(w['usdValue']) ??
         _asDouble(w['totalUsd']) ??
@@ -114,15 +99,10 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 👇 Watching CurrencyNotifier means the header re-renders when currency/rates change.
     final fx = context.watch<CurrencyNotifier>();
-
-    // If we already computed a USD total, format it in the selected currency.
-    // Otherwise show the provided fallback string (already formatted).
     final String display = (_computedTotalUsd != null)
         ? fx.formatFromUsd(_computedTotalUsd!)
         : widget.totalValue;
-
     final masked = _hidden ? '•••••••' : display;
 
     return GestureDetector(
@@ -140,14 +120,12 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                   end: Alignment.bottomRight,
                   colors: [
                     Colors.white.withOpacity(0.15),
-                    Colors.white.withOpacity(0.05),
+                    Colors.white.withOpacity(0.05)
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1.5,
-                ),
+                    color: Colors.white.withOpacity(0.2), width: 1.5),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.1),
@@ -162,7 +140,6 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
-                    // Left: text block
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,9 +165,8 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                                 const SizedBox(
                                   width: 14,
                                   height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               ],
                             ],
@@ -207,10 +183,9 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                                   color: Colors.white,
                                   shadows: [
                                     Shadow(
-                                      color: Colors.black26,
-                                      offset: Offset(0, 1),
-                                      blurRadius: 3,
-                                    ),
+                                        color: Colors.black26,
+                                        offset: Offset(0, 1),
+                                        blurRadius: 3)
                                   ],
                                 ),
                               ),
@@ -227,8 +202,6 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                         ],
                       ),
                     ),
-
-                    // Right: 3-dots menu
                     _VaultMenuButton(
                       title: widget.vaultName,
                       onChangeWallet: widget.onChangeWallet,
@@ -246,15 +219,10 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
   }
 }
 
-/// Reusable small eye/eye-off button
 class _EyeButton extends StatelessWidget {
   final bool hidden;
   final VoidCallback onPressed;
-
-  const _EyeButton({
-    required this.hidden,
-    required this.onPressed,
-  });
+  const _EyeButton({required this.hidden, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -265,20 +233,16 @@ class _EyeButton extends StatelessWidget {
         radius: 18,
         child: Padding(
           padding: const EdgeInsets.all(4.0),
-          child: Icon(
-            hidden ? Icons.visibility_off : Icons.visibility,
-            size: 20,
-            color: Colors.white70,
-          ),
+          child: Icon(hidden ? Icons.visibility_off : Icons.visibility,
+              size: 20, color: Colors.white70),
         ),
       ),
     );
   }
 }
 
-/// 3-dots popup
 class _VaultMenuButton extends StatelessWidget {
-  final String title; // current wallet name
+  final String title;
   final VoidCallback onChangeWallet;
   final VoidCallback? onActivities;
   final BuildContext navContext;
@@ -298,7 +262,7 @@ class _VaultMenuButton extends StatelessWidget {
       color: const Color(0xFF1F2431),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       icon: const Icon(Icons.more_vert, color: Colors.white),
-      onSelected: (value) {
+      onSelected: (value) async {
         switch (value) {
           case 'change_wallet':
             openWalletPickerBottomSheet(
@@ -306,11 +270,11 @@ class _VaultMenuButton extends StatelessWidget {
               initialActiveWalletId:
                   navContext.read<WalletStore>().activeWalletId,
               onSelectWallet: (wallet) async {
-                await navContext.read<WalletStore>().setActive(wallet['_id']);
+                final wid = AuthService.walletIdOf(wallet); // ✅ UUID
+                await navContext.read<WalletStore>().setActive(wid);
                 ScaffoldMessenger.of(navContext).showSnackBar(
                   SnackBar(
-                    content: Text('Active: ${wallet['name'] ?? 'Wallet'}'),
-                  ),
+                      content: Text('Active: ${wallet['name'] ?? 'Wallet'}')),
                 );
               },
             );
@@ -332,18 +296,12 @@ class _VaultMenuButton extends StatelessWidget {
         PopupMenuItem(
           value: 'change_wallet',
           child: _MenuTile(
-            icon: Icons.swap_horiz,
-            title: 'Change wallet',
-            subtitle: title,
-          ),
+              icon: Icons.swap_horiz, title: 'Change wallet', subtitle: title),
         ),
         PopupMenuItem(
           value: 'activities',
           child: _MenuTile(
-            icon: Icons.history,
-            title: 'Activities',
-            subtitle: title,
-          ),
+              icon: Icons.history, title: 'Activities', subtitle: title),
         ),
       ],
     );
@@ -354,12 +312,8 @@ class _MenuTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-
-  const _MenuTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
+  const _MenuTile(
+      {required this.icon, required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -373,18 +327,11 @@ class _MenuTile extends StatelessWidget {
             children: [
               Text(title,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  )),
+                      color: Colors.white, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 12,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
+              Text(subtitle,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  overflow: TextOverflow.ellipsis),
             ],
           ),
         ),

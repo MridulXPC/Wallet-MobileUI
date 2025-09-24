@@ -5,7 +5,6 @@ import 'package:cryptowallet/presentation/profile_screen/SessionInfoScreen.dart'
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -34,22 +33,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onScan: (code) async {
               // Handle the scanned session id
               try {
-                // Prefer pulling from storage/service
-                String? token = await AuthService.getStoredToken();
+                // ✅ Only use the stored token set at registration/login
+                final String? token = await AuthService.getStoredToken();
 
-                // fallback, if you still want a hardcoded token for dev:
-                token ??=
-                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2ODkxYWJjMDViM2E3MzAzMmM5NjBlZmQiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzU0Mzc3MTUyLCJleHAiOjE3NTQ5ODE5NTJ9.Y7bnsr7R88xrmkpKbjD41CaGUR5FtC7X16_MBOiHwD8';
-
-                if (token == null) {
-                  if (!mounted) return;
+                if (!mounted) return;
+                if (token == null || token.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                          '❌ Authentication required. Please login first.'),
+                        '❌ Authentication required. Please log in first.',
+                      ),
                     ),
                   );
-                  Navigator.pop(context);
+                  Navigator.pop(context); // close scanner
                   return;
                 }
 
@@ -70,19 +66,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                          result.message ?? '❌ Failed to authorize session'),
+                        result.message ?? '❌ Failed to authorize session',
+                      ),
                     ),
                   );
-                  Navigator.pop(context);
+                  Navigator.pop(context); // close scanner
                 }
               } catch (e) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content:
-                          Text('❌ An error occurred during authorization')),
+                    content: Text(
+                      '❌ An error occurred during authorization',
+                    ),
+                  ),
                 );
-                Navigator.pop(context);
+                Navigator.pop(context); // close scanner
               }
             },
           ),
@@ -143,35 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            // const SizedBox(height: 14),
-
-            // // Notification banner
-            // _HubBanner(
-            //   leading: Stack(
-            //     clipBehavior: Clip.none,
-            //     children: [
-            //       const Icon(Icons.notifications_none,
-            //           color: Colors.white, size: 22),
-            //       Positioned(
-            //         right: -2,
-            //         top: -2,
-            //         child: Container(
-            //           width: 8,
-            //           height: 8,
-            //           decoration: const BoxDecoration(
-            //             color: Colors.red,
-            //             shape: BoxShape.circle,
-            //           ),
-            //         ),
-            //       ),
-            //     ],
-            //   ),
-            //   title: 'You have 25 unread notification',
-            //   onTap: () {},
-            // ),
             const SizedBox(height: 12),
-
-            // Level card
 
             // 2 x 2 grid of setting cards
             Row(
@@ -225,8 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // ===== Removed Buy Crypto / Staking / Swap Center =====
-            // Replaced with: Link Web Session
+            // Link Web Session
             _HubListTile(
               leadingIcon: Icons.qr_code_scanner,
               title: 'Link Web Session',
@@ -423,7 +393,6 @@ class CornerFramePainter extends CustomPainter {
     // TR
     canvas.drawLine(
         Offset(size.width, 0), Offset(size.width - length, 0), _paint);
-    canvas.drawLine(const Offset(0, 0), const Offset(0, 0), _paint);
     canvas.drawLine(Offset(size.width, 0), Offset(size.width, length), _paint);
     // BL
     canvas.drawLine(

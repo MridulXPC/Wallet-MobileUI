@@ -2,9 +2,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptowallet/services/wallet_flow.dart';
+import 'package:cryptowallet/services/api_service.dart';
 
-/// Minimal local wallet model used by WalletStore.
-/// If you already have a model, keep yours — just ensure these fields exist.
 class LocalWallet {
   final String id;
   final String name;
@@ -18,20 +17,19 @@ class LocalWallet {
     required this.createdAt,
   });
 
-  // Optional: helpers for (de)serialization if needed later
-  factory LocalWallet.fromJson(Map<String, dynamic> json) => LocalWallet(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        primaryAddress: json['primaryAddress'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      );
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'primaryAddress': primaryAddress,
-        'createdAt': createdAt.toIso8601String(),
-      };
+  LocalWallet copyWith({
+    String? id,
+    String? name,
+    String? primaryAddress,
+    DateTime? createdAt,
+  }) {
+    return LocalWallet(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      primaryAddress: primaryAddress ?? this.primaryAddress,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
 
 class WalletStore extends ChangeNotifier {
@@ -40,15 +38,10 @@ class WalletStore extends ChangeNotifier {
   List<LocalWallet> _wallets = <LocalWallet>[];
   String? _activeWalletId;
 
-  /// Read-only list of wallets
   List<LocalWallet> get wallets => _wallets;
-
-  /// Currently active wallet id (may be null if none yet)
   String? get activeWalletId => _activeWalletId;
+  String? get activeWalletName => activeWallet?.name;
 
-  /// The active wallet object, or:
-  /// - first wallet if active id not set,
-  /// - null if there are no wallets.
   LocalWallet? get activeWallet {
     if (_wallets.isEmpty) return null;
     if (_activeWalletId == null) return _wallets.first;
@@ -56,7 +49,6 @@ class WalletStore extends ChangeNotifier {
     return idx == -1 ? _wallets.first : _wallets[idx];
   }
 
-  /// Convenience flags/helpers
   bool get hasWallets => _wallets.isNotEmpty;
 
   LocalWallet? findById(String id) {
@@ -64,16 +56,12 @@ class WalletStore extends ChangeNotifier {
     return i == -1 ? null : _wallets[i];
   }
 
-  // ---------- hydrate / reload ----------
-
-  /// Loads wallets from local storage (via WalletFlow) and restores last active.
   Future<void> hydrate() async {
     final prefs = await SharedPreferences.getInstance();
     final savedId = prefs.getString(_spActiveId);
 
     _wallets = await WalletFlow.loadLocalWallets();
 
-    // pick active:
     if (_wallets.isEmpty) {
       _activeWalletId = null;
     } else if (savedId != null && _wallets.any((w) => w.id == savedId)) {
@@ -85,13 +73,11 @@ class WalletStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reloads the wallets list from local storage (no active change).
   Future<void> reloadFromLocal() async {
     _wallets = await WalletFlow.loadLocalWallets();
     notifyListeners();
   }
 
-  /// Reloads from local and activates `preferId` if present; otherwise keeps current or first.
   Future<void> reloadFromLocalAndActivate(String? preferId) async {
     await reloadFromLocal();
     if (_wallets.isEmpty) {
@@ -99,7 +85,6 @@ class WalletStore extends ChangeNotifier {
       notifyListeners();
       return;
     }
-
     if (preferId != null && _wallets.any((w) => w.id == preferId)) {
       _activeWalletId = preferId;
     } else {
@@ -114,7 +99,6 @@ class WalletStore extends ChangeNotifier {
     await prefs.setString(_spActiveId, id);
   }
 
-  /// Sets the active wallet id and persists it.
   Future<void> setActive(String id) async {
     if (_activeWalletId == id) return;
     _activeWalletId = id;
@@ -122,33 +106,57 @@ class WalletStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- auto-naming ----------
-
-  /// Returns next available name: "My Wallet", "My Wallet 1", "My Wallet 2", …
   String nextAvailableName({String base = 'My Wallet'}) {
     final names = _wallets.map((w) => w.name.trim()).toSet();
     if (!names.contains(base)) return base;
-
-    // find smallest N not used for "base N"
     for (int i = 1;; i++) {
       final candidate = '$base $i';
       if (!names.contains(candidate)) return candidate;
     }
   }
 
-  // ---------- create new wallet (auto-named) ----------
-
-  /// Creates a new wallet via WalletFlow, saves locally, and activates it.
   Future<LocalWallet> createAndSendToBackend(
       {String baseName = 'My Wallet'}) async {
-    // ensure latest list to calculate name
     _wallets = await WalletFlow.loadLocalWallets();
     final name = nextAvailableName(base: baseName);
-
-    final newW = await WalletFlow.createNewWallet(
-        name: name); // calls backend + saves locally
-    // refresh & activate the new one
+    final newW = await WalletFlow.createNewWallet(name: name);
     await reloadFromLocalAndActivate(newW.id);
     return newW;
+  }
+
+  // ---------- rename (local + backend) ----------
+
+  Future<void> renameWalletLocally({
+    required String walletId,
+    required String newName,
+  }) async {
+    final idx = _wallets.indexWhere((w) => w.id == walletId);
+    if (idx == -1) return;
+
+    // ✅ fix: use _wallets (not "llets")
+    final updated = _wallets[idx].copyWith(name: newName.trim());
+    _wallets = List<LocalWallet>.from(_wallets)..[idx] = updated;
+
+    // Optional: if you add a local persistence method, uncomment:
+    // await WalletFlow.renameLocalWallet(walletId: walletId, newName: newName.trim());
+
+    notifyListeners();
+  }
+
+  Future<void> renameWalletOnBackend({
+    required String walletId,
+    required String newName,
+  }) async {
+    final name = newName.trim();
+    if (name.isEmpty) {
+      throw const ApiException('walletName is required');
+    }
+
+    await AuthService.updateWalletName(walletId: walletId, walletName: name);
+    await renameWalletLocally(walletId: walletId, newName: name);
+
+    if (_activeWalletId == walletId) {
+      await _persistActive(walletId);
+    }
   }
 }

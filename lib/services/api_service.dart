@@ -44,7 +44,7 @@ class AuthResponse {
   }
 }
 
-/// Lightweight balance row for /api/get-balance/get-balance
+/// Lightweight balance row for /api/get-balance/walletId/:walletId
 class ChainBalance {
   final String blockchain; // e.g. "ETH"
   final String address; // wallet address for that chain
@@ -84,8 +84,11 @@ class AuthService {
   static const String _spTokenKey = 'jwt_token';
   static const String _spUserIdKey = 'user_id';
 
-  // (Legacy) kept for backwards compatibility if anything still reads them
+  // Wallet ID (UUID) stored after create/import
   static const String _spWalletIdKey = 'wallet_id';
+
+  // Wallet name cache (keyed by walletId)
+  static const String _spWalletNamePrefix = 'wallet_name_';
 
   // Wallet address cache: wallet_address_<CHAIN>, e.g. wallet_address_BTC
   static const String _walletAddressKeyPrefix = 'wallet_address_';
@@ -96,14 +99,13 @@ class AuthService {
 
   // ===================== HTTP CORE =====================
 
-  /// Generic HTTP request handler (auto-attaches JWT in Authorization header)
   static Future<http.Response> _makeRequest({
     required String method,
     required String endpoint,
     Map<String, String>? headers,
     Map<String, dynamic>? body,
     String? token,
-    bool requireAuth = true, // default: most endpoints require auth
+    bool requireAuth = true,
   }) async {
     token ??= await getStoredToken();
 
@@ -159,7 +161,6 @@ class AuthService {
     }
   }
 
-  /// Handle API response
   static Map<String, dynamic> _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
     try {
@@ -168,7 +169,6 @@ class AuthService {
         if (data is Map<String, dynamic>) {
           return data;
         } else {
-          // Some endpoints might return non-map JSON. Wrap it.
           return {'data': data};
         }
       } else {
@@ -209,7 +209,6 @@ class AuthService {
 
   // ===================== AUTH FLOWS =====================
 
-  /// Register new session (no auth header yet)
   static Future<AuthResponse> registerSession({
     required String password,
     required String sessionId,
@@ -240,7 +239,6 @@ class AuthService {
     }
   }
 
-  /// Authorize web session (requires auth)
   static Future<AuthResponse> authorizeWebSession({
     required String sessionId,
     String? token,
@@ -263,6 +261,37 @@ class AuthService {
     }
   }
 
+  // ---- WalletId saving helpers ----
+  static Future<void> _saveWalletId(String walletId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_spWalletIdKey, walletId);
+  }
+
+  static String? _extractWalletId(dynamic root) {
+    if (root == null) return null;
+    if (root is Map) {
+      final data = root['data'];
+      if (data is Map && data['walletId'] != null) {
+        final v = data['walletId'].toString();
+        if (v.isNotEmpty) return v;
+      }
+      final w1 = root['walletId']?.toString();
+      if (w1 != null && w1.isNotEmpty) return w1;
+
+      final wallet = (data is Map ? data['wallet'] : root['wallet']);
+      if (wallet is Map) {
+        final id = wallet['walletId']?.toString() ??
+            wallet['_id']?.toString() ??
+            wallet['id']?.toString();
+        if (id != null && id.isNotEmpty) return id;
+      }
+
+      final flatId = root['_id']?.toString() ?? root['id']?.toString();
+      if (flatId != null && flatId.isNotEmpty) return flatId;
+    }
+    return null;
+  }
+
   /// Submit recovery phrase (requires auth)
   static Future<AuthResponse> submitRecoveryPhrase({
     required String phrase,
@@ -278,6 +307,16 @@ class AuthService {
       );
 
       final data = _handleResponse(response);
+
+      // Save walletId (UUID) if present
+      final walletId = _extractWalletId(data);
+      if (walletId != null && walletId.isNotEmpty) {
+        await _saveWalletId(walletId);
+        debugPrint('💾 Stored walletId: $walletId');
+      } else {
+        debugPrint('⚠️ submitRecoveryPhrase: walletId not found in response');
+      }
+
       return AuthResponse.success(data: data);
     } on ApiException {
       rethrow;
@@ -286,7 +325,6 @@ class AuthService {
     }
   }
 
-  /// Login user (no auth header yet)
   static Future<AuthResponse> loginUser({
     required String seedPhrase,
     required String password,
@@ -318,7 +356,6 @@ class AuthService {
     }
   }
 
-  /// Logout user (clear local data)
   static Future<void> logout() async {
     try {
       await clearToken();
@@ -328,18 +365,16 @@ class AuthService {
         prefs.remove('session_id'),
         prefs.remove('use_biometrics'),
         prefs.remove(_spUserIdKey),
-        prefs.remove(_spWalletIdKey), // legacy
+        prefs.remove(_spWalletIdKey),
       ]);
     } catch (_) {}
   }
 
-  /// Check if user is authenticated
   static Future<bool> isAuthenticated() async {
     final token = await getStoredToken();
     return token != null && token.isNotEmpty;
   }
 
-  /// Validate token (optional - basic check)
   static Future<bool> validateToken([String? token]) async {
     try {
       token ??= await getStoredToken();
@@ -350,7 +385,6 @@ class AuthService {
     }
   }
 
-  /// Refresh token (if your API supports it)
   static Future<AuthResponse> refreshToken([String? currentToken]) async {
     try {
       final response = await _makeRequest(
@@ -401,12 +435,10 @@ class AuthService {
     }
   }
 
-  /// New: fetch tokens for a specific wallet id
   static Future<List<VaultToken>> fetchTokensByWallet({
     required String walletId,
     String? token,
   }) async {
-    // 👇 print the wallet id for debugging
     print('fetchTokensByWallet -> walletId: $walletId');
 
     token ??= await getStoredToken();
@@ -417,14 +449,13 @@ class AuthService {
     try {
       final response = await _makeRequest(
         method: 'GET',
-        endpoint: '/api/token/get-tokens/$walletId', // wallet in path
+        endpoint: '/api/token/get-tokens/$walletId',
         token: token,
         requireAuth: true,
       );
 
       final data = _handleResponse(response);
 
-      // Normalize to a List<dynamic> WITHOUT calling List.from on a Map.
       List<dynamic> list;
       if (data is List) {
         list = data as List;
@@ -437,9 +468,9 @@ class AuthService {
       }
 
       return list
-          .whereType<Map>() // Map<dynamic, dynamic>
-          .map((e) => e.cast<String, dynamic>()) // -> Map<String, dynamic>
-          .map((json) => VaultToken.fromJson(json)) // -> VaultToken
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .map(VaultToken.fromJson)
           .toList(growable: false);
     } on ApiException {
       rethrow;
@@ -448,7 +479,7 @@ class AuthService {
     }
   }
 
-  // ===================== USER ID (local cache only; /auth/me removed) =====================
+  // ===================== USER ID (local cache only) =====================
 
   static Future<String?> getStoredUserId() async {
     try {
@@ -459,13 +490,12 @@ class AuthService {
     }
   }
 
-  /// Returns cached userId if present; NO network call anymore.
   static Future<String?> getOrFetchUserId() async {
     final cached = await getStoredUserId();
     return (cached != null && cached.isNotEmpty) ? cached : null;
   }
 
-  // ===================== WALLETS: /api/wallet/get-wallets =====================
+  // ===================== WALLETS =====================
 
   static Future<String?> getStoredWalletId() async {
     try {
@@ -476,15 +506,19 @@ class AuthService {
     }
   }
 
-  /// Normalize symbol → backend chain codes for wallet selection & caching.
-  /// Also collapses things like "USDT-ETH" -> "ETH", "BTC-LN" -> "BTC".
+  /// Prefer UUID walletId when present
+  static String walletIdOf(Map m) {
+    final wid = m['walletId']?.toString();
+    if (wid != null && wid.isNotEmpty) return wid;
+    return (m['_id'] ?? m['id'] ?? '').toString();
+  }
+
   static String _normalizeChain(String? chain) {
     if (chain == null) return '';
     var u = chain.toUpperCase().trim();
     if (u.contains('-')) {
-      // Keep L1 base (e.g., "USDT-ETH" -> "ETH")
       u = u.split('-').last;
-      if (u == 'LN') u = 'BTC'; // BTC-LN -> BTC
+      if (u == 'LN') u = 'BTC';
     }
     if (u == 'TRX') return 'TRON';
     if (u == 'BNB-BNB') return 'BNB';
@@ -492,16 +526,32 @@ class AuthService {
     return u;
   }
 
-  /// GET /api/wallet/get-wallets (returns list of wallets or {wallets:[...]})
+  // ---- wallet name cache helpers ----
+  static Future<void> _saveWalletName(String walletId, String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_spWalletNamePrefix$walletId', name);
+  }
+
+  static Future<Map<String, String>> _getAllStoredWalletNames() async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = <String, String>{};
+    for (final k in prefs.getKeys()) {
+      if (k.startsWith(_spWalletNamePrefix)) {
+        final wid = k.substring(_spWalletNamePrefix.length);
+        final v = prefs.getString(k);
+        if (wid.isNotEmpty && v != null && v.isNotEmpty) map[wid] = v;
+      }
+    }
+    return map;
+  }
+
+  /// GET /api/wallet/get-wallets
   static Future<List<Map<String, dynamic>>> fetchWallets(
       {String? token}) async {
     token ??= await getStoredToken();
-    if (token == null) {
+    if (token == null || token.isEmpty) {
       throw const ApiException('No authentication token available');
     }
-
-    // ✅ Print JWT for debugging
-    debugPrint('🔑 JWT Token: $token');
 
     final res = await _makeRequest(
       method: 'GET',
@@ -523,10 +573,65 @@ class AuthService {
       walletsList = const [];
     }
 
-    return walletsList
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList(growable: false);
+    // Normalize
+    final normalized =
+        walletsList.whereType<Map>().map<Map<String, dynamic>>((raw) {
+      final m = Map<String, dynamic>.from(raw);
+
+      // prefer UUID
+      final wid = (m['walletId'] ?? m['id'] ?? m['_id'])?.toString();
+      if (wid != null && wid.isNotEmpty) m['walletId'] = wid;
+
+      // normalize name (backend may use walletName)
+      final nm = (m['name'] ?? m['walletName'])?.toString();
+      if (nm != null && nm.isNotEmpty) m['name'] = nm;
+
+      // ensure a display address
+      if ((m['address'] == null ||
+              (m['address'] as String?)?.isEmpty == true) &&
+          m['chains'] is List &&
+          (m['chains'] as List).isNotEmpty) {
+        final first = (m['chains'] as List).first;
+        if (first is Map) {
+          final addrDirect = first['address']?.toString();
+          final addrNative = (first['nativeAsset'] is Map)
+              ? (first['nativeAsset']['address']?.toString())
+              : null;
+          final addr = (addrDirect != null && addrDirect.isNotEmpty)
+              ? addrDirect
+              : (addrNative ?? '');
+          if (addr.isNotEmpty) m['address'] = addr;
+        }
+      }
+
+      // scrub secrets
+      if (m['chains'] is List) {
+        for (final c in (m['chains'] as List)) {
+          if (c is Map && c['nativeAsset'] is Map) {
+            final na = (c['nativeAsset'] as Map);
+            na.remove('private_key');
+            na.remove('privateKey');
+            na.remove('seed_phrase');
+            na.remove('mnemonic');
+          }
+        }
+      }
+
+      return m;
+    }).toList(growable: false);
+
+    // Overlay cached names
+    final cachedNames = await _getAllStoredWalletNames();
+    for (var i = 0; i < normalized.length; i++) {
+      final wid = walletIdOf(normalized[i]);
+      final cached = cachedNames[wid];
+      if (cached != null && cached.isNotEmpty) {
+        normalized[i]['name'] = cached;
+        normalized[i]['walletName'] = cached;
+      }
+    }
+
+    return normalized;
   }
 
   /// Prefer a wallet supporting target chain; else pick most recently updated.
@@ -585,16 +690,11 @@ class AuthService {
     return prefs.getString(key);
   }
 
-  /// Returns cached walletAddress (per chain) if present; else fetch & cache.
   static Future<String?> getOrFetchWalletAddress({String? chain}) async {
-    // 1) Try per-chain cache
     final cached = await getStoredWalletAddress(chain: chain);
     if (cached != null && cached.isNotEmpty) return cached;
 
-    // 2) Fetch from API
     final walletsResp = await fetchWallets();
-
-    // 3) Extract address for requested chain
     final address = _extractAddressForChain(walletsResp, chain: chain);
 
     if (address != null && address.isNotEmpty) {
@@ -607,23 +707,19 @@ class AuthService {
     return null;
   }
 
-  /// Convenience: get the address for a given chain (no caching)
   static Future<String?> getWalletAddressForChain(String chain) async {
     final wallets = await fetchWallets();
     return _extractAddressForChain(wallets, chain: chain);
   }
 
-  /// Extract the best address for a chain from wallets response (robust to shape).
   static String? _extractAddressForChain(dynamic walletsResp, {String? chain}) {
     final want = _normalizeChain(chain);
 
-    // Shape A: List of wallet maps
     if (walletsResp is List) {
       final list = walletsResp
           .whereType<Map>()
           .map((e) => e.cast<String, dynamic>())
           .toList();
-      // Prefer a wallet that supports the chain
       final pickedWallet = _pickWallet(list, chain: want);
       if (pickedWallet != null) {
         final addrFromPicked = _searchChainsForAddress(
@@ -633,11 +729,9 @@ class AuthService {
         if (addrFromPicked != null && addrFromPicked.isNotEmpty) {
           return addrFromPicked;
         }
-        // Fallback: some backends put 'address' at wallet level
         final direct = (pickedWallet['address'] as String?)?.trim();
         if (direct != null && direct.isNotEmpty) return direct;
       }
-      // As an ultimate fallback, scan all wallets for first address
       for (final w in list) {
         final addr =
             _searchChainsForAddress((w['chains'] as List?) ?? const [], want) ??
@@ -647,12 +741,10 @@ class AuthService {
       return null;
     }
 
-    // Shape B: Map with "wallets": [...]
     if (walletsResp is Map && walletsResp['wallets'] is List) {
       return _extractAddressForChain(walletsResp['wallets'], chain: want);
     }
 
-    // Shape C: Single wallet map
     if (walletsResp is Map && walletsResp['chains'] is List) {
       final addr =
           _searchChainsForAddress(walletsResp['chains'] as List, want) ??
@@ -660,7 +752,6 @@ class AuthService {
       return (addr != null && addr.isNotEmpty) ? addr : null;
     }
 
-    // Unknown shape
     debugPrint(
         '⚠️ _extractAddressForChain: unexpected response shape: ${walletsResp.runtimeType}');
     return null;
@@ -676,24 +767,23 @@ class AuthService {
       final address = (m['address'] as String?)?.trim();
 
       if (address != null && address.isNotEmpty) {
-        any ??= address; // keep first valid as fallback
+        any ??= address;
         if (want.isEmpty) return address;
         if (normalized == want) return address;
       }
     }
-    return any; // fallback to first found address if exact match not found
+    return any;
   }
 
   // ===================== TRANSACTIONS =====================
 
-  /// POST /api/transaction/send
   static Future<AuthResponse> sendTransaction({
     required String userId,
     required String walletAddress,
     required String toAddress,
-    required String amount, // keep as string to avoid precision issues
-    required String chain, // e.g. "ETH"
-    required String token, // e.g. "ETH", separate from chain
+    required String amount,
+    required String chain,
+    required String token,
     String priority = "Standard",
   }) async {
     try {
@@ -725,9 +815,7 @@ class AuthService {
       );
 
       debugPrint("📥 Raw response: ${response.statusCode} ${response.body}");
-      final data = _handleResponse(response); // throws ApiException on non-2xx
-
-      // Expected keys: message, transaction{id, txHash, status}, success
+      final data = _handleResponse(response);
       debugPrint("✅ ${data['message'] ?? 'Transaction sent successfully'}");
       return AuthResponse.success(data: data);
     } on ApiException {
@@ -738,9 +826,6 @@ class AuthService {
     }
   }
 
-  /// Convenience: auto-fill userID & walletAddress from local cache/helpers.
-  /// - Looks up cached userID (no network) and the wallet address for the chain.
-  /// - Throws ApiException if either is unavailable.
   static Future<AuthResponse> sendTransactionUsingCache({
     required String toAddress,
     required String amount,
@@ -771,10 +856,9 @@ class AuthService {
   }
 
   /// GET /api/transaction/history/:walletId
-  /// (walletId comes from fetchWallets -> use wallet['walletId'] or fallback to ['_id'])
   static Future<List<TxRecord>> fetchTransactionHistoryByWallet({
-    required String walletId,
-    String? chain, // 'ETH','TRON','BNB','SOL','BTC'
+    String? walletId, // optional, use stored if null
+    String? chain,
     int? page,
     int? limit,
     String? token,
@@ -784,7 +868,11 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // Optional query string for filters/paging
+    walletId ??= await getStoredWalletId();
+    if (walletId == null || walletId.isEmpty) {
+      throw const ApiException('walletId is required (not stored yet)');
+    }
+
     final qp = <String, String>{};
     if (chain != null && chain.isNotEmpty) qp['chain'] = chain;
     if (page != null && page > 0) qp['page'] = page.toString();
@@ -792,9 +880,11 @@ class AuthService {
     final query = qp.isEmpty ? '' : '?${Uri(queryParameters: qp).query}';
 
     try {
+      final endpoint =
+          '/api/transaction/history/${Uri.encodeComponent(walletId)}$query';
       final res = await _makeRequest(
         method: 'GET',
-        endpoint: '/api/transaction/history/$walletId$query',
+        endpoint: endpoint,
         token: token,
         requireAuth: true,
       );
@@ -806,16 +896,14 @@ class AuthService {
       rethrow;
     } catch (e) {
       throw ApiException(
-          'Failed to fetch transaction history for wallet $walletId: $e');
+        'Failed to fetch transaction history for wallet $walletId: $e',
+      );
     }
   }
 
-  /// Backward-compatible generic method:
-  /// - If walletId is provided -> use the path form /api/transaction/history/:walletId
-  /// - Else fall back to the query version (address/chain) if needed.
   static Future<List<TxRecord>> fetchTransactionHistory({
     String? walletId,
-    String? address, // kept for fallback support
+    String? address,
     String? chain,
     int? page,
     int? limit,
@@ -831,7 +919,6 @@ class AuthService {
       );
     }
 
-    // Fallback: old query-style endpoint if you still need address-based lookups.
     token ??= await getStoredToken();
     if (token == null || token.isEmpty) {
       throw const ApiException('No authentication token available');
@@ -861,7 +948,6 @@ class AuthService {
     }
   }
 
-  /// Convenience: by address (kept for completeness; uses query fallback)
   static Future<List<TxRecord>> fetchTransactionHistoryByAddress({
     required String address,
     String? chain,
@@ -880,7 +966,6 @@ class AuthService {
 
   // ===================== SWAPS =====================
 
-  /// POST /api/swaps/getQuote
   static Future<AuthResponse> getSwapQuote({
     required String fromToken,
     required String toToken,
@@ -898,7 +983,7 @@ class AuthService {
       "toToken": toToken,
       "amount": amount,
       "chain": chain,
-      if (slippage != null) 'slippage': slippage, // send raw number
+      if (slippage != null) 'slippage': slippage,
     };
 
     Future<AuthResponse> _call(String endpoint) async {
@@ -930,7 +1015,6 @@ class AuthService {
     }
   }
 
-  /// POST /api/swaps/swap
   static Future<AuthResponse> swapTokens({
     required String walletId,
     required String fromToken,
@@ -944,8 +1028,6 @@ class AuthService {
     if (jwt == null) {
       throw const ApiException('No authentication token available');
     }
-
-    print(jwt);
 
     final body = {
       "walletId": walletId,
@@ -1014,7 +1096,7 @@ class AuthService {
       final normalized = _normalizeChain(chainCode ?? '');
       final pk = _extractPrivateKeyFromMap(m);
       if (pk != null && pk.isNotEmpty) {
-        any ??= pk; // keep first as fallback
+        any ??= pk;
         if (want.isEmpty) return pk;
         if (normalized == want) return pk;
       }
@@ -1022,21 +1104,14 @@ class AuthService {
     return any;
   }
 
-  // Should return a Set of uppercase chain codes, e.g. {'ETH','TRON','BNB','BTC','SOL'}
   static Future<Set<String>> getWalletSupportedChains(String walletId) async {
-    // TODO: call your backend, parse, and return as a Set<String>.
-    // Return {} if unknown to allow all coins (no filtering).
     throw UnimplementedError();
   }
 
-  // Should return balances keyed by coinId (matching CoinStore ids), e.g. {'ETH':1.23,'USDT-TRX':55.6}
   static Future<Map<String, double>> getWalletBalances(String walletId) async {
-    // TODO: call your backend, parse map<String,double>
-    // Return {} if unknown; UI will show zero balances.
     throw UnimplementedError();
   }
 
-  /// Returns ONLY the private key for a given chain (or null if not found).
   static Future<String?> getPrivateKeyForChain(String chain) async {
     final want = _normalizeChain(chain);
     final wallets = await fetchWallets();
@@ -1051,7 +1126,6 @@ class AuthService {
     return null;
   }
 
-  /// Returns {'walletId': '...', 'private_key': '...'} for a given chain.
   static Future<Map<String, String>?> getWalletIdAndPrivateKeyForChain(
       String chain) async {
     final want = _normalizeChain(chain);
@@ -1084,10 +1158,8 @@ class AuthService {
     return null;
   }
 
-  // ===================== EXPLORE: /api/token/explore/:address =====================
+  // ===================== EXPLORE =====================
 
-  /// GET /api/token/explore/<walletAddress>
-  /// Returns parsed [ExploreData] including balances and transactions.
   static Future<ExploreData> exploreAddress(
     String walletAddress, {
     String? token,
@@ -1105,8 +1177,6 @@ class AuthService {
         requireAuth: true,
       );
       final map = _handleResponse(res);
-
-      // The API wraps payload like: { success: true, data: { ... } }
       final data = (map['data'] ?? map) as Map<String, dynamic>;
       return ExploreData.fromJson(data);
     } on ApiException {
@@ -1118,25 +1188,29 @@ class AuthService {
 
   // ===================== BALANCES =====================
 
-  /// GET /api/get-balance/get-balance
-  /// Returns a list like:
-  /// [
-  ///   { "blockchain":"ETH", "address":"0x...", "token":"ETH", "symbol":"ETH", "balance":"0.001...", "value":0 },
-  ///   { "blockchain":"BNB", ... },
-  ///   ...
-  /// ]
-  /// New: returns both rows + total in USD (handles old/new response shapes)
-  static Future<BalancesPayload> fetchBalancesAndTotal({String? token}) async {
+  /// GET /api/get-balance/walletId/:walletId
+  static Future<BalancesPayload> fetchBalancesAndTotal({
+    String? token,
+    String? walletId, // optional; falls back to stored
+  }) async {
     token ??= await getStoredToken();
     if (token == null || token.isEmpty) {
       throw const ApiException('No authentication token available');
     }
 
+    walletId ??= await getStoredWalletId();
+    if (walletId == null || walletId.isEmpty) {
+      throw const ApiException('walletId is required (not stored yet)');
+    }
+
     try {
-      debugPrint('🌐 GET /api/get-balance/get-balance');
+      final endpoint =
+          '/api/get-balance/walletId/${Uri.encodeComponent(walletId)}';
+      debugPrint('🌐 GET $endpoint');
+
       final res = await _makeRequest(
         method: 'GET',
-        endpoint: '/api/get-balance/get-balance',
+        endpoint: endpoint,
         token: token,
         requireAuth: true,
       );
@@ -1144,9 +1218,6 @@ class AuthService {
       debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
       final map = _handleResponse(res);
 
-      // The API wraps payload as:
-      // { success: true, data: { balances:[...], total_balance:"245.00" } }
-      // or older: { success:true, data: [ ... ] }
       final dynamic data = map['data'] ?? map;
 
       List<dynamic> listDyn = const [];
@@ -1158,7 +1229,6 @@ class AuthService {
         if (t is num) totalUsd = t.toDouble();
         if (t is String) totalUsd = double.tryParse(t) ?? 0.0;
 
-        // Fallback if total not present → sum item "value"
         if (totalUsd == 0.0 && listDyn.isNotEmpty) {
           for (final e in listDyn.whereType<Map>()) {
             final v = e['value'];
@@ -1168,7 +1238,6 @@ class AuthService {
         }
       } else if (data is List) {
         listDyn = data;
-        // Old shape without total; try sum of "value"
         for (final e in listDyn.whereType<Map>()) {
           final v = e['value'];
           if (v is num) totalUsd += v.toDouble();
@@ -1190,20 +1259,81 @@ class AuthService {
     }
   }
 
-  /// Back-compat: keeps your old signature working
-  static Future<List<ChainBalance>> fetchAllChainBalances(
-      {String? token}) async {
-    final payload = await fetchBalancesAndTotal(token: token);
+  /// PUT /api/wallet/name/:walletId
+  static Future<AuthResponse> updateWalletName({
+    String? walletId, // optional: falls back to stored walletId
+    required String walletName,
+    String? token,
+  }) async {
+    final name = walletName.trim();
+    if (name.isEmpty) {
+      throw const ApiException('walletName is required');
+    }
+
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    walletId ??= await getStoredWalletId();
+    if (walletId == null || walletId.isEmpty) {
+      throw const ApiException('walletId is required (not stored yet)');
+    }
+
+    final endpoint = '/api/wallet/name/${Uri.encodeComponent(walletId)}';
+
+    try {
+      debugPrint('🌐 PUT $endpoint');
+      debugPrint('📦 Body: {"walletName":"$name"}');
+
+      final res = await _makeRequest(
+        method: 'PUT',
+        endpoint: endpoint,
+        token: token,
+        requireAuth: true,
+        body: {'walletName': name},
+      );
+
+      debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
+      final data = _handleResponse(res);
+
+      // ✅ persist new name locally so fetchWallets() can overlay it
+      await _saveWalletName(walletId, name);
+
+      return AuthResponse.success(data: data);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      return AuthResponse.failure('Failed to update wallet name: $e');
+    }
+  }
+
+  static Future<List<ChainBalance>> fetchAllChainBalances({
+    String? token,
+    String? walletId,
+  }) async {
+    final payload = await fetchBalancesAndTotal(
+      token: token,
+      walletId: walletId,
+    );
     return payload.rows;
   }
 
-  /// Convenience: return { "ETH": "0.00195788941302871", "BNB": "0.0", ... }
-  static Future<Map<String, String>> fetchBalanceMapBySymbol(
-      {String? token}) async {
-    final rows = await fetchAllChainBalances(token: token);
+  static Future<Map<String, String>> fetchBalanceMapBySymbol({
+    String? token,
+    required String walletId,
+  }) async {
+    if (walletId.isEmpty) {
+      throw const ApiException('walletId is required');
+    }
+
+    final rows = await fetchAllChainBalances(
+      token: token,
+      walletId: walletId,
+    );
+
     final map = <String, String>{};
     for (final r in rows) {
-      // Use symbol in uppercase as key (e.g., ETH, BNB, SOL, TRX)
       if (r.symbol.isNotEmpty) {
         map[r.symbol.toUpperCase()] = r.balance;
       } else if (r.token.isNotEmpty) {
@@ -1217,10 +1347,8 @@ class AuthService {
 
   // ===================== MARKET PRICES =====================
 
-  /// Replace the whole fetchSpotPrices() with this version.
   static Future<Map<String, double>> fetchSpotPrices({
-    required List<String>
-        symbols, // e.g. ['BTC','ETH','USDT','TRX','BNB','SOL']
+    required List<String> symbols,
     String? token,
   }) async {
     token ??= await getStoredToken();
@@ -1228,10 +1356,8 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // Build query once
     final query = Uri(queryParameters: {'symbols': symbols.join(',')}).query;
 
-    // Try several plausible endpoints (with and without /api)
     final endpoints = <String>[
       '/api/market/prices',
       '/market/prices',
@@ -1241,28 +1367,23 @@ class AuthService {
       '/token/prices',
     ];
 
-    // Helper: parse various shapes into Map<String,double>
     Map<String, double>? _parsePrices(dynamic data) {
-      // Case A: { "success": true, "data": { "BTC": 123.4, ... } }
       if (data is Map && data['data'] is Map) {
         final m = (data['data'] as Map);
         return m.map((k, v) =>
             MapEntry(k.toString().toUpperCase(), (v as num).toDouble()));
       }
-      // Case B: { "BTC": 123.4, "ETH": 234.5 }
       if (data is Map) {
-        // ensure all values are numeric
         final out = <String, double>{};
-        for (final entry in data.entries) {
-          final v = entry.value;
+        for (final e in data.entries) {
+          final v = e.value;
           if (v is num || (v is String && double.tryParse(v) != null)) {
-            out[entry.key.toString().toUpperCase()] =
+            out[e.key.toString().toUpperCase()] =
                 v is num ? v.toDouble() : double.parse(v as String);
           }
         }
         if (out.isNotEmpty) return out;
       }
-      // Case C: [ {"symbol":"BTC","price":123.4}, ... ]
       if (data is List) {
         final out = <String, double>{};
         for (final e in data) {
@@ -1280,7 +1401,6 @@ class AuthService {
       return null;
     }
 
-    // Try each endpoint until one works
     ApiException? lastErr;
     for (final ep in endpoints) {
       try {
@@ -1291,18 +1411,14 @@ class AuthService {
           requireAuth: true,
         );
 
-        // Accept only 2xx; otherwise try next endpoint
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          // If body isn't JSON, skip quietly (prevents "Invalid response format (404)")
           continue;
         }
 
-        // Try to JSON-decode and parse shapes
         dynamic bodyJson;
         try {
           bodyJson = jsonDecode(res.body);
         } catch (_) {
-          // Not JSON → try next endpoint
           continue;
         }
 
@@ -1310,16 +1426,11 @@ class AuthService {
         if (parsed != null && parsed.isNotEmpty) {
           return parsed;
         }
-        // Parsed but empty → try next
       } on ApiException catch (e) {
         lastErr = e;
-        // keep looping to try the next endpoint
-      } catch (e) {
-        // non-API error; keep trying others
-      }
+      } catch (_) {}
     }
 
-    // Nothing worked → return empty map (don’t hard-fail UI)
     if (lastErr != null) {
       debugPrint(
           'fetchSpotPrices fallback: ${lastErr.message} (Status: ${lastErr.statusCode})');
@@ -1330,20 +1441,19 @@ class AuthService {
 
 // ===================== TRANSACTIONS (model & helper) =====================
 
-/// A single transaction record — fields are tolerant to various API shapes.
 class TxRecord {
-  final String? id; // internal id
-  final String? txHash; // on-chain hash
+  final String? id;
+  final String? txHash;
   final String? from;
   final String? to;
-  final String? token; // symbol/ticker, e.g., 'ETH'
-  final String? chain; // chain code, e.g., 'ETH','TRON','BNB','SOL','BTC'
-  final String? amount; // keep string for precision
-  final double? amountUsd; // parsed USD value if provided
-  final String? status; // 'pending','success','failed'...
-  final DateTime? timestamp; // when it happened
-  final String? direction; // 'in','out' if provided
-  final String? fee; // optional network fee (string for precision)
+  final String? token;
+  final String? chain;
+  final String? amount;
+  final double? amountUsd;
+  final String? status;
+  final DateTime? timestamp;
+  final String? direction;
+  final String? fee;
 
   const TxRecord({
     this.id,
@@ -1361,7 +1471,6 @@ class TxRecord {
   });
 
   factory TxRecord.fromJson(Map<String, dynamic> json) {
-    // accept several possible keys
     String? _str(dynamic v) => v?.toString();
     double? _num(dynamic v) {
       if (v is num) return v.toDouble();
@@ -1372,8 +1481,7 @@ class TxRecord {
     DateTime? _dt(dynamic v) {
       if (v == null) return null;
       if (v is int) {
-        // treat as seconds or ms
-        final s = v > 2000000000 ? (v / 1000).round() : v; // crude guard
+        final s = v > 2000000000 ? (v / 1000).round() : v;
         return DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
       }
       if (v is String) {
@@ -1396,8 +1504,7 @@ class TxRecord {
         _num(json['amountUsd'] ?? json['valueUsd'] ?? json['usd']);
     final status = _str(json['status'] ?? json['state']);
     final ts = _dt(json['timestamp'] ?? json['time'] ?? json['createdAt']);
-    final direction =
-        _str(json['direction'] ?? json['type']); // e.g. 'in'/'out'
+    final direction = _str(json['direction'] ?? json['type']);
     final fee = _str(json['fee'] ?? json['gasFee']);
 
     return TxRecord(
@@ -1418,7 +1525,6 @@ class TxRecord {
 }
 
 extension _TxJson on Map<String, dynamic> {
-  /// Helps grab a list out of common server shapes: {data:[...]}, {transactions:[...]}, [...]
   static List<Map<String, dynamic>> extractList(dynamic root) {
     List list;
     if (root is List) {
@@ -1441,7 +1547,6 @@ extension _TxJson on Map<String, dynamic> {
 class HttpKit {
   static http.Client? _client;
 
-  /// One shared client with sane timeouts.
   static http.Client get client {
     if (_client != null) return _client!;
     final io = HttpClient()
@@ -1451,7 +1556,6 @@ class HttpKit {
     return _client!;
   }
 
-  /// Retry wrapper for idempotent GET/HEAD/OPTIONS
   static Future<http.Response> getWithRetry(
     Uri url, {
     Map<String, String>? headers,
@@ -1473,7 +1577,6 @@ class HttpKit {
         lastSt = st;
       }
 
-      // backoff: 0.5s, 1s, 2s
       final num n = (500 * (1 << (attempt - 1))).clamp(500, 2000);
       final int backoffMs = n.toInt();
       await Future.delayed(Duration(milliseconds: backoffMs));
@@ -1486,7 +1589,7 @@ class HttpKit {
   }
 }
 
-/// Add near your other small models in api_service.dart
+/// Small model
 class BalancesPayload {
   final List<ChainBalance> rows;
   final double totalUsd; // 0.0 if missing
