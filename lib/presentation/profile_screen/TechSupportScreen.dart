@@ -1,6 +1,8 @@
+// lib/presentation/tech_support_screen.dart
+import 'package:cryptowallet/core/support_chat_badge.dart';
+import 'package:cryptowallet/core/support_chat_push.dart';
 import 'package:cryptowallet/presentation/profile_screen/chatsupport.dart';
 import 'package:flutter/material.dart';
-// only used if you later load local terms/privacy text
 
 class TechSupportScreen extends StatefulWidget {
   const TechSupportScreen({super.key});
@@ -14,14 +16,22 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
   static const _card = Color(0xFF171B2B);
   static const _faint = Color(0xFFBFC5DA);
 
-// inside _TechSupportScreenState
+  @override
+  void initState() {
+    super.initState();
+    // Start background socket listener for `new-admin-message`
+    SupportChatPush.instance.init();
+  }
 
+  // Open the support chat; when returning, ensure badge is cleared
   void _openTicket() {
     Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const SupportChatScreen(),
-        ));
+      context,
+      MaterialPageRoute(builder: (_) => const SupportChatScreen()),
+    ).then((_) {
+      // When user comes back from chat, unread should be zero.
+      SupportChatBadge.instance.clear();
+    });
   }
 
   void _openTerms() {
@@ -56,8 +66,7 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
       children: const [
         SizedBox(height: 12),
         Text(
-          'Secure non-custodial wallet. This app is provided as-is without warranty.',
-        ),
+            'Secure non-custodial wallet. This app is provided as-is without warranty.'),
       ],
     );
   }
@@ -89,17 +98,42 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
           const _SectionHeader('Support'),
           const SizedBox(height: 8),
 
-          // Open Ticket — intentionally skipped, shows "coming soon"
-          _SettingCard(
-            leadingIcon: Icons.chat_bubble_outline,
-            title: 'Open Ticket',
-            subtitle: 'Report an issue',
-            onTap: _openTicket, // was _comingSoon
+          // “Open Ticket” card with live unread badge using SupportChatBadge
+          AnimatedBuilder(
+            animation: SupportChatBadge.instance,
+            builder: (context, _) {
+              final unread = SupportChatBadge.instance.unread;
+
+              Widget? trailing;
+              if (unread > 0) {
+                trailing = Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$unread',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                );
+              }
+
+              return _SettingCard(
+                leadingIcon: Icons.chat_bubble_outline,
+                title: 'Open Ticket',
+                subtitle: unread > 0
+                    ? '${unread} new message${unread > 1 ? 's' : ''}'
+                    : 'Report an issue',
+                trailing: trailing,
+                onTap: _openTicket,
+              );
+            },
           ),
 
           const SizedBox(height: 12),
 
-          // Terms of Use
           _SettingCard(
             leadingIcon: Icons.receipt_long_outlined,
             title: 'Terms of Use',
@@ -108,7 +142,6 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Privacy Policy
           _SettingCard(
             leadingIcon: Icons.privacy_tip_outlined,
             title: 'Privacy Policy',
@@ -117,7 +150,6 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
           ),
           const SizedBox(height: 12),
 
-          // About
           _SettingCard(
             leadingIcon: Icons.info_outline,
             title: 'About',
@@ -215,7 +247,6 @@ class _SettingCard extends StatelessWidget {
 }
 
 /// Simple in-app document screen used for Terms and Privacy.
-/// Replace the placeholder text with your actual content, or load from assets.
 class _DocScreen extends StatelessWidget {
   const _DocScreen({required this.title});
   final String title;
@@ -223,9 +254,6 @@ class _DocScreen extends StatelessWidget {
   static const _bg = Color(0xFF0B0D1A);
   static const _card = Color(0xFF171B2B);
   static const _faint = Color(0xFFBFC5DA);
-
-  // If you want to pull from assets later:
-  // Future<String> _loadAsset(String path) => rootBundle.loadString(path);
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +285,6 @@ class _DocScreen extends StatelessWidget {
         ),
         child: const SingleChildScrollView(
           child: Text(
-            // Replace this block with real Terms/Privacy content
             '''Last updated: 2025-01-01
 
 This is placeholder content.

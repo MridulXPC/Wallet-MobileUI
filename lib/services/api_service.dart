@@ -108,6 +108,7 @@ class AuthService {
     bool requireAuth = true,
   }) async {
     token ??= await getStoredToken();
+    print(token);
 
     if (requireAuth && (token == null || token.isEmpty)) {
       throw const ApiException('No authentication token available');
@@ -414,6 +415,7 @@ class AuthService {
   static Future<List<VaultToken>> fetchTokens({String? token}) async {
     debugPrint(
         '⚠️ fetchTokens() is legacy. Prefer fetchTokensByWallet(walletId: ...)');
+
     try {
       final response = await _makeRequest(
         method: 'GET',
@@ -421,6 +423,7 @@ class AuthService {
         token: token,
         requireAuth: true,
       );
+
       final data = _handleResponse(response);
       final List<dynamic> list =
           (data['data'] as List?) ?? (data['tokens'] as List?) ?? const [];
