@@ -300,45 +300,76 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   List<Map<String, dynamic>> _getCurrentTransactions() {
     if (_exploreData?.transactions == null) return [];
 
-    return _exploreData!.transactions!
-        .map((tx) => {
-              'id': tx.hash ?? 'unknown',
-              'type': _determineTransactionType(tx),
-              'status': tx.status ?? 'Unknown',
-              'amount': tx.value?.toString() ?? '0',
-              'coin': selectedCoinId,
-              'dateTime': _formatDateTime(tx.timestamp as String?),
-              'from': tx.from,
-              'to': tx.to,
-              'hash': tx.hash ?? '',
-              'block': tx.blockNumber,
-              'feeDetails': {
-                'Total Fee':
-                    '${tx.gasUsed ?? 0} ${_getChainForCoin(selectedCoinId)}',
-              },
-            })
-        .toList();
-  }
+    final String? currentAddr = _currentWalletAddress?.toLowerCase();
+    final txs = _exploreData!.transactions!;
 
-  String _determineTransactionType(ExploreTransaction tx) {
-    final currentAddr = _currentWalletAddress?.toLowerCase();
-    final fromAddr = tx.from?.toLowerCase();
-    final toAddr = tx.to?.toLowerCase();
+    return txs.map((tx) {
+      // ----- type (send/receive) from current address -----
+      final String from = (tx.from ?? '').toString();
+      final String to = (tx.to ?? '').toString();
+      final fl = from.toLowerCase();
+      final tl = to.toLowerCase();
 
-    if (fromAddr == currentAddr && toAddr != currentAddr) return 'send';
-    if (toAddr == currentAddr && fromAddr != currentAddr) return 'receive';
-    return 'send';
-  }
+      final String type =
+          (currentAddr != null && fl == currentAddr && tl != currentAddr)
+              ? 'send'
+              : (currentAddr != null && tl == currentAddr && fl != currentAddr)
+                  ? 'receive'
+                  : 'send'; // default
 
-  String _formatDateTime(String? timestamp) {
-    if (timestamp == null) return 'Unknown time';
-    try {
-      final date =
-          DateTime.fromMillisecondsSinceEpoch(int.parse(timestamp) * 1000);
-      return '${date.day} ${_getMonthName(date.month)} ${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return 'Unknown time';
-    }
+      // ----- amount (tx.value can be num or String on different explorers) -----
+      final dynamic v = tx.value;
+      final String amountStr =
+          (v is num) ? v.toString() : (v?.toString() ?? '0');
+
+      // ----- timestamp → pretty string (handles int seconds/ms or String/ISO) -----
+      DateTime d;
+      final dynamic ts = tx.timestamp;
+      try {
+        if (ts is int) {
+          // small => seconds, large => ms
+          d = ts < 2000000000
+              ? DateTime.fromMillisecondsSinceEpoch(ts * 1000)
+              : DateTime.fromMillisecondsSinceEpoch(ts);
+        } else if (ts is String && RegExp(r'^\d+$').hasMatch(ts)) {
+          // numeric string seconds
+          d = DateTime.fromMillisecondsSinceEpoch(int.parse(ts) * 1000);
+        } else {
+          d = DateTime.tryParse(ts?.toString() ?? '') ?? DateTime.now();
+        }
+      } catch (_) {
+        d = DateTime.now();
+      }
+      final String dateStr = '${d.day} ${_getMonthName(d.month)} ${d.year} '
+          '${d.hour.toString().padLeft(2, '0')}:'
+          '${d.minute.toString().padLeft(2, '0')}:'
+          '${d.second.toString().padLeft(2, '0')}';
+
+      // ----- id (avoid dead-null-aware by checking emptiness) -----
+      final String id =
+          ((tx.hash?.isNotEmpty ?? false) ? tx.hash! : UniqueKey().toString());
+
+      // ----- optional fee -----
+      final feeMap = <String, String>{};
+      if (tx.gasUsed != null) {
+        feeMap['Total Fee'] =
+            '${tx.gasUsed} ${_getChainForCoin(selectedCoinId)}';
+      }
+
+      return {
+        'id': id,
+        'type': type, // 'send' | 'receive'
+        'status': (tx.status ?? 'Unknown').toString(),
+        'amount': amountStr, // native amount
+        'coin': selectedCoinId, // tag with selected chain
+        'dateTime': dateStr,
+        'from': from,
+        'to': to,
+        'hash': (tx.hash ?? '').toString(),
+        'block': tx.blockNumber,
+        'feeDetails': feeMap.isEmpty ? null : feeMap,
+      };
+    }).toList();
   }
 
   String _getMonthName(int month) {
@@ -361,25 +392,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   // ---------------- Selection & lightning ----------------
-
-  Future<void> _updateSelectedCoin(String newCoinId) async {
-    setState(() {
-      selectedCoinId = newCoinId;
-      _isCardFlipped = false;
-      _flipController.reset();
-      _lightningState = 'sync';
-      _isLightningComplete = false;
-      _currentWalletAddress = null;
-      _exploreData = null;
-    });
-
-    _startLightningTimer();
-
-    await _loadWalletAddress();
-    if (_currentWalletAddress != null) {
-      await _loadTransactionData();
-    }
-  }
 
   bool get isLightningSelected => selectedCoinId == 'BTC-LN';
 

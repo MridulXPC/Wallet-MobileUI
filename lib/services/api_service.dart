@@ -1444,87 +1444,50 @@ class AuthService {
 
 // ===================== TRANSACTIONS (model & helper) =====================
 
+// lib/services/models/tx_record.dart
 class TxRecord {
   final String? id;
+  final String? type; // "SEND", "RECEIVE", "SWAP", ...
+  final String? token; // "ETH", "USDT", ...
+  final String? chain; // "ETH", "TRX", ...
+  final String? amount; // "0.008"
   final String? txHash;
-  final String? from;
-  final String? to;
-  final String? token;
-  final String? chain;
-  final String? amount;
-  final double? amountUsd;
-  final String? status;
-  final DateTime? timestamp;
-  final String? direction;
-  final String? fee;
+  final String? status; // "COMPLETED", "PENDING", ...
+  final DateTime? createdAt; // parse from ISO string
+  final String? fromAddress;
+  final String? toAddress;
+  final num? amountUsd; // optional (if backend sends it)
+  final num? fee; // optional
 
-  const TxRecord({
+  TxRecord({
     this.id,
-    this.txHash,
-    this.from,
-    this.to,
+    this.type,
     this.token,
     this.chain,
     this.amount,
-    this.amountUsd,
+    this.txHash,
     this.status,
-    this.timestamp,
-    this.direction,
+    this.createdAt,
+    this.fromAddress,
+    this.toAddress,
+    this.amountUsd,
     this.fee,
   });
 
-  factory TxRecord.fromJson(Map<String, dynamic> json) {
-    String? _str(dynamic v) => v?.toString();
-    double? _num(dynamic v) {
-      if (v is num) return v.toDouble();
-      if (v is String) return double.tryParse(v);
-      return null;
-    }
-
-    DateTime? _dt(dynamic v) {
-      if (v == null) return null;
-      if (v is int) {
-        final s = v > 2000000000 ? (v / 1000).round() : v;
-        return DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
-      }
-      if (v is String) {
-        try {
-          return DateTime.parse(v);
-        } catch (_) {}
-      }
-      return null;
-    }
-
-    final id = _str(json['id'] ?? json['_id'] ?? json['txId']);
-    final hash =
-        _str(json['txHash'] ?? json['hash'] ?? json['transactionHash']);
-    final from = _str(json['from'] ?? json['sender'] ?? json['source']);
-    final to = _str(json['to'] ?? json['recipient'] ?? json['destination']);
-    final token = _str(json['token'] ?? json['symbol'] ?? json['ticker']);
-    final chain = _str(json['chain'] ?? json['network'] ?? json['blockchain']);
-    final amountStr = _str(json['amount'] ?? json['value']);
-    final amountUsd =
-        _num(json['amountUsd'] ?? json['valueUsd'] ?? json['usd']);
-    final status = _str(json['status'] ?? json['state']);
-    final ts = _dt(json['timestamp'] ?? json['time'] ?? json['createdAt']);
-    final direction = _str(json['direction'] ?? json['type']);
-    final fee = _str(json['fee'] ?? json['gasFee']);
-
-    return TxRecord(
-      id: id,
-      txHash: hash,
-      from: from,
-      to: to,
-      token: token,
-      chain: chain,
-      amount: amountStr,
-      amountUsd: amountUsd,
-      status: status,
-      timestamp: ts,
-      direction: direction,
-      fee: fee,
-    );
-  }
+  factory TxRecord.fromJson(Map<String, dynamic> j) => TxRecord(
+        id: j['_id']?.toString(),
+        type: j['type']?.toString(),
+        token: j['token']?.toString(),
+        chain: j['chain']?.toString(),
+        amount: j['amount']?.toString(),
+        txHash: j['txHash']?.toString(),
+        status: j['status']?.toString(),
+        createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? ''),
+        fromAddress: j['fromAddress']?.toString(),
+        toAddress: j['toAddress']?.toString(),
+        amountUsd: j['amountUsd'] is num ? j['amountUsd'] as num : null,
+        fee: j['fee'] is num ? j['fee'] as num : null,
+      );
 }
 
 extension _TxJson on Map<String, dynamic> {

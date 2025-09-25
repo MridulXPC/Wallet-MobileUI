@@ -144,38 +144,51 @@ class _TransactionHistoryState extends State<TransactionHistory>
   }
 
   Map<String, dynamic> _mapTxRecordToUi(TxRecord r) {
-    final raw = (r.direction ?? '').toLowerCase();
+    // normalize the backend type
+    final rawType = (r.type ?? '').toString().toLowerCase();
     String type;
-    if (raw == 'in' || raw == 'receive' || raw == 'received') {
+    if (rawType == 'receive' || rawType == 'received') {
       type = 'receive';
-    } else if (raw == 'out' || raw == 'send' || raw == 'sent') {
+    } else if (rawType == 'send' || rawType == 'sent') {
       type = 'send';
-    } else if (raw == 'swap' || raw == 'exchange') {
+    } else if (rawType == 'swap' || rawType == 'exchange') {
       type = 'swap';
-    } else if (raw == 'buy' || raw == 'purchase') {
+    } else if (rawType == 'buy' || rawType == 'purchase') {
       type = 'buy';
-    } else if (raw == 'sell') {
+    } else if (rawType == 'sell') {
       type = 'sell';
     } else {
-      type = 'transfer';
+      type = rawType.isNotEmpty ? rawType : 'transfer';
     }
 
-    // 👇 Store raw USD amount (double). We'll format per current currency in build().
-    final double? amtUsd = r.amountUsd;
+    // createdAt in your payload; try to parse safely if your model stores String
+    DateTime ts;
+    final created = r.createdAt; // DateTime? (recommended)
+    if (created is DateTime) {
+      ts = created;
+    } else {
+      // if your model stores createdAt as String, parse it:
+      final parsed = DateTime.tryParse(created?.toString() ?? '');
+      ts = parsed ?? DateTime.now();
+    }
+
+    // optional: numeric USD amount if your model has it; otherwise null
+    final double? amtUsd =
+        (r.amountUsd is num) ? (r.amountUsd as num).toDouble() : null;
 
     return {
       "id": r.id ?? r.txHash ?? UniqueKey().toString(),
       "type": type,
-      "asset": r.token ?? r.chain ?? '',
+      "asset": (r.token?.isNotEmpty == true) ? r.token : (r.chain ?? ''),
       "amount": r.amount ?? '0',
-      "amountUsd": amtUsd, // <- numeric USD
-      "fiatAmount": "", // <- filled in at render time
-      "timestamp": r.timestamp ?? DateTime.now(),
-      "status": (r.status ?? '').toLowerCase(),
+      "amountUsd": amtUsd, // numeric, for later FX formatting
+      "fiatAmount": "", // fill at render time
+      "timestamp": ts, // DateTime
+      "status": (r.status ?? '').toString().toLowerCase(),
       "hash": r.txHash ?? 'pending',
-      "fromAddress": r.from ?? '',
-      "toAddress": r.to ?? '',
-      "fee": r.fee ?? '',
+      "fromAddress": r.fromAddress ?? '',
+      "toAddress": r.toAddress ?? '',
+      "fee": r.fee?.toString() ?? '',
       "confirmations": null,
       "note": "",
     };

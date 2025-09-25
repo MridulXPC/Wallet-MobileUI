@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cryptowallet/presentation/main_wallet_dashboard/widgets/action_buttons_grid_widget.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptocurrency.dart';
+import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -17,6 +18,9 @@ import 'package:web_socket_channel/io.dart';
 // 👇 NEW: currency imports
 import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/core/currency_adapter.dart';
+
+// 👇 Import the TxRecord model (adjust path/export if needed)
+import 'package:cryptowallet/services/api_service.dart' show TxRecord;
 
 class TokenDetailScreen extends StatefulWidget {
   const TokenDetailScreen({super.key, required this.coinId});
@@ -35,6 +39,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   double? _livePrice; // last price (USDT ~ USD)
   double? _liveChangePercent; // 24h % change (+/-)
   String? _liveChangeAbs; // optional abs change text if available
+
+  // 👇 NEW: transactions future
+  Future<List<TxRecord>>? _txFuture;
 
   // ---- chart state (CoinGecko) ----
   List<FlSpot> chartData = [];
@@ -71,6 +78,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       _applyInitialTabFromArgs();
       _startLiveStream(); // <- Binance WS
       _loadChartFor(selectedPeriod); // <- CoinGecko chart
+
+      // 👇 Kick off transaction history load (wallet-wide; we filter by token below)
+      _txFuture = AuthService.fetchTransactionHistoryByWallet(
+        // chain: ... // optionally pass a chain filter if you want
+        limit: 100,
+      );
     }
   }
 
@@ -221,8 +234,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       final uri = Uri.parse(
           'https://api.coingecko.com/api/v3/coins/$id/market_chart?vs_currency=usd&days=$days');
       final res = await http.get(uri).timeout(const Duration(seconds: 15));
-      if (res.statusCode != 200)
+      if (res.statusCode != 200) {
         throw Exception('Chart HTTP ${res.statusCode}');
+      }
       final map = jsonDecode(res.body) as Map<String, dynamic>;
       final List prices = (map['prices'] as List?) ?? const [];
 
@@ -424,7 +438,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                     controller: _tabController,
                     children: [
                       _buildHoldingsTab(fx), // 👈 pass adapter
-                      _buildHistoryTab(),
+                      _buildHistoryTab(), // 👈 UPDATED
                       _buildAboutTab(),
                     ],
                   ),
@@ -500,7 +514,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // 👇 UPDATED: currency-aware price display
+  // 👇 currency-aware price display
   Widget _buildTokenPriceDisplay(FxAdapter fx) {
     final usdPrice = _livePrice ?? _fallbackPrice; // USDT≈USD
     final priceText = fx.formatFromUsd(usdPrice);
@@ -866,82 +880,77 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
-  Map<String, dynamic> _variantRow({
-    required String id,
-    required String name,
-    required String network,
-    required IconData fallbackIcon,
-    required Color fallbackColor,
-    String? iconPath,
-    Color? borderColor,
-  }) {
-    return {
-      'id': id,
-      'name': name,
-      'network': network,
-      'icon': iconPath ?? '',
-      'fallbackIcon': fallbackIcon,
-      'iconColor': fallbackColor,
-      'borderColor': borderColor,
-    };
-  }
-
-  // Balance strings (demo)
-  String _getVariantBalance(String variantId) {
-    switch (variantId) {
-      case 'USDT-ETH':
-        return '1,250.50 USDT';
-      case 'USDT-TRX':
-        return '850.25 USDT';
-      case 'BTC':
-        return '0.02145678 BTC';
-      case 'BTC-LN':
-        return '0.00567890 BTC';
-      default:
-        return '0.00000000 $sym';
-    }
-  }
-
-  // ------------------ History tab (demo) ------------------
-  Map<String, List<Map<String, dynamic>>> get dummyTransactions => {
-        'BTC': [
-          {
-            'id': 'btc_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '0.004256',
-            'coin': 'BTC',
-            'dateTime': '20 Aug 2025 10:38:50',
-            'from': 'bc1q07...eyla0f',
-            'to': 'bc1qkv...sft0rz',
-          },
-        ],
-        'ETH': [
-          {
-            'id': 'eth_send_1',
-            'type': 'send',
-            'status': 'Confirmed',
-            'amount': '2.5',
-            'coin': 'ETH',
-            'dateTime': '21 Aug 2025 16:45:12',
-            'from': '0x742d...F8H',
-            'to': '0x1234...5678',
-          },
-        ],
-      };
+  /* ===================== HISTORY TAB (REAL DATA) ===================== */
 
   Widget _buildHistoryTab() {
-    return SingleChildScrollView(child: _buildTransactionsSection());
+    return FutureBuilder<List<TxRecord>>(
+      future: _txFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Text(
+                  'Couldn’t load transactions',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${snap.error}',
+                  style:
+                      const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _txFuture = AuthService.fetchTransactionHistoryByWallet(
+                          limit: 100);
+                    });
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final all = snap.data ?? const <TxRecord>[];
+
+        // TOKEN-WISE FILTER (case-insensitive)
+        final wanted = sym.toUpperCase();
+        final filtered =
+            all.where((t) => (t.token ?? '').toUpperCase() == wanted).toList();
+
+        // newest → oldest
+        filtered.sort((a, b) => (b.createdAt ??
+                DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+
+        return SingleChildScrollView(
+            child: _buildTransactionsSection(filtered));
+      },
+    );
   }
 
-  Widget _buildTransactionsSection() {
-    final transactions = dummyTransactions[sym.toUpperCase()] ?? [];
+  Widget _buildTransactionsSection(List<TxRecord> txs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 24),
-        if (transactions.isNotEmpty)
-          ...transactions.map(_buildTransactionItem)
+        if (txs.isNotEmpty)
+          ...txs.map(_buildTransactionItemTx)
         else
           Container(
             width: double.infinity,
@@ -969,7 +978,17 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> tx) {
+  // 👇 Row builder using TxRecord from the API
+  Widget _buildTransactionItemTx(TxRecord tx) {
+    // Adjust these field reads to your TxRecord model if necessary:
+    final type = (tx.type ?? '').toUpperCase(); // "SEND"/"RECEIVE"/...
+    final status = (tx.status ?? '').toUpperCase(); // "COMPLETED"/"PENDING"/...
+    final amountStr = tx.amount ?? '0';
+    final token = tx.token ?? '';
+    final from = tx.fromAddress ?? '';
+    final to = tx.toAddress ?? '';
+    final dt = tx.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
@@ -982,7 +1001,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               color: const Color(0xFF2A2D3A),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(_getTransactionTypeIcon(tx['type']),
+            child: Icon(_getTransactionTypeIconUpper(type),
                 color: Colors.white, size: 18),
           ),
           const SizedBox(width: 16),
@@ -998,16 +1017,16 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          tx['status'],
+                          status,
                           style: TextStyle(
-                            color: _getStatusColor(tx['status']),
+                            color: _getStatusColorUpper(status),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _getTransactionTypeLabel(tx['type']),
+                          _getTransactionTypeLabelUpper(type),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1020,7 +1039,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          _getTimeAgo(tx['dateTime']),
+                          _timeAgoFromDate(dt),
                           style: const TextStyle(
                             color: Color(0xFF6B7280),
                             fontSize: 12,
@@ -1028,7 +1047,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${tx["amount"]} ${_getCoinSymbol(tx["coin"])}',
+                          '$amountStr ${_getCoinSymbol(token)}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1044,16 +1063,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: _kvSmall(
-                          'From:', _shortenAddress(tx['from'] ?? 'Unknown')),
-                    ),
+                    Expanded(child: _kvSmall('From:', _shortenAddress(from))),
                     const SizedBox(width: 16),
                     Expanded(
-                      child: _kvSmall(
-                          'To:', _shortenAddress(tx['to'] ?? 'Unknown'),
-                          end: true),
-                    ),
+                        child: _kvSmall('To:', _shortenAddress(to), end: true)),
                   ],
                 ),
               ],
@@ -1184,6 +1197,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
+  // Old string-based timeago kept for backward compatibility (not used now)
   String _getTimeAgo(String dateTime) {
     try {
       final parts = dateTime.split(' ');
@@ -1220,6 +1234,36 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return '12 days ago';
   }
 
+  // 👇 NEW: timeago from DateTime (used for API records)
+  String _timeAgoFromDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 30) return '${diff.inDays} days ago';
+    return '${dt.day.toString().padLeft(2, '0')} '
+        '${_month3(dt.month)} ${dt.year}';
+  }
+
+  String _month3(int m) {
+    const mm = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return mm[(m - 1).clamp(0, 11)];
+  }
+
   String _getCoinSymbol(String coinKey) {
     final store = context.read<CoinStore>();
     final coin = store.getById(coinKey);
@@ -1235,39 +1279,43 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return coinKey;
   }
 
-  IconData _getTransactionTypeIcon(String type) {
-    switch (type) {
-      case 'send':
+  // Existing helpers adapted to accept upper-case types/status
+  IconData _getTransactionTypeIconUpper(String typeUpper) {
+    switch (typeUpper) {
+      case 'SEND':
         return Icons.send;
-      case 'receive':
+      case 'RECEIVE':
         return Icons.arrow_downward;
-      case 'swap':
+      case 'SWAP':
         return Icons.swap_horiz;
       default:
         return Icons.account_balance_wallet;
     }
   }
 
-  String _getTransactionTypeLabel(String type) {
-    switch (type) {
-      case 'send':
+  String _getTransactionTypeLabelUpper(String typeUpper) {
+    switch (typeUpper) {
+      case 'SEND':
         return 'Send';
-      case 'receive':
+      case 'RECEIVE':
         return 'Received';
-      case 'swap':
+      case 'SWAP':
         return 'Swap';
       default:
         return 'Transaction';
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'confirmed':
+  Color _getStatusColorUpper(String statusUpper) {
+    switch (statusUpper) {
+      case 'COMPLETED':
+      case 'SUCCESS':
+      case 'CONFIRMED':
         return Colors.green;
-      case 'pending':
+      case 'PENDING':
         return Colors.orange;
-      case 'failed':
+      case 'FAILED':
+      case 'ERROR':
         return Colors.red;
       default:
         return Colors.grey;
@@ -1280,21 +1328,4 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   // simple fallback price book for non-selected variants or offline (USD)
-  static const Map<String, double> _dummyPrices = {
-    "BTC": 43825.67,
-    "BTC-LN": 43825.67,
-    "ETH": 2641.25,
-    "ETH-ETH": 2641.25,
-    "USDT": 1.00,
-    "USDT-ETH": 1.00,
-    "USDT-TRX": 1.00,
-    "BNB": 575.42,
-    "BNB-BNB": 575.42,
-    "SOL": 148.12,
-    "SOL-SOL": 148.12,
-    "TRX": 0.13,
-    "TRX-TRX": 0.13,
-    "XMR": 165.50,
-    "XMR-XMR": 165.50,
-  };
 }

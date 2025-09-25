@@ -1,12 +1,11 @@
 // lib/presentation/support/support_chat_screen.dart
+import 'dart:convert'; // <-- for base64Encode
 import 'dart:typed_data';
 import 'package:cryptowallet/core/support_chat_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-
 import 'package:cryptowallet/services/api_service.dart'; // must expose getStoredToken()
-// <-- global unread badge
 
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({super.key});
@@ -32,23 +31,31 @@ class _SupportChatScreenState extends State<SupportChatScreen>
 
   bool _showEmoji = false;
 
-  // welcome-inject (only when server history is empty)
+  // welcome-inject: show immediately, drop it if history arrives
   bool _welcomeInjected = false;
-  void _maybeInsertWelcome() {
+  void _insertLocalWelcomeIfMissing() {
     if (_welcomeInjected) return;
-    if (_messages.isEmpty) {
-      _messages.add(_Msg(
-        text: 'Hi! Welcome to Crypto Wallet Support 👋',
+    _messages.add(
+      _Msg(
+        text: 'Hi! Welcome to Echelon Wallet Support 👋',
         fromAgent: true,
         ts: DateTime.now(),
-      ));
-      _welcomeInjected = true;
-    }
+        isLocalWelcome: true,
+      ),
+    );
+    _welcomeInjected = true;
   }
 
   // shimmer
-  late AnimationController _skeletonController;
-  late Animation<double> _skeletonAnimation;
+  late final AnimationController _skeletonController = AnimationController(
+    duration: const Duration(milliseconds: 1200),
+    vsync: this,
+  )..repeat();
+  late final Animation<double> _skeletonAnimation = Tween<double>(
+    begin: -1.0,
+    end: 2.0,
+  ).animate(
+      CurvedAnimation(parent: _skeletonController, curve: Curves.easeInOut));
 
   // lifecycle guard
   bool _isMounted = false;
@@ -68,20 +75,14 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     super.initState();
     _isMounted = true;
 
-    _skeletonController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    )..repeat();
-    _skeletonAnimation = Tween<double>(begin: -1.0, end: 2.0).animate(
-      CurvedAnimation(parent: _skeletonController, curve: Curves.easeInOut),
-    );
-
-    // clear unread when user opens the chat screen
+    // Clear unread when user opens the chat screen
     SupportChatBadge.instance.clear();
 
-    _scroll.addListener(_handleScrollVisibilityCheck);
+    // Show local welcome immediately
+    _insertLocalWelcomeIfMissing();
 
-    _initSocket(); // authenticate first
+    _scroll.addListener(_handleScrollVisibilityCheck);
+    _initSocket();
   }
 
   @override
@@ -143,7 +144,6 @@ class _SupportChatScreenState extends State<SupportChatScreen>
       socket.off('message-received');
       socket.off('chat-history');
 
-      // keep UI silent for connect/reconnect (no system bubbles)
       socket.onConnect((_) => _emitAuthenticate());
       socket.onReconnect((_) {});
       socket.onDisconnect((_) => _safeSetState(() {
@@ -159,7 +159,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         final chatId = _extractChatId(data);
         if (chatId != null && chatId.isNotEmpty) {
           _chatId = chatId;
-          _log('Authenticated with chatId: $_chatId'); // PRINT chatId
+          _log('Authenticated with chatId: $_chatId');
           _requestHistory();
         } else {
           _createChat();
@@ -181,13 +181,8 @@ class _SupportChatScreenState extends State<SupportChatScreen>
           final cid = (data?['chat']?['_id'] ?? '').toString();
           if (cid.isNotEmpty) {
             _chatId = cid;
-            _log('chat-created -> chatId: $_chatId'); // PRINT chatId
+            _log('chat-created -> chatId: $_chatId');
             _requestHistory();
-
-            // If history ends up empty, inject welcome locally
-            _safeSetState(() {
-              if (_messages.isEmpty) _maybeInsertWelcome();
-            });
           }
         } catch (e) {
           _log('chat-created parse error: $e');
@@ -215,21 +210,25 @@ class _SupportChatScreenState extends State<SupportChatScreen>
             if (msgObj == null) continue;
 
             final content = (msgObj['content'] ?? '').toString();
-            if (content.isEmpty) continue;
+            final createdAt = msgObj['createdAt']?.toString();
+            final ts = DateTime.tryParse(createdAt ?? '') ?? DateTime.now();
 
-            final ts =
-                DateTime.tryParse(msgObj['createdAt']?.toString() ?? '') ??
-                    DateTime.now();
+            // attachments: expect array of objects with url/name/mimeType/size
+            final atts = _parseAttachments(msgObj['attachments']);
 
             final isAdmin = (msgObj['isAdminMessage'] == true) ||
                 (msgObj['sender'] is Map &&
                     (msgObj['sender']['isAdmin'] == true));
 
+            // If both content and attachments are empty, skip
+            if (content.isEmpty && atts.isEmpty) continue;
+
             parsed.add(_Msg(
               text: content,
               fromAgent: isAdmin,
               ts: ts,
-              sent: !isAdmin, // user's past msgs are "sent"
+              sent: !isAdmin,
+              attachments: atts,
             ));
           } catch (e) {
             _log('chat-history item parse error: $e');
@@ -237,24 +236,29 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         }
 
         parsed.sort((a, b) => a.ts.compareTo(b.ts));
+
         _safeSetState(() {
           _messages
             ..clear()
             ..addAll(parsed);
 
-          // If server returned no messages, show a single local welcome
-          if (_messages.isEmpty) {
-            _maybeInsertWelcome();
+          // If server has any real history, remove the local welcome (if present)
+          if (_messages.isNotEmpty) {
+            _messages.removeWhere((m) => m.isLocalWelcome);
+          } else {
+            // Keep local welcome if no history
+            if (!_welcomeInjected) _insertLocalWelcomeIfMissing();
           }
         });
 
-        // Seeing history == user is on chat; clear unread
+        // user is looking at chat → clear unread
         SupportChatBadge.instance.clear();
         _scrollToBottom();
       });
 
       // CONFIRM SEND
       socket.on('message-sent', (data) {
+        // Mark last unsent outgoing as sent
         for (var i = _messages.length - 1; i >= 0; i--) {
           final m = _messages[i];
           if (!m.fromAgent && !m.sent) {
@@ -271,30 +275,41 @@ class _SupportChatScreenState extends State<SupportChatScreen>
 
         final isAdmin = msg['isAdminMessage'] == true ||
             (msg['sender'] is Map && (msg['sender']['isAdmin'] == true));
-        if (!isAdmin) return; // only admin messages affect the thread/badge
+        if (!isAdmin) return;
 
         final content = msg['content']?.toString() ?? '';
-        if (content.isEmpty) return;
+        final atts = _parseAttachments(msg['attachments']);
+
+        // If both content and attachments are empty, ignore
+        if (content.isEmpty && atts.isEmpty) return;
 
         final cid = msg['chat']?['_id']?.toString();
         if ((cid != null && cid.isNotEmpty) &&
             (_chatId == null || _chatId!.isEmpty)) {
           _chatId = cid;
-          _log('message-received -> chatId learned: $_chatId'); // PRINT chatId
+          _log('message-received -> chatId learned: $_chatId');
           _requestHistory();
         }
 
         final ts = DateTime.tryParse(msg['createdAt']?.toString() ?? '') ??
             DateTime.now();
 
-        // If user isn't at bottom (message not visible yet), increment unread
+        // Unread badge logic
         if (!_isAtBottom()) {
           SupportChatBadge.instance.increment();
         } else {
           SupportChatBadge.instance.clear();
         }
 
-        _safeAddMsg(_Msg(text: content, fromAgent: true, ts: ts, sent: true));
+        _safeAddMsg(
+          _Msg(
+            text: content,
+            fromAgent: true,
+            ts: ts,
+            sent: true,
+            attachments: atts,
+          ),
+        );
       });
 
       _socket = socket;
@@ -346,6 +361,31 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     return null;
   }
 
+  List<_Attachment> _parseAttachments(dynamic raw) {
+    final out = <_Attachment>[];
+    if (raw is List) {
+      for (final it in raw) {
+        if (it is! Map) continue;
+        final name = it['name']?.toString();
+        final url = it['url']?.toString() ?? it['path']?.toString();
+        final mime = it['mimeType']?.toString() ?? it['mimetype']?.toString();
+        final size = (it['size'] is int)
+            ? it['size'] as int
+            : int.tryParse(it['size']?.toString() ?? '0') ?? 0;
+        if ((name == null || name.isEmpty) && (url == null || url.isEmpty)) {
+          continue;
+        }
+        out.add(_Attachment(
+          name: name ?? (url?.split('/').last ?? 'file'),
+          size: size,
+          mimeType: mime,
+          url: url,
+        ));
+      }
+    }
+    return out;
+  }
+
   // ----------------- UI Actions -----------------
 
   Future<void> _pickAttachments() async {
@@ -364,8 +404,8 @@ class _SupportChatScreenState extends State<SupportChatScreen>
           name: f.name,
           size: f.size,
           mimeType: mime,
-          bytes: f.bytes,
-          path: f.path,
+          bytes: f.bytes, // may be null on some platforms
+          path: f.path, // may be null on web
         );
       }).toList();
 
@@ -398,18 +438,37 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     }
 
     _ensureChatThen(() {
-      if (hasText) {
+      // Build payload
+      final attachmentsPayload = _draftAttachments.map((a) {
+        // Prefer bytes->base64 if available (Socket.IO inline upload)
+        final b64 = (a.bytes != null) ? base64Encode(a.bytes!) : null;
+        return {
+          'name': a.name,
+          'size': a.size,
+          'mimeType': a.mimeType,
+          if (b64 != null) 'base64': b64,
+          // If your backend expects "dataUrl": use "data:<mime>;base64,<b64>"
+          // 'dataUrl': (b64 != null && a.mimeType != null)
+          //     ? 'data:${a.mimeType};base64,$b64'
+          //     : null,
+        };
+      }).toList();
+
+      // Optimistic UI bubble (includes attachments)
+      if (hasText || hasFiles) {
         _safeAddMsg(_Msg(
           text: text,
           fromAgent: false,
           ts: DateTime.now(),
-          sent: false, // will turn true on 'message-sent'
+          sent: false, // will flip on 'message-sent'
+          attachments: List<_Attachment>.from(_draftAttachments),
         ));
       }
 
       _socket!.emit('send-message', {
         'content': text,
         'chatId': _chatId,
+        if (attachmentsPayload.isNotEmpty) 'attachments': attachmentsPayload,
       });
 
       _controller.clear();
@@ -439,7 +498,6 @@ class _SupportChatScreenState extends State<SupportChatScreen>
   }
 
   void _handleScrollVisibilityCheck() {
-    // As soon as the user reaches bottom, we mark all unread as seen
     if (_isAtBottom()) {
       SupportChatBadge.instance.clear();
     }
@@ -466,7 +524,6 @@ class _SupportChatScreenState extends State<SupportChatScreen>
   }
 
   void _log(String msg) {
-    // single place to print logs
     // ignore: avoid_print
     print('[support-chat] $msg');
   }
@@ -581,7 +638,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         title: Row(
           children: [
             const Text(
-              'Crypto Wallet Support',
+              'Echelon Wallet Support',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
             ),
@@ -940,6 +997,7 @@ class _Msg {
   final bool fromAgent;
   final DateTime ts;
   final bool sent; // only for user's messages
+  final bool isLocalWelcome; // to drop it when real history exists
   final List<_Attachment> attachments;
 
   const _Msg({
@@ -947,6 +1005,7 @@ class _Msg {
     required this.fromAgent,
     required this.ts,
     this.sent = true,
+    this.isLocalWelcome = false,
     this.attachments = const [],
   });
 
@@ -955,6 +1014,7 @@ class _Msg {
     bool? fromAgent,
     DateTime? ts,
     bool? sent,
+    bool? isLocalWelcome,
     List<_Attachment>? attachments,
   }) {
     return _Msg(
@@ -962,6 +1022,7 @@ class _Msg {
       fromAgent: fromAgent ?? this.fromAgent,
       ts: ts ?? this.ts,
       sent: sent ?? this.sent,
+      isLocalWelcome: isLocalWelcome ?? this.isLocalWelcome,
       attachments: attachments ?? this.attachments,
     );
   }
@@ -971,8 +1032,9 @@ class _Attachment {
   final String name;
   final int size; // bytes
   final String? mimeType;
-  final Uint8List? bytes;
-  final String? path;
+  final Uint8List? bytes; // for freshly picked files
+  final String? path; // local FS path (native)
+  final String? url; // for history/live messages coming from server
 
   const _Attachment({
     required this.name,
@@ -980,6 +1042,7 @@ class _Attachment {
     this.mimeType,
     this.bytes,
     this.path,
+    this.url,
   });
 }
 
@@ -1004,9 +1067,13 @@ class _MessageAttachmentsView extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: attachments.map((a) {
-            final isImage = a.mimeType?.startsWith('image/') == true;
+            final isImage = a.mimeType?.startsWith('image/') == true ||
+                (a.url != null &&
+                    a.url!
+                        .toLowerCase()
+                        .contains(RegExp(r'\.(png|jpe?g|webp|gif)$')));
             return Container(
-              width: isImage ? 150 : 180,
+              width: isImage ? 150 : 200,
               constraints: const BoxConstraints(minHeight: 56),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.12),
@@ -1014,8 +1081,8 @@ class _MessageAttachmentsView extends StatelessWidget {
                 border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               clipBehavior: Clip.antiAlias,
-              child: isImage && a.bytes != null
-                  ? Image.memory(a.bytes!, fit: BoxFit.cover, height: 120)
+              child: isImage
+                  ? _buildImage(a)
                   : Row(
                       children: [
                         Container(
@@ -1045,7 +1112,9 @@ class _MessageAttachmentsView extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  formatBytes(a.size),
+                                  a.size > 0
+                                      ? formatBytes(a.size)
+                                      : (a.mimeType ?? 'file'),
                                   style: const TextStyle(
                                       color: Colors.white70, fontSize: 10),
                                 ),
@@ -1059,6 +1128,20 @@ class _MessageAttachmentsView extends StatelessWidget {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  Widget _buildImage(_Attachment a) {
+    if (a.bytes != null) {
+      return Image.memory(a.bytes!, fit: BoxFit.cover, height: 140);
+    }
+    if (a.url != null && a.url!.isNotEmpty) {
+      return Image.network(a.url!, fit: BoxFit.cover, height: 140);
+    }
+    return Container(
+      height: 140,
+      alignment: Alignment.center,
+      child: const Icon(Icons.broken_image, color: Colors.white54),
     );
   }
 }
