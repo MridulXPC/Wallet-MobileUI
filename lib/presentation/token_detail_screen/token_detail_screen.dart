@@ -1086,20 +1086,18 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
             padding: EdgeInsets.all(1.w),
             child: Column(
               children: [
-                _buildStatRow(
-                    'Market Cap', tokenData?['marketCap'] ?? r'$2.4T'),
-                _buildStatRow(
-                    '24h Volume', tokenData?['volume24h'] ?? r'$45.2B'),
+                _buildStatRow('Market Cap', tokenData?['marketCap'] ?? r'$'),
+                _buildStatRow('24h Volume', tokenData?['volume24h'] ?? r'$'),
                 _buildStatRow(
                     'Circulating Supply', tokenData?['circulating'] ?? '—'),
                 _buildStatRow('Volume / Market Cap',
-                    tokenData?['Volume / Market Cap'] ?? '8.90%'),
-                _buildStatRow('All time high',
-                    tokenData?['All time high'] ?? '\$73,737.00'),
+                    tokenData?['Volume / Market Cap'] ?? '%'),
                 _buildStatRow(
-                    'All time low', tokenData?['All time low'] ?? '\$65.00'),
+                    'All time high', tokenData?['All time high'] ?? '\$'),
                 _buildStatRow(
-                    'Fully diluted', tokenData?['Fully diluted'] ?? '\$2.6T'),
+                    'All time low', tokenData?['All time low'] ?? '\$'),
+                _buildStatRow(
+                    'Fully diluted', tokenData?['Fully diluted'] ?? '\$'),
               ],
             ),
           ),
