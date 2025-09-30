@@ -14,12 +14,8 @@ import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
-
-// 👇 NEW: currency imports
 import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/core/currency_adapter.dart';
-
-// 👇 Import the TxRecord model (adjust path/export if needed)
 import 'package:cryptowallet/services/api_service.dart' show TxRecord;
 
 class TokenDetailScreen extends StatefulWidget {

@@ -6,11 +6,10 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../services/api_service.dart';
 import '../../stores/wallet_store.dart';
-import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/transaction_card_widget.dart';
 import './widgets/transaction_detail_modal_widget.dart';
 
-// 👇 add this
+// 👇 add thisa
 import 'package:cryptowallet/core/currency_notifier.dart';
 
 class TransactionHistory extends StatefulWidget {
@@ -219,16 +218,6 @@ class _TransactionHistoryState extends State<TransactionHistory>
   void _loadMoreTransactions() {
     if (_isLoading) return;
     // paging hook
-  }
-
-  void _toggleSearch() {
-    setState(() {
-      _isSearchExpanded = !_isSearchExpanded;
-      if (!_isSearchExpanded) {
-        _searchController.clear();
-        _filterTransactions('');
-      }
-    });
   }
 
   void _filterTransactions(String query) {

@@ -5,7 +5,6 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/models/token_model.dart';
 import 'package:cryptowallet/models/explore_model.dart';
-import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
