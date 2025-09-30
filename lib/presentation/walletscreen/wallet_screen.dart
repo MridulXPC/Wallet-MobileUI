@@ -583,12 +583,11 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: kTile,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Center(
                       child: (iconPath != null)
-                          ? Image.asset(iconPath, width: 22, height: 22)
+                          ? Image.asset(iconPath, width: 28, height: 28)
                           : const Icon(Icons.currency_bitcoin,
                               color: Colors.white, size: 18),
                     ),

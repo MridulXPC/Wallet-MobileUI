@@ -708,8 +708,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(40),
           decoration: BoxDecoration(
-            color: cardBackground,
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.transparent,
+            border: Border.all(color: greyColor, width: 1), // outline
+            borderRadius: BorderRadius.circular(6), // radius 6
           ),
           child: Text(
             'No $wantedSym balances found for this wallet.',
@@ -753,8 +754,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         margin: EdgeInsets.only(bottom: 2.h),
         padding: EdgeInsets.all(3.w),
         decoration: BoxDecoration(
-          color: cardBackground,
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
         ),
         child: Row(
@@ -1106,8 +1107,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           Container(
             padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
-              color: cardBackground,
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.transparent,
+              border: Border.all(color: greyColor, width: 1), // outline
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
