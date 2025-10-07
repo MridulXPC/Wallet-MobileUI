@@ -510,27 +510,37 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // 👇 currency-aware price display
+// 👇 NEW: show token balance instead of live price
   Widget _buildTokenPriceDisplay(FxAdapter fx) {
-    final usdPrice = _livePrice ?? _fallbackPrice; // USDT≈USD
-    final priceText = fx.formatFromUsd(usdPrice);
+    final bs = context.watch<BalanceStore>();
+    final wantedSym = sym.toUpperCase();
 
-    final pct = _liveChangePercent;
-    final isUp = (pct ?? 0) >= 0
-        ? (_liveChangePercent != null ? true : _fallbackChangePositive)
-        : false;
-    final changeClr = isUp ? greenColor : Colors.redAccent;
+    // Find all balance rows for this token
+    final rowsForCoin = bs.rows.where((r) {
+      final s = (r.symbol.isNotEmpty
+              ? r.symbol
+              : (r.token.isNotEmpty ? r.token : r.blockchain))
+          .toUpperCase();
+      return s == wantedSym;
+    }).toList();
 
-    final pctText = (pct != null)
-        ? '${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(2)}%'
-        : _fallbackChangeText; // this already includes a $ if from fallback
+    double totalBalance = 0.0;
+    double totalUsd = 0.0;
+    for (final r in rowsForCoin) {
+      totalBalance += double.tryParse(r.balance) ?? 0.0;
+      totalUsd += (r.value ?? 0.0);
+    }
+
+    final balanceText = _formatCrypto(totalBalance);
+    final fiatText = fx.formatFromUsd(totalUsd);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: Column(
         children: [
+          // Show total token balance
           Text(
-            priceText, // e.g., €42,123.45
+            '$balanceText $wantedSym',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 26,
@@ -538,25 +548,15 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
             ),
           ),
           SizedBox(height: 1.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(isUp ? Icons.arrow_upward : Icons.arrow_downward,
-                  color: changeClr, size: 18),
-              const SizedBox(width: 4),
-              Text(
-                _liveChangeAbs != null
-                    // absolute change is in USDT/USD; convert & format
-                    ? '${_liveChangeAbs!.startsWith('-') ? '' : '+'}'
-                        '${fx.formatFromUsd(double.tryParse(_liveChangeAbs!) ?? 0)} ($pctText)'
-                    : pctText,
-                style: TextStyle(
-                  color: changeClr,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+
+          // Show fiat equivalent (converted)
+          Text(
+            '≈ $fiatText',
+            style: const TextStyle(
+              color: Color(0xFF8E8E8E),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

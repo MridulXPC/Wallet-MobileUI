@@ -1,7 +1,8 @@
 import 'dart:ui' show FontFeature;
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:local_auth/local_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptowallet/services/api_service.dart';
 
@@ -13,21 +14,17 @@ class SecuritySettingsScreen extends StatefulWidget {
 }
 
 class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
-  // persisted state
   String _autoLock = '1 minute';
-  bool _biometrics = false;
 
-  // palette tuned to the screenshot
   static const _bg = Color(0xFF0B0D1A);
   static const _card = Color(0xFF171B2B);
   static const _faint = Color(0xFFBFC5DA);
   static const _danger = Color(0xFFED3B3B);
 
-  // prefs keys (align with the rest of your app)
   static const _kAutoLock = 'pref_auto_lock';
-  static const _kBiometrics = 'use_biometrics';
 
-  final LocalAuthentication _auth = LocalAuthentication();
+  final TextEditingController _passwordController = TextEditingController();
+  String _storedPassword = "";
 
   @override
   void initState() {
@@ -39,7 +36,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     final sp = await SharedPreferences.getInstance();
     setState(() {
       _autoLock = sp.getString(_kAutoLock) ?? _autoLock;
-      _biometrics = sp.getBool(_kBiometrics) ?? _biometrics;
+      _storedPassword = sp.getString("wallet_password")?.trim() ?? "";
     });
   }
 
@@ -48,54 +45,15 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     await sp.setString(_kAutoLock, v);
   }
 
-  Future<void> _saveBiometrics(bool v) async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.setBool(_kBiometrics, v);
-  }
-
-  // ---------- Helpers ----------
-
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 
-  Future<bool> _deviceSupportsBiometrics() async {
-    try {
-      final canCheck = await _auth.canCheckBiometrics;
-      final isSupported = await _auth.isDeviceSupported();
-      return canCheck && isSupported;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> _authenticate(
-      {String reason = 'Authenticate to continue'}) async {
-    try {
-      final ok = await _auth.authenticate(
-        localizedReason: reason,
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
-      );
-      return ok;
-    } catch (e) {
-      _snack('Authentication failed');
-      return false;
-    }
-  }
-
   Future<void> _pickAutoLock() async {
-    const options = <String>[
+    const options = [
       '30 seconds',
       '1 minute',
       '5 minutes',
@@ -103,7 +61,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       '30 minutes',
       'Never',
     ];
-
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -113,7 +70,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         selected: _autoLock,
       ),
     );
-
     if (picked != null && picked != _autoLock) {
       setState(() => _autoLock = picked);
       await _saveAutoLock(picked);
@@ -121,88 +77,161 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     }
   }
 
-  Future<void> _toggleBiometrics(bool enable) async {
-    if (enable) {
-      final supported = await _deviceSupportsBiometrics();
-      if (!supported) {
-        _snack('Biometrics not available on this device');
-        return;
+  // ---------- PASSWORD VERIFICATION ----------
+  Future<bool> _verifyPasswordDialog(String reason) async {
+    _passwordController.clear();
+    bool success = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: _card,
+        title: Text(reason, style: const TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: _passwordController,
+          obscureText: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter your password',
+            hintStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white70),
+            ),
+          ),
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () {
+              final input = _passwordController.text.trim();
+              if (input.trim() == _storedPassword.trim()) {
+                success = true;
+                Navigator.pop(context);
+              } else {
+                _snack('Incorrect password');
+              }
+            },
+            child: const Text('Verify', style: TextStyle(color: Colors.blue)),
+          ),
+        ],
+      ),
+    );
+
+    return success;
+  }
+
+  // ---------- WALLET SECRET HANDLERS ----------
+
+  Future<Map<String, dynamic>?> _getActiveWallet() async {
+    try {
+      // Fetch all wallets from backend
+      final wallets = await AuthService.fetchWallets();
+
+      // First try from WalletStore
+      String? activeId;
+      try {
+        final walletStore = context.read<WalletStore>();
+        activeId = walletStore.activeWalletId;
+      } catch (_) {}
+
+      // If still null, fallback to SharedPreferences
+      if (activeId == null) {
+        final prefs = await SharedPreferences.getInstance();
+        activeId = prefs.getString('active_wallet_id');
       }
-      final ok = await _authenticate(reason: 'Enable Biometrics');
-      if (!ok) return;
+
+      if (activeId == null || activeId.isEmpty) {
+        debugPrint('⚠️ No active wallet found anywhere');
+        return null;
+      }
+
+      // Match against fetched list
+      final activeWallet = wallets.firstWhere(
+        (w) => w['walletId']?.toString() == activeId,
+        orElse: () => {},
+      );
+
+      if (activeWallet.isEmpty) {
+        debugPrint('⚠️ Active wallet ID $activeId not found in API list');
+        return null;
+      }
+
+      return activeWallet;
+    } catch (e) {
+      debugPrint('❌ Error fetching active wallet: $e');
+      return null;
     }
-    setState(() => _biometrics = enable);
-    await _saveBiometrics(enable);
-    _snack(enable ? 'Biometrics enabled' : 'Biometrics disabled');
-  }
-
-  // ---------- Critical flows ----------
-
-  Future<void> _validateSeed() async {
-    final ok = await _authenticate(reason: 'Validate your seed');
-    if (!ok) return;
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _InfoSheet(
-        title: 'Validate Seed',
-        body:
-            'Great! This would start your seed validation flow (12/24-word check). You can plug your existing screen here.',
-        primaryText: 'Start',
-        onPrimary: () => Navigator.pop(context),
-      ),
-    );
-  }
-
-  Future<void> _backupWallet() async {
-    final ok = await _authenticate(reason: 'Backup your wallet');
-    if (!ok) return;
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _InfoSheet(
-        title: 'Backup Wallet',
-        body:
-            'We will create an encrypted backup file of your wallet metadata. Store it safely.\n\nHook your real export here.',
-        primaryText: 'Start Backup',
-        onPrimary: () {
-          Navigator.pop(context);
-          _snack('Backup started…');
-        },
-      ),
-    );
   }
 
   Future<void> _revealSeed() async {
-    final ok = await _authenticate(reason: 'Reveal seed phrase');
+    final ok = await _verifyPasswordDialog('Unlock Seed Phrase');
     if (!ok) return;
+
+    final wallet = await _getActiveWallet();
+    if (wallet == null || wallet.isEmpty) {
+      _snack('Active wallet not found');
+      return;
+    }
+
+    String seed = 'No seed phrase available';
+    final chains = (wallet['chains'] as List?) ?? [];
+    if (chains.isNotEmpty && chains.first is Map) {
+      seed = chains.first['seed_phrase'] ?? seed;
+    }
+
     if (!mounted) return;
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _SecretSheet(
-        title: 'Seed Phrase',
-        secret:
-            'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
-      ),
+      builder: (_) => _SecretSheet(title: 'Seed Phrase', secret: seed),
     );
   }
 
   Future<void> _revealPrivateKey() async {
-    final ok = await _authenticate(reason: 'Reveal private key');
+    final ok = await _verifyPasswordDialog('Unlock Private Keys');
     if (!ok) return;
+
+    final wallet = await _getActiveWallet();
+    if (wallet == null || wallet.isEmpty) {
+      _snack('Active wallet not found');
+      return;
+    }
+
+    // --- Build formatted list of all private keys ---
+    String pkText = 'No private keys available';
+    final chains = (wallet['chains'] as List?) ?? [];
+
+    if (chains.isNotEmpty) {
+      final buffer = StringBuffer();
+      for (final c in chains) {
+        if (c is! Map) continue;
+        final chain = (c['chain'] ?? '').toString().toUpperCase();
+        final pk = (c['private_key'] ?? '').toString();
+        if (pk.isNotEmpty) {
+          buffer.writeln('$chain: $pk');
+          buffer.writeln(); // add spacing between chains
+        }
+      }
+      pkText = buffer.isEmpty ? pkText : buffer.toString().trim();
+    }
+
     if (!mounted) return;
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => const _SecretSheet(
-        title: 'Private Key',
-        secret: '0x1c0ffee0babe...deadbeefcafefeed0123456789abcdef',
-      ),
+      builder: (_) => _SecretSheet(title: 'Private Keys', secret: pkText),
     );
   }
 
@@ -214,20 +243,18 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     );
     if (confirmed != true) return;
 
-    final ok = await _authenticate(reason: 'Confirm wallet reset');
+    final ok = await _verifyPasswordDialog('Confirm Wallet Reset');
     if (!ok) return;
 
-    // Clear app auth/session (uses your existing helper)
     try {
       await AuthService.logout();
     } catch (_) {}
-
     if (!mounted) return;
     _snack('Wallet reset');
-    // Navigate to your onboarding/login root.
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -243,10 +270,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         title: const Text(
           'Security Settings',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
+              color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
         ),
       ),
       body: ListView(
@@ -254,8 +278,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         children: [
           const _SectionHeader('General Security'),
           const SizedBox(height: 8),
-
-          // Auto Lock
           _SettingCard(
             leadingIcon: Icons.lock_clock_outlined,
             title: 'Auto Lock',
@@ -263,69 +285,29 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_autoLock,
-                    style: const TextStyle(color: _faint, fontSize: 14)),
-                const SizedBox(width: 8),
+                Text(_autoLock, style: const TextStyle(color: _faint)),
                 const Icon(Icons.chevron_right, color: _faint),
               ],
             ),
             onTap: _pickAutoLock,
           ),
-          const SizedBox(height: 12),
-
-          // Biometrics switch
-          _SettingCard(
-            leadingIcon: Icons.fingerprint_outlined,
-            title: 'Activate Biometrics',
-            subtitle: 'Use Face ID / Touch ID',
-            trailing: Switch.adaptive(
-              value: _biometrics,
-              activeColor: Colors.white,
-              activeTrackColor: const Color(0xFF5660FF),
-              onChanged: _toggleBiometrics,
-            ),
-          ),
-
-          const SizedBox(height: 24),
-          const _SectionHeader('Security'),
-          const SizedBox(height: 8),
-
-          _SettingCard(
-            leadingIcon: Icons.fact_check_outlined,
-            title: 'Validate Seed',
-            subtitle: 'Enhance your wallet security',
-            onTap: _validateSeed,
-          ),
-          const SizedBox(height: 12),
-
-          _SettingCard(
-            leadingIcon: Icons.backup_outlined,
-            title: 'Backup Wallet',
-            subtitle: 'Create an encrypted file',
-            onTap: _backupWallet,
-          ),
-
           const SizedBox(height: 24),
           const _SectionHeader('Critical Actions'),
           const SizedBox(height: 8),
-
           _SettingCard(
             leadingIcon: Icons.remove_red_eye_outlined,
-            title: 'Reveal seed phrase',
-            subtitle: 'Reveal your seed phrase',
+            title: 'Reveal Seed Phrase',
+            subtitle: 'View your seed phrase securely',
             onTap: _revealSeed,
           ),
           const SizedBox(height: 12),
-
           _SettingCard(
             leadingIcon: Icons.key_outlined,
-            title: 'Reveal private key',
-            subtitle: 'Reveal your PK from any account',
+            title: 'Reveal Private Key',
+            subtitle: 'View your private key securely',
             onTap: _revealPrivateKey,
           ),
           const SizedBox(height: 12),
-
-          // Destructive action
           _SettingCard.danger(
             leadingIcon: Icons.cancel_outlined,
             title: 'Reset Wallet',
