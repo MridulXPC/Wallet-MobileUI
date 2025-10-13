@@ -171,7 +171,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                   ListTile(
                     leading:
                         const Icon(Icons.add_circle, color: Colors.lightGreen),
-                    title: const Text('Create New Wallet',
+                    title: const Text('Wallet',
                         style: TextStyle(color: Colors.white)),
                     subtitle: const Text('Generates a new seed & address',
                         style: TextStyle(color: Colors.white54, fontSize: 12)),

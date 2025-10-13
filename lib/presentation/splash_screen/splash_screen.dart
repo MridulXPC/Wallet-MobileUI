@@ -18,25 +18,33 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _navigateToNextScreen() async {
-    // Show splash for at least 2 seconds (adjust as needed)
+    // Display splash at least 2 seconds
     await Future.delayed(const Duration(seconds: 2));
 
     final prefs = await SharedPreferences.getInstance();
+
     final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
-    final hasPassword = prefs.getString('wallet_password') != null;
+    final walletPassword = prefs.getString('wallet_password');
+    final walletId = prefs.getString('wallet_id');
 
     String nextRoute;
-    if (isFirstLaunch) {
-      nextRoute = AppRoutes.welcomeScreen;
-    } else if (hasPassword) {
+
+    if (walletPassword != null &&
+        walletPassword.isNotEmpty &&
+        walletId != null &&
+        walletId.isNotEmpty) {
+      // ✅ Existing wallet found → App Lock screen
       nextRoute = AppRoutes.appLockScreen;
-    } else {
+    } else if (isFirstLaunch) {
+      // 🆕 First time user → Welcome/setup flow
       nextRoute = AppRoutes.welcomeScreen;
+    } else {
+      // 🧩 Edge case (user skipped confirm phrase or partial setup)
+      nextRoute = AppRoutes.walletSetupScreen;
     }
 
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, nextRoute);
-    }
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, nextRoute);
   }
 
   @override
@@ -47,7 +55,6 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Your app logo
             Icon(
               Icons.account_balance_wallet,
               size: 100,
@@ -63,6 +70,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 40),
+            const CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),

@@ -33,8 +33,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
   double? _livePrice; // last price (USDT ~ USD)
-  double? _liveChangePercent; // 24h % change (+/-)
-  String? _liveChangeAbs; // optional abs change text if available
+// 24h % change (+/-)
+// optional abs change text if available
 
   // 👇 NEW: transactions future
   Future<List<TxRecord>>? _txFuture;
@@ -125,9 +125,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   // Fallbacks if no live stream yet (USD)
   double get _fallbackPrice =>
       (tokenData?['price'] as num?)?.toDouble() ?? 43825.67;
-  String get _fallbackChangeText =>
-      tokenData?['changeText'] ?? r'$72.42 (+0.06%)';
-  bool get _fallbackChangePositive => tokenData?['changePositive'] ?? true;
 
   // Mapping: app symbol -> Binance stream symbol ("btcusdt")
   String? _binanceStreamSymbol(String s) {
@@ -187,12 +184,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           final m = jsonDecode(event as String) as Map<String, dynamic>;
           final last = double.tryParse(m['c']?.toString() ?? '');
           final pct = double.tryParse(m['P']?.toString() ?? '');
-          final abs = m['p']?.toString(); // optional absolute change
+          m['p']?.toString(); // optional absolute change
           if (!mounted) return;
           setState(() {
             if (last != null) _livePrice = last;
-            if (pct != null) _liveChangePercent = pct;
-            _liveChangeAbs = abs;
+            if (pct != null) {}
           });
         } catch (_) {}
       },
@@ -288,13 +284,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   // --------------------- Receive handling (unchanged) ---------------------
-  String? _tryKeys(List<String> keys) {
-    for (final k in keys) {
-      final v = tokenData?[k];
-      if (v is String && v.trim().isNotEmpty) return v.trim();
-    }
-    return null;
-  }
 
   String get _coinId {
     final explicit = tokenData?['coinId']?.toString();
