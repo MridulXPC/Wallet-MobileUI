@@ -11,12 +11,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/core/currency_adapter.dart';
 import 'package:cryptowallet/services/api_service.dart' show TxRecord;
+import 'package:bip39/bip39.dart' as bip39;
 
 class TokenDetailScreen extends StatefulWidget {
   const TokenDetailScreen({super.key, required this.coinId});
@@ -32,11 +34,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   // ---- live price state (Binance) ----
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
-  double? _livePrice; // last price (USDT ~ USD)
-// 24h % change (+/-)
-// optional abs change text if available
+  double? _livePrice;
 
-  // 👇 NEW: transactions future
+  // 👇 transactions future
   Future<List<TxRecord>>? _txFuture;
 
   // ---- chart state (CoinGecko) ----
@@ -44,8 +44,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   bool _chartLoading = false;
   String selectedPeriod = 'LIVE';
   Timer? _reconnectTimer;
-
-  bool isBookmarked = false;
+  double? _livePriceUsd;
+  double? _changePercent24;
+  double? _changeAbsUsd24;
   late TabController _tabController;
 
   final List<String> timePeriods = ['LIVE', '4H', '1D', '1W', '1M', 'MAX'];
@@ -72,14 +73,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (args != null && tokenData == null) {
       setState(() => tokenData = args);
       _applyInitialTabFromArgs();
-      _startLiveStream(); // <- Binance WS
-      _loadChartFor(selectedPeriod); // <- CoinGecko chart
+      _startLiveStream();
+      _loadChartFor(selectedPeriod);
 
-      // 👇 Kick off transaction history load (wallet-wide; we filter by token below)
-      _txFuture = AuthService.fetchTransactionHistoryByWallet(
-        // chain: ... // optionally pass a chain filter if you want
-        limit: 100,
-      );
+      _txFuture = AuthService.fetchTransactionHistoryByWallet(limit: 100);
     }
   }
 
@@ -116,6 +113,56 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
+  void _connectKrakenTicker(String pair) {
+    try {
+      _ws = WebSocketChannel.connect(Uri.parse('wss://ws.kraken.com'));
+      _ws!.sink.add(jsonEncode({
+        "event": "subscribe",
+        "pair": [pair],
+        "subscription": {"name": "ticker"}
+      }));
+
+      _wsSub = _ws!.stream.listen(
+        (raw) {
+          try {
+            final data = jsonDecode(raw as String);
+            if (data is List && data.length > 1 && data[1] is Map) {
+              final m = (data[1] as Map).cast<String, dynamic>();
+              final lastStr = (m['c'] is List && (m['c'] as List).isNotEmpty)
+                  ? '${m['c'][0]}'
+                  : null;
+              final last = lastStr != null ? double.tryParse(lastStr) : null;
+
+              double? pct;
+              double? abs;
+              if (m['o'] is List &&
+                  (m['o'] as List).length >= 2 &&
+                  last != null) {
+                final open24 = double.tryParse('${m['o'][1]}');
+                if (open24 != null && open24 > 0) {
+                  abs = last - open24;
+                  pct = (abs / open24) * 100.0;
+                }
+              }
+
+              if (!mounted) return;
+              setState(() {
+                if (last != null) _livePriceUsd = last;
+                if (pct != null) _changePercent24 = pct;
+                if (abs != null) _changeAbsUsd24 = abs;
+              });
+            }
+          } catch (_) {}
+        },
+        onDone: _scheduleReconnect,
+        onError: (_) => _scheduleReconnect(),
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
   // ---------- symbol / ids ----------
   String get sym => (tokenData?['symbol'] ?? 'BTC').toString().toUpperCase();
   String get name => tokenData?['name'] ?? 'Bitcoin';
@@ -129,15 +176,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   // Mapping: app symbol -> Binance stream symbol ("btcusdt")
   String? _binanceStreamSymbol(String s) {
     final base = s.toUpperCase();
-    // We stream vs USDT by default
     const supported = {
       'BTC': 'btcusdt',
       'ETH': 'ethusdt',
       'BNB': 'bnbusdt',
       'SOL': 'solusdt',
       'TRX': 'trxusdt',
-      'XMR': 'xmrusdt', // may not be supported on Binance in some regions
-      'USDT': null, // USDT/USDT doesn’t make sense — skip stream
+      'XMR': 'xmrusdt',
+      'USDT': null, // no sense to stream USDT/USDT
     };
     return supported[base] ?? '${base.toLowerCase()}usdt';
   }
@@ -167,13 +213,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   /* ===================== BINANCE LIVE TICKER ===================== */
 
   void _startLiveStream() {
-    // Close any previous stream
     _reconnectTimer?.cancel();
     _wsSub?.cancel();
     _ws?.sink.close();
 
     final streamSym = _binanceStreamSymbol(sym);
-    if (streamSym == null) return; // e.g., USDT
+    if (streamSym == null) return;
 
     final url = 'wss://stream.binance.com:9443/ws/$streamSym@ticker';
     _ws = IOWebSocketChannel.connect(Uri.parse(url));
@@ -183,12 +228,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         try {
           final m = jsonDecode(event as String) as Map<String, dynamic>;
           final last = double.tryParse(m['c']?.toString() ?? '');
-          final pct = double.tryParse(m['P']?.toString() ?? '');
-          m['p']?.toString(); // optional absolute change
           if (!mounted) return;
           setState(() {
             if (last != null) _livePrice = last;
-            if (pct != null) {}
           });
         } catch (_) {}
       },
@@ -202,7 +244,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      _startLiveStream();
+      _connectKrakenTicker('${sym.toUpperCase()}/USD');
     });
   }
 
@@ -213,9 +255,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
     try {
       final id = _coingeckoIdForSymbol(sym);
-      // Map UI period -> CoinGecko days
       final (days, filterHours) = switch (period) {
-        'LIVE' => ('1', 1), // last 1h from 1D data
+        'LIVE' => ('1', 1),
         '4H' => ('1', 4),
         '1D' => ('1', null),
         '1W' => ('7', null),
@@ -245,7 +286,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         points.add(FlSpot(ts.toDouble(), price));
       }
 
-      // If CoinGecko is throttled or empty, fall back to last known price
       if (points.isEmpty) {
         final p = _livePrice ?? _fallbackPrice;
         final t = DateTime.now().millisecondsSinceEpoch.toDouble();
@@ -256,21 +296,20 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         ]);
       }
 
-      // Normalize X to 0..N for smoother FLChart
+      // Normalize X to 0..N
       final t0 = points.first.x;
       final norm = <FlSpot>[];
       for (final s in points) {
-        norm.add(FlSpot((s.x - t0) / 1000.0, s.y)); // seconds from start
+        norm.add(FlSpot((s.x - t0) / 1000.0, s.y));
       }
 
       if (!mounted) return;
       setState(() {
-        chartData = norm; // USD values; axis labels hidden
+        chartData = norm;
         _chartLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
-      // graceful fallback — keep previous data, stop spinner
       setState(() => _chartLoading = false);
     }
   }
@@ -283,7 +322,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     _loadChartFor(period);
   }
 
-  // --------------------- Receive handling (unchanged) ---------------------
+  // --------------------- Receive handling ---------------------
 
   String get _coinId {
     final explicit = tokenData?['coinId']?.toString();
@@ -351,7 +390,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 👇 React to currency changes everywhere in this screen
     final fx = FxAdapter(context.watch<CurrencyNotifier>());
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -369,26 +407,31 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               children: [
                 _buildDarkAppBar(),
                 Expanded(
+                  flex: 1,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      _buildTokenPriceDisplay(fx), // 👈 pass adapter
-                      Expanded(child: _buildPriceChart()),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
+                      _buildTokenPriceDisplay(fx),
+                      const SizedBox(height: 10),
+                      Flexible(
+                        flex: 1,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 2.w),
+                          child: _buildPriceChart(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       _buildTimePeriodSelector(),
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ActionButtonsGridWidget(
-                              isLarge: isLarge,
-                              isTablet: isTablet,
-                              coinId: _coinId,
-                              onReceive: _openReceive,
-                            ),
-                          ),
-                          SizedBox(width: 3.w),
-                        ],
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4.w),
+                        child: ActionButtonsGridWidget(
+                          isLarge: isLarge,
+                          isTablet: isTablet,
+                          coinId: _coinId,
+                          onReceive: _openReceive,
+                        ),
                       ),
                     ],
                   ),
@@ -396,6 +439,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               ],
             ),
           ),
+
           // Lower half
           Expanded(
             flex: 1,
@@ -422,8 +466,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildHoldingsTab(fx), // 👈 pass adapter
-                      _buildHistoryTab(), // 👈 UPDATED
+                      _buildHoldingsTab(
+                          fx), // 👈 updated with Create Wallet btn
+                      _buildHistoryTab(),
                       _buildAboutTab(),
                     ],
                   ),
@@ -499,51 +544,30 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-// 👇 NEW: show token balance instead of live price
   Widget _buildTokenPriceDisplay(FxAdapter fx) {
-    final bs = context.watch<BalanceStore>();
-    final wantedSym = sym.toUpperCase();
-
-    // Find all balance rows for this token
-    final rowsForCoin = bs.rows.where((r) {
-      final s = (r.symbol.isNotEmpty
-              ? r.symbol
-              : (r.token.isNotEmpty ? r.token : r.blockchain))
-          .toUpperCase();
-      return s == wantedSym;
-    }).toList();
-
-    double totalBalance = 0.0;
-    double totalUsd = 0.0;
-    for (final r in rowsForCoin) {
-      totalBalance += double.tryParse(r.balance) ?? 0.0;
-      totalUsd += (r.value ?? 0.0);
-    }
-
-    final balanceText = _formatCrypto(totalBalance);
-    final fiatText = fx.formatFromUsd(totalUsd);
+    final price = _livePriceUsd ?? _fallbackPrice;
+    final changePct = _changePercent24 ?? 0.0;
+    final changeAbs = _changeAbsUsd24 ?? 0.0;
+    final isUp = changePct >= 0;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: Column(
         children: [
-          // Show total token balance
           Text(
-            '$balanceText $wantedSym',
+            '\$${price.toStringAsFixed(2)}',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 26,
+              fontSize: 30,
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 1.h),
-
-          // Show fiat equivalent (converted)
+          SizedBox(height: 0.8.h),
           Text(
-            '≈ $fiatText',
-            style: const TextStyle(
-              color: Color(0xFF8E8E8E),
-              fontSize: 16,
+            '${isUp ? '+' : ''}${changePct.toStringAsFixed(2)}% (${isUp ? '+' : ''}\$${changeAbs.toStringAsFixed(2)})',
+            style: TextStyle(
+              color: isUp ? Colors.greenAccent : Colors.redAccent,
+              fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -605,11 +629,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       child: LineChart(
         LineChartData(
           gridData: FlGridData(show: false),
-          titlesData: FlTitlesData(show: false), // axis labels hidden
+          titlesData: FlTitlesData(show: false),
           borderData: FlBorderData(show: false),
           lineBarsData: [
             LineChartBarData(
-              spots: spots, // still in USD internally
+              spots: spots,
               isCurved: true,
               color: greenColor,
               barWidth: 3,
@@ -638,28 +662,49 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // ------------------ Holdings tab (currency-aware) ------------------
+// ------------------ Holdings tab ------------------
   Widget _buildHoldingsTab(FxAdapter fx) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 3.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: 1.h),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16.0),
-            child: Text(
-              'Your Holdings',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+    final items = _buildCoinHoldings(fx);
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 3.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(height: 1.h),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    'Your Holdings',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                ...items,
+                SizedBox(height: 12.h), // space above bottom button
+              ],
             ),
           ),
-          ..._buildCoinHoldings(fx),
-        ],
-      ),
+        ),
+        // 👇 fixed bottom button
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0B0D1A),
+            border: Border(
+              top: BorderSide(color: Color(0xFF1E1E1E), width: 1),
+            ),
+          ),
+          child: _buildCreateWalletButton(context),
+        ),
+      ],
     );
   }
 
@@ -673,9 +718,10 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(strokeWidth: 2)),
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
         ),
       ];
@@ -683,144 +729,155 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
     final wantedSym = sym.toUpperCase();
 
+    // 🧭 Include all wallets for this symbol (main + nicknamed)
     final rowsForCoin = bs.rows.where((r) {
       final s = (r.symbol.isNotEmpty
               ? r.symbol
               : (r.token.isNotEmpty ? r.token : r.blockchain))
           .toUpperCase();
-      return s == wantedSym;
+      return s == wantedSym || s.startsWith('$wantedSym ');
     }).toList();
 
+    // 🧭 Only show default templates if user has zero real wallets
+// 🧭 Show default templates if user has zero wallets
     if (rowsForCoin.isEmpty) {
-      return [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(40),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            border: Border.all(color: greyColor, width: 1), // outline
-            borderRadius: BorderRadius.circular(6), // radius 6
-          ),
-          child: Text(
-            'No $wantedSym balances found for this wallet.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: greyColor, fontSize: 14),
-          ),
-        ),
-      ];
+      final defaultChains = switch (wantedSym) {
+        'BTC' => ['BTC', 'LN'], // ✅ show both
+        'USDT' => ['ETH', 'TRX', 'GASFREE'], // ✅ show all networks
+        _ => ['MAIN'], // ✅ others only main
+      };
+
+      return defaultChains.map((chain) {
+        final icon = store.getById('$wantedSym-$chain')?.assetPath ??
+            store.getById(wantedSym)?.assetPath ??
+            'assets/currencyicons/bitcoin.png';
+
+        final title = wantedSym == 'USDT'
+            ? 'USDT (${_chainUiName(chain)})'
+            : '$wantedSym (${_chainUiName(chain)})';
+
+        final networkSubtitle = wantedSym == 'USDT'
+            ? '${_networkShort(chain)} • ${_chainUiName(chain)} Network'
+            : '${_chainUiName(chain)} Network';
+
+        return _buildHoldingCard(
+          icon: icon,
+          title: title,
+          networkSubtitle: networkSubtitle,
+          balance: 0.0,
+          usd: 0.0,
+          symbol: wantedSym,
+        );
+      }).toList();
     }
 
+    // ✅ Show real created wallets (from backend)
     return rowsForCoin.map((r) {
-      final chainRaw = (r.blockchain).toUpperCase();
-      final chainNorm = _normalizeChain(chainRaw);
-
+      final chainNorm = _normalizeChain(r.blockchain.toUpperCase());
       final balance = double.tryParse(r.balance) ?? 0.0;
-      final usd = (r.value ?? 0.0); // USD from store
+      final usd = (r.value ?? 0.0);
+      final nickname = (r.nickname ?? '').trim();
 
-      String coinIdGuess;
-      if (wantedSym == 'USDT') {
-        coinIdGuess = 'USDT-$chainNorm';
-      } else if (wantedSym == 'BTC' && chainNorm == 'LN') {
-        coinIdGuess = 'BTC-LN';
-      } else if (wantedSym == 'BTC') {
-        coinIdGuess = 'BTC';
-      } else {
-        coinIdGuess = '$wantedSym-$chainNorm';
-      }
+      final coinIdGuess = switch (wantedSym) {
+        'USDT' => 'USDT-$chainNorm',
+        'BTC' => chainNorm == 'LN' ? 'BTC-LN' : 'BTC',
+        _ => '$wantedSym-$chainNorm',
+      };
 
       final coinForIcon =
           store.getById(coinIdGuess) ?? store.getById(wantedSym);
 
       final icon = coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-      final title = coinForIcon?.name ??
-          (wantedSym == 'USDT' ? 'USDT (${_chainUiName(chainNorm)})' : name);
+
+      // ✅ Title now includes nickname if available
+      final baseTitle = coinForIcon?.name ??
+          (wantedSym == 'USDT'
+              ? 'USDT (${_chainUiName(chainNorm)})'
+              : '$wantedSym (${_chainUiName(chainNorm)})');
+      final title = nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
 
       final networkSubtitle = wantedSym == 'USDT'
           ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
           : '${_chainUiName(chainNorm)} Network';
 
-      return Container(
-        margin: EdgeInsets.only(bottom: 2.h),
-        padding: EdgeInsets.all(3.w),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                icon,
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.currency_bitcoin,
-                  color: Colors.orange,
-                  size: 32,
-                ),
-              ),
-            ),
-            SizedBox(width: 3.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // title + balance
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${_formatCrypto(balance)} $wantedSym',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 0.5.h),
-                  // network + fiat value (currency-aware)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        networkSubtitle,
-                        style: const TextStyle(
-                          color: greyColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        fx.formatFromUsd(usd), // 👈 convert from USD
-                        style: const TextStyle(
-                          color: greyColor,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      return _buildHoldingCard(
+        icon: icon,
+        title: title,
+        networkSubtitle: networkSubtitle,
+        balance: balance,
+        usd: usd,
+        symbol: wantedSym,
       );
     }).toList();
   }
 
-  /* ---------- tiny helpers for holdings ---------- */
+  // 🔹 Reusable holding card widget
+  Widget _buildHoldingCard({
+    required String icon,
+    required String title,
+    required String networkSubtitle,
+    required double balance,
+    required double usd,
+    required String symbol,
+  }) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 2.h),
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(icon, width: 40, height: 40, fit: BoxFit.cover),
+          ),
+          SizedBox(width: 3.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600)),
+                    Text(
+                      '${_formatCrypto(balance)} $symbol',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 0.5.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(networkSubtitle,
+                        style: const TextStyle(color: greyColor, fontSize: 13)),
+                    Text(
+                      FxAdapter(context.read<CurrencyNotifier>())
+                          .formatFromUsd(usd),
+                      style: const TextStyle(color: greyColor, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /* ---------- small helpers ---------- */
   String _formatCrypto(double v) {
     var s = v.toStringAsFixed(8);
     s = s.replaceAll(RegExp(r'0+$'), '');
@@ -866,7 +923,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     }
   }
 
-  /* ===================== HISTORY TAB (REAL DATA) ===================== */
+  /* ===================== HISTORY TAB ===================== */
 
   Widget _buildHistoryTab() {
     return FutureBuilder<List<TxRecord>>(
@@ -902,7 +959,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                   onPressed: () {
                     setState(() {
                       _txFuture = AuthService.fetchTransactionHistoryByWallet(
-                          limit: 100);
+                        limit: 100,
+                      );
                     });
                   },
                   child: const Text('Retry'),
@@ -914,18 +972,17 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
         final all = snap.data ?? const <TxRecord>[];
 
-        // TOKEN-WISE FILTER (case-insensitive)
         final wanted = sym.toUpperCase();
         final filtered =
             all.where((t) => (t.token ?? '').toUpperCase() == wanted).toList();
 
-        // newest → oldest
         filtered.sort((a, b) => (b.createdAt ??
                 DateTime.fromMillisecondsSinceEpoch(0))
             .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
 
         return SingleChildScrollView(
-            child: _buildTransactionsSection(filtered));
+          child: _buildTransactionsSection(filtered),
+        );
       },
     );
   }
@@ -964,11 +1021,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // 👇 Row builder using TxRecord from the API
   Widget _buildTransactionItemTx(TxRecord tx) {
-    // Adjust these field reads to your TxRecord model if necessary:
-    final type = (tx.type ?? '').toUpperCase(); // "SEND"/"RECEIVE"/...
-    final status = (tx.status ?? '').toUpperCase(); // "COMPLETED"/"PENDING"/...
+    final type = (tx.type ?? '').toUpperCase();
+    final status = (tx.status ?? '').toUpperCase();
     final amountStr = tx.amount ?? '0';
     final token = tx.token ?? '';
     final from = tx.fromAddress ?? '';
@@ -1063,7 +1118,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // ------------------ About tab (unchanged UI) ------------------
+  // ------------------ About tab ------------------
   Widget _buildAboutTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
@@ -1095,7 +1150,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
             padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
               color: Colors.transparent,
-              border: Border.all(color: greyColor, width: 1), // outline
+              border: Border.all(color: greyColor, width: 1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
@@ -1182,7 +1237,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
-  // Old string-based timeago kept for backward compatibility (not used now)
   String _getTimeAgo(String dateTime) {
     try {
       final parts = dateTime.split(' ');
@@ -1219,7 +1273,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return '12 days ago';
   }
 
-  // 👇 NEW: timeago from DateTime (used for API records)
   String _timeAgoFromDate(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
@@ -1227,8 +1280,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays == 1) return 'Yesterday';
     if (diff.inDays < 30) return '${diff.inDays} days ago';
-    return '${dt.day.toString().padLeft(2, '0')} '
-        '${_month3(dt.month)} ${dt.year}';
+    return '${dt.day.toString().padLeft(2, '0')} ${_month3(dt.month)} ${dt.year}';
   }
 
   String _month3(int m) {
@@ -1264,7 +1316,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return coinKey;
   }
 
-  // Existing helpers adapted to accept upper-case types/status
   IconData _getTransactionTypeIconUpper(String typeUpper) {
     switch (typeUpper) {
       case 'SEND':
@@ -1312,5 +1363,317 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     return '${address.substring(0, 6)}...${address.substring(address.length - 6)}';
   }
 
-  // simple fallback price book for non-selected variants or offline (USD)
+  /* ===================== CREATE WALLET FLOW ===================== */
+
+  // ✅ Floating button on Holdings tab
+  Widget _buildCreateWalletButton(BuildContext context) {
+    return Center(
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF00D4AA),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        icon: const Icon(Icons.add_rounded, size: 20),
+        label: Text(
+          'Create ${sym.toUpperCase()} Wallet',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        onPressed: () => _onCreateWalletPressed(context),
+      ),
+    );
+  }
+
+  // 🔹 Entry point
+  void _onCreateWalletPressed(BuildContext context) {
+    final current = sym.toUpperCase();
+    if (current == 'BTC') {
+      _showChainSheet(
+        context,
+        coin: 'BTC',
+        options: [
+          {'name': 'Bitcoin (Native SegWit)', 'chain': 'BTC'},
+          {'name': 'Lightning Network', 'chain': 'LN'},
+        ],
+      );
+    } else if (current == 'USDT') {
+      _showChainSheet(
+        context,
+        coin: 'USDT',
+        options: [
+          {'name': 'Ethereum (ERC-20)', 'chain': 'ETH'},
+          {'name': 'Tron (TRC-20)', 'chain': 'TRX'},
+          {'name': 'Gas-Free Network', 'chain': 'GASFREE'},
+        ],
+      );
+    } else {
+      _showNicknameSheet(context, current, current);
+    }
+  }
+
+  // 🔹 Ask nickname (bottom-sheet style)
+  void _showNicknameSheet(BuildContext context, String coin, String chain) {
+    final ctrl = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.grey[700],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Name Your $coin Wallet',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Enter a name (e.g. Trading Wallet)',
+                hintStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.grey)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white)),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00D4AA),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12)),
+              onPressed: () {
+                final name = ctrl.text.trim();
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Please enter a wallet name'),
+                      backgroundColor: Colors.orange));
+                  return;
+                }
+                Navigator.pop(ctx);
+                _showMnemonicSheet(context, coin, chain, name);
+              },
+              child: const Text('Next'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // 🔹 Show mnemonic + confirm (bottom-sheet)
+  void _showMnemonicSheet(
+      BuildContext context, String coin, String chain, String nickname) {
+    final mnemonic = bip39.generateMnemonic();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.grey[700],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Create $coin Wallet ($chain)',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(mnemonic,
+                  style: const TextStyle(color: Colors.white, height: 1.5)),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              '⚠️ Store these words safely — they restore your wallet.',
+              style: TextStyle(
+                  color: Colors.orangeAccent, fontSize: 13, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00D4AA),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12)),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _createWallet(context, mnemonic, chain, nickname);
+              },
+              child: const Text('Confirm'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // 🔹 Modern bottom-sheet selector (only BTC / USDT)
+  void _showChainSheet(BuildContext context,
+      {required String coin, required List<Map<String, String>> options}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Colors.grey[700],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text('Select ${coin.toUpperCase()} Chain',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 20),
+              for (final o in options)
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showNicknameSheet(context, coin, o['chain']!);
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: Colors.white.withOpacity(0.08), width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.circle,
+                            color: Color(0xFF00D4AA), size: 10),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(o['name']!,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500)),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded,
+                            color: Colors.grey, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+// 🔹 API call + refresh
+  Future<void> _createWallet(
+    BuildContext context,
+    String mnemonic,
+    String chain,
+    String nickname,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final walletId = prefs.getString('wallet_id');
+    if (walletId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No wallet ID found – please log in again.'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00D4AA)),
+      ),
+    );
+
+    final result = await AuthService.createSingleChainWallet(
+      mnemonic: mnemonic,
+      chain: chain,
+      walletId: walletId,
+      nickname: nickname,
+    );
+
+    Navigator.pop(context); // close loader
+
+    final bs = context.read<BalanceStore>();
+
+    if (result.success && result.data != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ $chain wallet “$nickname” created successfully!'),
+        backgroundColor: Colors.green,
+      ));
+
+      // ✅ 1️⃣ Instantly add the new chain wallet to holdings
+      await bs.addTempChainFromResponse(result.data!);
+
+      // ✅ 2️⃣ Optional delayed refresh to sync USD balances from backend
+      Future.delayed(const Duration(seconds: 3), () => bs.refresh());
+
+      // ✅ 3️⃣ Force UI rebuild of holdings tab
+      if (mounted) setState(() {});
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('❌ ${result.message ?? 'Failed to create wallet'}'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
 }

@@ -91,9 +91,13 @@ class BalanceStore extends ChangeNotifier {
     _safeNotify();
 
     try {
+      // ✅ Also fetch new wallets/chains before balance refresh
+      await _syncWalletChains(effectiveWalletId);
+
       final payload = await AuthService.fetchBalancesAndTotal(
         walletId: effectiveWalletId,
       );
+
       _rows = payload.rows;
       _totalUsd = payload.totalUsd;
     } catch (e) {
@@ -104,7 +108,67 @@ class BalanceStore extends ChangeNotifier {
     }
   }
 
-  /// Refresh immediately (deferred to next frame) and then every [interval].
+  /// 🔄 Fetches the latest wallet data (including new chains)
+  Future<void> _syncWalletChains(String walletId) async {
+    try {
+      final data = await AuthService.fetchWalletsForUser(walletId: walletId);
+      if (data != null && data.isNotEmpty) {
+        for (final newChain in data) {
+          final already = _rows.any((r) =>
+              r.blockchain.toUpperCase() ==
+              (newChain.blockchain?.toUpperCase() ?? ''));
+          if (!already) {
+            _rows = [..._rows, newChain];
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Wallet sync failed: $e');
+    }
+  }
+
+  /// ✅ Called right after createSingleChainWallet() succeeds.
+  /// Adds new wallets (with nicknames) to holdings immediately.
+  Future<void> addTempChainFromResponse(Map<String, dynamic> data) async {
+    try {
+      if (data['wallets'] == null) return;
+      final List wallets = data['wallets'] as List;
+
+      final newBalances = <ChainBalance>[];
+
+      for (final w in wallets) {
+        final chain = (w['chain'] ?? '').toString().toUpperCase();
+        if (chain.isEmpty) continue;
+
+        final nickname = (w['nickname'] ?? '').toString();
+        final addr = (w['address'] ?? '').toString();
+
+        final cb = ChainBalance(
+          blockchain: chain,
+          symbol: chain,
+          token: '',
+          balance: '0',
+          value: 0.0,
+          address: addr,
+          nickname: nickname, // ✅ now valid
+        );
+
+        final exists = _rows.any((r) =>
+            r.blockchain.toUpperCase() == chain &&
+            r.address.toLowerCase() == addr.toLowerCase());
+        if (!exists) newBalances.add(cb);
+      }
+
+      _rows = [..._rows, ...newBalances];
+      _safeNotify();
+    } catch (e) {
+      debugPrint('⚠️ addTempChainFromResponse failed: $e');
+    }
+  }
+
+  /// R
+  ///
+  /// efresh immediately (deferred to next frame) and then every [interval].
   void startAutoRefresh({
     Duration interval = const Duration(seconds: 30),
     String? walletId,
@@ -114,7 +178,6 @@ class BalanceStore extends ChangeNotifier {
     }
     _ticker?.cancel();
 
-    // First tick: defer to next frame (prevents notify during build).
     _postFrame(() => refresh());
 
     _ticker = Timer.periodic(interval, (_) => refresh());
@@ -140,8 +203,6 @@ class BalanceStore extends ChangeNotifier {
     });
   }
 
-  /// Notifies listeners safely. If called during the build phase,
-  /// defer the notification to the next frame.
   void _safeNotify() {
     if (_disposed) return;
 
@@ -149,7 +210,6 @@ class BalanceStore extends ChangeNotifier {
     final inBuildPhase = phase == SchedulerPhase.persistentCallbacks;
 
     if (inBuildPhase) {
-      // We're in the middle of a frame (build/layout/paint). Defer.
       _postFrame(() {
         if (!_disposed) notifyListeners();
       });

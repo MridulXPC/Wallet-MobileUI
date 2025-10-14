@@ -45,6 +45,7 @@ class AuthResponse {
 }
 
 /// Lightweight balance row for /api/get-balance/walletId/:walletId
+/// Lightweight balance row for /api/get-balance/walletId/:walletId
 class ChainBalance {
   final String blockchain; // e.g. "ETH"
   final String address; // wallet address for that chain
@@ -52,6 +53,7 @@ class ChainBalance {
   final String symbol; // e.g. "ETH"
   final String balance; // keep as string (precision)
   final double? value; // may be 0 or null
+  final String? nickname; // 👈 added support for user-given nickname
 
   const ChainBalance({
     required this.blockchain,
@@ -60,18 +62,29 @@ class ChainBalance {
     required this.symbol,
     required this.balance,
     this.value,
+    this.nickname,
   });
 
   factory ChainBalance.fromJson(Map<String, dynamic> json) {
     return ChainBalance(
-      blockchain: json['blockchain']?.toString() ?? '',
+      blockchain:
+          json['blockchain']?.toString() ?? json['chain']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
-      token: json['token']?.toString() ?? '',
-      symbol: json['symbol']?.toString() ?? '',
+      token: json['token']?.toString() ??
+          json['symbol']?.toString() ??
+          json['blockchain']?.toString() ??
+          '',
+      symbol: json['symbol']?.toString() ??
+          json['token']?.toString() ??
+          json['blockchain']?.toString() ??
+          '',
       balance: json['balance']?.toString() ?? '0',
       value: (json['value'] is num)
           ? (json['value'] as num).toDouble()
           : double.tryParse(json['value']?.toString() ?? ''),
+      nickname: json['nickname']?.toString() ??
+          json['walletName']?.toString() ??
+          '', // 👈 pull nickname if present
     );
   }
 }
@@ -499,6 +512,80 @@ class AuthService {
   }
 
   // ===================== WALLETS =====================
+  /// ✅ NEW: Fetch all chain wallets for a given walletId
+  /// This converts the `/api/wallet/get-wallets` response into a flat list of ChainBalance models
+  static Future<List<ChainBalance>> fetchWalletsForUser(
+      {required String walletId}) async {
+    final token = await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    final res = await _makeRequest(
+      method: 'GET',
+      endpoint: '/api/wallet/get-wallets',
+      token: token,
+      requireAuth: true,
+    );
+
+    final data = _handleResponse(res);
+    final wallets = (data['wallets'] as List?) ?? (data['data'] as List?) ?? [];
+
+    final List<ChainBalance> rows = [];
+
+    for (final w in wallets) {
+      if (w is! Map) continue;
+      final chains = (w['chains'] as List?) ?? [];
+      for (final c in chains) {
+        if (c is! Map) continue;
+
+        final chain = (c['chain'] ?? '').toString();
+        final address = (c['address'] ?? '').toString();
+        final nickname =
+            (c['nickname'] ?? w['name'] ?? w['walletName'] ?? '').toString();
+
+        // Some chains might have nested "nativeAsset" data
+        Map<String, dynamic>? native = (c['nativeAsset'] is Map)
+            ? (c['nativeAsset'] as Map).cast<String, dynamic>()
+            : null;
+
+        rows.add(ChainBalance(
+          blockchain: chain,
+          address: address,
+          token: native?['symbol']?.toString() ?? chain,
+          symbol: native?['symbol']?.toString() ?? chain,
+          balance: (native?['balance'] ?? '0').toString(),
+          value: native?['usdValue'] is num
+              ? (native?['usdValue'] as num).toDouble()
+              : double.tryParse(native?['usdValue']?.toString() ?? '0'),
+          nickname: nickname, // ✅ add nickname here
+        ));
+      }
+    }
+
+    // ✅ fallback if wallet object has direct 'chain' and 'address'
+    for (final w in wallets) {
+      if (w is! Map) continue;
+      if (w['chains'] == null || (w['chains'] as List).isEmpty) {
+        final chain = w['chain']?.toString();
+        final address = w['address']?.toString();
+        if (chain != null && chain.isNotEmpty && address != null) {
+          rows.add(ChainBalance(
+            blockchain: chain,
+            address: address,
+            token: chain,
+            symbol: chain,
+            balance: '0',
+            value: 0.0,
+            nickname: (w['nickname'] ?? w['walletName'] ?? '').toString(), // ✅
+          ));
+        }
+      }
+    }
+
+    debugPrint('🔄 fetchWalletsForUser -> ${rows.length} chain entries found');
+    return rows;
+  }
 
   static Future<String?> getStoredWalletId() async {
     try {
@@ -760,22 +847,122 @@ class AuthService {
     return null;
   }
 
+  /// Safely find the address for a specific blockchain chain.
+  /// - [chains] is a list of maps returned by the API (each with 'chain' & 'address').
+  /// - [want] is the chain code you are looking for (e.g. 'BTC', 'TRX', 'ETH').
+  ///
+  /// Returns the matching address if found; otherwise returns the first valid address (fallback).
   static String? _searchChainsForAddress(List chains, String want) {
-    String? any;
-    for (final c in chains) {
-      if (c is! Map) continue;
-      final m = c.cast<String, dynamic>();
-      final chainCode = (m['chain'] as String?)?.toUpperCase().trim();
-      final normalized = _normalizeChain(chainCode ?? '');
-      final address = (m['address'] as String?)?.trim();
+    try {
+      if (chains.isEmpty) return null;
 
-      if (address != null && address.isNotEmpty) {
-        any ??= address;
-        if (want.isEmpty) return address;
-        if (normalized == want) return address;
+      String? fallbackAddress;
+
+      for (final c in chains) {
+        if (c is! Map) continue;
+
+        final m = c.cast<String, dynamic>();
+
+        final chainCode = (m['chain'] as String?)?.toUpperCase().trim() ?? '';
+        final normalized = _normalizeChain(chainCode);
+        final address = (m['address'] as String?)?.trim();
+
+        if (address != null && address.isNotEmpty) {
+          // store first valid address as fallback
+          fallbackAddress ??= address;
+
+          // if no specific chain requested, return first valid one
+          if (want.isEmpty) return address;
+
+          // if chain matches, return that address
+          if (normalized == want.toUpperCase()) {
+            return address;
+          }
+        }
       }
+
+      // fallback if no exact match found
+      return fallbackAddress;
+    } catch (e, st) {
+      debugPrint('❌ _searchChainsForAddress error: $e');
+      debugPrint('$st');
+      return null;
     }
-    return any;
+  }
+
+  /// POST /api/wallet/create-single-chain
+  /// Creates a new single-chain wallet address for an existing walletId
+  static Future<AuthResponse> createSingleChainWallet({
+    required String mnemonic,
+    required String chain,
+    required String walletId,
+    required String nickname, // 👈 mandatory field
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    // ✅ Updated request body
+    final body = {
+      'mnemonic': mnemonic,
+      'chain': chain,
+      'walletId': walletId,
+      'nickname': nickname,
+    };
+
+    const endpoint = '/api/wallet/create-single-chain';
+
+    try {
+      debugPrint('🌐 POST $endpoint');
+      debugPrint('📦 Request body: ${jsonEncode(body)}');
+
+      final res = await _makeRequest(
+        method: 'POST',
+        endpoint: endpoint,
+        token: token,
+        requireAuth: true,
+        body: body,
+      );
+
+      // 👇 LOG RAW HTTP RESPONSE even for 500s
+      debugPrint('📥 Raw response: ${res.statusCode}');
+      debugPrint('🧾 Response body: ${res.body}');
+
+      // If backend failed (status 500), throw readable error
+      if (res.statusCode >= 500) {
+        throw ApiException('Server error ${res.statusCode}: ${res.body}');
+      }
+
+      final data = _handleResponse(res);
+
+      // Optional: update stored walletId if backend returns one
+      final newWalletId = _extractWalletId(data);
+      if (newWalletId != null && newWalletId.isNotEmpty) {
+        await _saveWalletId(newWalletId);
+        debugPrint('💾 Updated walletId (single-chain): $newWalletId');
+      }
+
+      // Log summary of new wallet if present
+      if (data is Map &&
+          data['wallets'] is List &&
+          (data['wallets'] as List).isNotEmpty) {
+        final last = (data['wallets'] as List).last;
+        debugPrint(
+            '✅ Wallet created: ${last['chain']} → ${last['address']} (${last['nickname'] ?? 'no name'})');
+      }
+
+      return AuthResponse.success(data: data);
+    } on ApiException catch (e) {
+      // This is your own handled exception (like auth or API error)
+      debugPrint('🚨 ApiException: ${e.message}');
+      return AuthResponse.failure('Server returned error: ${e.message}');
+    } catch (e, st) {
+      // This will catch unexpected errors or null-pointer issues
+      debugPrint('🚨 createSingleChainWallet error: $e\n$st');
+      return AuthResponse.failure('Failed to create single-chain wallet: $e');
+    }
   }
 
   // ===================== TRANSACTIONS =====================
@@ -1251,8 +1438,10 @@ class AuthService {
       final rows = listDyn
           .whereType<Map>()
           .map((e) => e.cast<String, dynamic>())
-          .map(ChainBalance.fromJson)
-          .toList(growable: false);
+          .map((m) {
+        if (!m.containsKey('nickname')) m['nickname'] = m['walletName'] ?? '';
+        return ChainBalance.fromJson(m);
+      }).toList(growable: false);
 
       return BalancesPayload(rows: rows, totalUsd: totalUsd);
     } on ApiException {

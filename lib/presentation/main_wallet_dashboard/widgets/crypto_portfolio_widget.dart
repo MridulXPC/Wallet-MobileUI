@@ -111,13 +111,12 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
 
     try {
       String? useWalletId = walletId;
-      if (useWalletId == null || useWalletId.isEmpty) {
-        final wallets = await AuthService.fetchWallets();
-        if (wallets.isNotEmpty) {
-          useWalletId = wallets.first['walletId']?.toString() ??
-              wallets.first['id']?.toString() ??
-              wallets.first['_id']?.toString();
-        }
+      final wallets = await AuthService.fetchWallets();
+      if (wallets.isNotEmpty) {
+        useWalletId = useWalletId ??
+            wallets.first['walletId']?.toString() ??
+            wallets.first['id']?.toString() ??
+            wallets.first['_id']?.toString();
       }
 
       if (useWalletId == null || useWalletId.isEmpty) {
@@ -132,56 +131,47 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
       final tokens =
           await AuthService.fetchTokensByWallet(walletId: useWalletId);
 
-      // Store RAW numeric USD values; format later based on CurrencyNotifier
-      _visible = tokens.map((t) {
-        final base = _baseSymbolFor(t.symbol, t.chain);
-        final iconAsset = _assetForSymbol(context, base);
-        final coinName = _nameForSymbol(context, base, t.name);
+      // ✅ Group by symbol & take only MAINNET chains
+      final Map<String, Map<String, dynamic>> grouped = {};
 
-        // Backend types defensive parsing
-        final balanceStr = (t.balance ?? '').toString();
+      for (final t in tokens) {
+        final base = _baseSymbolFor(t.symbol, t.chain);
+        final chain = (t.chain ?? '').toUpperCase();
+
+        // Only consider MAIN chains (skip LN, TRX, GASFREE etc.)
+        final isMainnet = switch (base) {
+          'BTC' => chain == 'BTC',
+          'ETH' => chain == 'ETH',
+          'USDT' => chain == 'ETH', // treat ERC20 as main
+          _ => true,
+        };
+
+        if (!isMainnet) continue;
+
         final usdValNum = (t.value is num)
             ? (t.value as num).toDouble()
-            : double.tryParse('${t.value}') ??
-                0.0; // Portfolio value for that token in USD
-        // If you also have per-token USD balance as separate field, use it; else reuse usdValNum
-        final usdBalanceNum = usdValNum;
+            : double.tryParse('${t.value}') ?? 0.0;
 
-        String _formatPercent(double v) {
-          final sign = v >= 0 ? '+' : '−';
-          return '$sign${v.abs().toStringAsFixed(2)}%';
+        final existing = grouped[base];
+        if (existing != null) {
+          existing['usdValueNum'] += usdValNum;
+        } else {
+          grouped[base] = {
+            "symbol": base,
+            "name": _nameForSymbol(context, base, t.name),
+            "icon": _assetForSymbol(context, base),
+            "usdValueNum": usdValNum,
+            "usdBalanceNum": usdValNum,
+            "balance": t.balance ?? '0.0000',
+            "change24h": '${t.changePercent ?? 0.0}%',
+            "isPositive": (t.changePercent ?? 0.0) >= 0,
+          };
         }
+      }
 
-        final pct = (t.changePercent is num)
-            ? (t.changePercent as num).toDouble()
-            : double.tryParse('${t.changePercent}') ?? 0.0; // fallback 0
-        final isPositive = pct >= 0;
-
-        return {
-          "id": t.id ?? '${base}_${t.chain}',
-          "symbol": base,
-          "name": coinName,
-          "icon": iconAsset,
-          "balance": balanceStr,
-
-          // RAW USD numbers kept for live conversion:
-          "usdValueNum": usdValNum,
-          "usdBalanceNum": usdBalanceNum,
-
-          // Change meta:
-          "change24h": _formatPercent(pct),
-          "isPositive": isPositive,
-
-          // Extra:
-          "enabled": true,
-          "chain": t.chain,
-          "contractAddress": t.contractAddress,
-          "_id": t.id,
-        };
-      }).toList();
-
-      _visible = _visible.where((x) => x["enabled"] != false).toList();
-    } catch (e) {
+      _visible = grouped.values.toList();
+    } catch (e, st) {
+      debugPrint('❌ Portfolio load error: $e\n$st');
       _error = e.toString();
       _visible = const [];
     } finally {
