@@ -965,6 +965,95 @@ class AuthService {
     }
   }
 
+  /// 🗑️ Delete a single-chain entry by nickname for a wallet
+  /// Primary route (per spec): POST /api/delete-single-chain
+  /// Fallbacks:
+  ///   - POST /api/wallet/delete-single-chain
+  ///   - DELETE variants (if the backend prefers DELETE)
+  static Future<AuthResponse> deleteSingleChainWallet({
+    String? walletId, // optional: will fall back to stored walletId
+    required String nickname, // chain's nickname used at creation time
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    walletId ??= await getStoredWalletId();
+    if (walletId == null || walletId.isEmpty) {
+      throw const ApiException('walletId is required (not stored yet)');
+    }
+
+    final nick = nickname.trim();
+    if (nick.isEmpty) {
+      throw const ApiException('nickname is required');
+    }
+
+    final payload = {
+      'walletId': walletId, // ← ensure 'walletId' (no trailing comma)
+      'nickname': nick,
+    };
+
+    Future<AuthResponse> _call(String method, String endpoint) async {
+      debugPrint('🗑️ $method $endpoint');
+      debugPrint('📦 Body: ${jsonEncode(payload)}');
+
+      final res = await _makeRequest(
+        method: method,
+        endpoint: endpoint,
+        token: token,
+        requireAuth: true,
+        body: payload,
+      );
+
+      debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
+
+      // Gracefully handle 2xx responses with empty body (e.g., 204 No Content)
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final trimmed = res.body.trim();
+        if (trimmed.isEmpty || trimmed.toLowerCase() == 'null') {
+          return AuthResponse.success(data: const {
+            'message': 'Single-chain deleted',
+            'ok': true,
+          });
+        }
+      }
+
+      final data = _handleResponse(res);
+      return AuthResponse.success(data: data);
+    }
+
+    try {
+      // Per your spec
+      return await _call('POST', '/api/delete-single-chain');
+    } on ApiException catch (e) {
+      // Route/method fallbacks if the server differs by environment
+      if (e.statusCode == 404 || e.statusCode == 405) {
+        try {
+          return await _call('POST', '/api/wallet/delete-single-chain');
+        } on ApiException catch (e2) {
+          if (e2.statusCode == 404 || e2.statusCode == 405) {
+            // Try DELETE variants if the backend expects HTTP DELETE
+            try {
+              return await _call('DELETE', '/api/delete-single-chain');
+            } on ApiException catch (e3) {
+              if (e3.statusCode == 404 || e3.statusCode == 405) {
+                return await _call('DELETE', '/api/wallet/delete-single-chain');
+              }
+              rethrow;
+            }
+          }
+          rethrow;
+        }
+      }
+      rethrow;
+    } catch (e, st) {
+      debugPrint('🚨 deleteSingleChainWallet error: $e\n$st');
+      return AuthResponse.failure('Failed to delete single-chain: $e');
+    }
+  }
+
   // ===================== TRANSACTIONS =====================
 
   static Future<AuthResponse> sendTransaction({

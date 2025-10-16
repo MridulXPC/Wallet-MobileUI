@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
@@ -14,36 +15,50 @@ class WelcomeCarouselScreen extends StatefulWidget {
 class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
   final PageController _pageController = PageController();
   int currentPage = 0;
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
+  Timer? _autoScrollTimer;
 
+  // 🔹 Carousel slides data
   final List<Map<String, String>> slides = [
-    {
-      'image': 'assets/images/onboarding1.png',
-      'title': 'Welcome to MetaWallet',
-      'subtitle':
-          'Trusted by millions, MetaWallet is a secure wallet making the world of web3 accessible to all.',
-    },
-    {
-      'image': 'assets/images/onboarding2.png',
-      'title': 'Control Your Assets',
-      'subtitle':
-          'Manage your digital identity, tokens and NFTs from one secure place.',
-    },
-    {
-      'image': 'assets/images/onboarding3.png',
-      'title': 'Your Keys, Your Wallet',
-      'subtitle':
-          'Only you have access to your funds. Take full control with self-custody.',
-    },
+    {"image": "assets/CaouselArtboardone.jpg"},
+    {"image": "assets/CaouselArtboardtwo.jpg"},
+    {"image": "assets/CaouselArtboardthree.jpg"},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoScroll();
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (_pageController.hasClients) {
+        int nextPage = (currentPage + 1) % slides.length;
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoScrollTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          AppTheme.darkTheme.scaffoldBackgroundColor, // light green background
+      backgroundColor: _pageBg,
       body: SafeArea(
         child: Column(
           children: [
+            // 🔹 PageView (full-width images)
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
@@ -53,50 +68,21 @@ class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
                 },
                 itemBuilder: (context, index) {
                   final slide = slides[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 30),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          // child: Image.asset(
-                          //   'assets/images/metamask_logo.png', // Update if needed
-                          //   height: 32,
-                          // ),
-                        ),
-                        const SizedBox(height: 20),
-                        // Image.asset(
-                        //   slide['image']!,
-                        //   height: 350,
-                        // ),
-                        const SizedBox(height: 40),
-                        // Text(
-                        //   slide['title']!,
-                        //   textAlign: TextAlign.center,
-                        //   style: const TextStyle(
-                        //     fontSize: 24,
-                        //     fontWeight: FontWeight.bold,
-                        //     color: Colors.black87,
-                        //   ),
-                        // ),
-                        const SizedBox(height: 16),
-                        // Text(
-                        //   slide['subtitle']!,
-                        //   textAlign: TextAlign.center,
-                        //   style: const TextStyle(
-                        //     fontSize: 16,
-                        //     color: Colors.black54,
-                        //   ),
-                        // ),
-                      ],
+                  return Container(
+                    color: _pageBg,
+                    alignment: Alignment.center,
+                    child: Image.asset(
+                      slide['image']!,
+                      fit: BoxFit.cover, // fill the full width nicely
+                      width: double.infinity,
+                      height: double.infinity,
                     ),
                   );
                 },
               ),
             ),
 
-            // Smooth page indicator
+            // 🔹 Smooth page indicator
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: SmoothPageIndicator(
@@ -106,13 +92,13 @@ class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
                   dotHeight: 8,
                   dotWidth: 8,
                   spacing: 8,
-                  activeDotColor: Colors.white60,
-                  dotColor: Colors.white60,
+                  activeDotColor: Colors.white,
+                  dotColor: Colors.white38,
                 ),
               ),
             ),
 
-            // Get Started Button
+            // 🔹 Get Started Button
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
               child: SizedBox(
@@ -122,19 +108,19 @@ class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
                     Navigator.pushNamed(context, AppRoutes.walletSetupScreen);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.tealAccent[700],
+                    backgroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: const Text(
-                    'Get started',
-                    style: TextStyle(fontSize: 16, color: Colors.white),
+                    'Get Started',
+                    style: TextStyle(fontSize: 16, color: Colors.black87),
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),

@@ -34,12 +34,12 @@ class _WalletOnboardingFlowState extends State<WalletOnboardingFlow> {
     super.dispose();
   }
 
-  static const Color kBg = Color(0xFF0B0D1A);
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: _pageBg,
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
@@ -81,7 +81,6 @@ ButtonStyle _whiteButtonStyle(Color darkFg) {
   );
 }
 
-// ---------- Step 1 ----------
 class Step1PasswordScreen extends StatefulWidget {
   final VoidCallback onNext;
   const Step1PasswordScreen({super.key, required this.onNext});
@@ -90,8 +89,10 @@ class Step1PasswordScreen extends StatefulWidget {
   State<Step1PasswordScreen> createState() => _Step1PasswordScreenState();
 }
 
-class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
-  static const Color kBg = Color(0xFF0B0D1A);
+class _Step1PasswordScreenState extends State<Step1PasswordScreen>
+    with SingleTickerProviderStateMixin {
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
+
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -101,6 +102,19 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
   bool _showConfirm = false;
   bool _isLoading = false;
   final Uuid uuid = const Uuid();
+
+  // 🔹 Fade animation for top image
+  double _opacity = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Trigger smooth fade-in
+    Future.delayed(const Duration(milliseconds: 300), () {
+      setState(() => _opacity = 1.0);
+    });
+  }
 
   @override
   void dispose() {
@@ -149,6 +163,7 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
         password: _passwordController.text.trim(),
         sessionId: sessionId,
       );
+
       if (mounted) widget.onNext();
     } catch (_) {
       _snack('Error creating password. Try again.');
@@ -159,13 +174,14 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: _pageBg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -176,18 +192,39 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 40),
+
+                  // 🔹 Fade-in Lock Image
+                  Center(
+                    child: AnimatedOpacity(
+                      opacity: _opacity,
+                      duration: const Duration(milliseconds: 1200),
+                      curve: Curves.easeInOut,
+                      child: Image.asset(
+                        'assets/LockScreen.png',
+                        width: 190,
+                        height: 190,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
                   Text('Step 1 of 4',
                       style:
                           TextStyle(color: Colors.grey.shade300, fontSize: 14)),
                   const SizedBox(height: 10),
+
                   const Text('Create Wallet Password',
                       style:
                           TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 30),
+
                   const Text('Create Password',
                       style: TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
+
                   TextFormField(
                     controller: _passwordController,
                     obscureText: !_showPassword,
@@ -208,10 +245,13 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
                   const Text('Confirm Password',
                       style: TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
+
                   TextFormField(
                     controller: _confirmController,
                     obscureText: !_showConfirm,
@@ -233,7 +273,9 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 20),
+
                   Row(
                     children: [
                       Checkbox(
@@ -252,13 +294,15 @@ class _Step1PasswordScreenState extends State<Step1PasswordScreen> {
                       )
                     ],
                   ),
+
                   const SizedBox(height: 20),
+
                   ElevatedButton(
                     onPressed:
                         _isFormValid && !_isLoading ? _handleContinue : null,
-                    style: _whiteButtonStyle(kBg),
+                    style: _whiteButtonStyle(_pageBg),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.black)
+                        ? const CircularProgressIndicator(color: Colors.white)
                         : const Text('Create Password'),
                   ),
                 ],

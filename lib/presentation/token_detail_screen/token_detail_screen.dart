@@ -30,6 +30,7 @@ class TokenDetailScreen extends StatefulWidget {
 class _TokenDetailScreenState extends State<TokenDetailScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? tokenData;
+  final Set<String> _deletedKeys = {}; // track dismissed wallets
 
   // ---- live price state (Binance) ----
   WebSocketChannel? _ws;
@@ -409,23 +410,22 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                 Expanded(
                   flex: 1,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 4),
                       _buildTokenPriceDisplay(fx),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 4), // tighter
                       Flexible(
                         flex: 1,
                         child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 2.w),
+                          padding: EdgeInsets.symmetric(horizontal: 3.w),
                           child: _buildPriceChart(),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 2),
                       _buildTimePeriodSelector(),
-                      const SizedBox(height: 6),
+                      SizedBox(height: 4),
                       Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4.w),
+                        padding: EdgeInsets.symmetric(horizontal: 5.w),
                         child: ActionButtonsGridWidget(
                           isLarge: isLarge,
                           isTablet: isTablet,
@@ -484,18 +484,15 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   Widget _buildDarkAppBar() {
     return SafeArea(
       child: SizedBox(
-        height: 56,
+        height: 46, // 🔽 reduced from 56
         child: Stack(
           children: [
             Align(
               alignment: Alignment.centerLeft,
               child: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                splashRadius: 20,
+                icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 16), // 🔽 slightly smaller
+                splashRadius: 18,
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -507,32 +504,23 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                     borderRadius: BorderRadius.circular(8),
                     child: Image.asset(
                       iconPath,
-                      width: 28,
-                      height: 28,
+                      width: 26,
+                      height: 26,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.currency_bitcoin,
-                        color: Colors.orange,
-                      ),
                     ),
                   ),
-                  SizedBox(width: 2.w),
+                  const SizedBox(width: 6),
                   Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        sym,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        'COIN | $name',
-                        style: const TextStyle(color: greyColor, fontSize: 12),
-                      ),
+                      Text(sym,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600)),
+                      Text('COIN | $name',
+                          style: const TextStyle(
+                              color: greyColor, fontSize: 11, height: 1.1)),
                     ],
                   ),
                 ],
@@ -624,8 +612,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b) * 0.995;
     final maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.005;
 
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 2.w),
+    return SizedBox(
+      height: 160, // 🔼 taller, shows chart clearly
       child: LineChart(
         LineChartData(
           gridData: FlGridData(show: false),
@@ -636,15 +624,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               spots: spots,
               isCurved: true,
               color: greenColor,
-              barWidth: 3,
+              barWidth: 2.5, // 🔽 thinner stroke
               isStrokeCapRound: true,
               dotData: FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
                 gradient: LinearGradient(
                   colors: [
-                    greenColor.withOpacity(0.4),
-                    greenColor.withOpacity(0.1),
+                    greenColor.withOpacity(0.3),
                     Colors.transparent,
                   ],
                   begin: Alignment.topCenter,
@@ -653,8 +640,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
               ),
             ),
           ],
-          minX: spots.first.x,
-          maxX: spots.last.x,
           minY: minY,
           maxY: maxY,
         ),
@@ -695,7 +680,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         // 👇 fixed bottom button
         Container(
           width: double.infinity,
-          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          padding: const EdgeInsets.symmetric(
+              vertical: 10, horizontal: 16), // 🔽 smaller
           decoration: const BoxDecoration(
             color: Color(0xFF0B0D1A),
             border: Border(
@@ -771,7 +757,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       }).toList();
     }
 
-    // ✅ Show real created wallets (from backend)
     return rowsForCoin.map((r) {
       final chainNorm = _normalizeChain(r.blockchain.toUpperCase());
       final balance = double.tryParse(r.balance) ?? 0.0;
@@ -786,10 +771,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
       final coinForIcon =
           store.getById(coinIdGuess) ?? store.getById(wantedSym);
-
       final icon = coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
 
-      // ✅ Title now includes nickname if available
       final baseTitle = coinForIcon?.name ??
           (wantedSym == 'USDT'
               ? 'USDT (${_chainUiName(chainNorm)})'
@@ -807,11 +790,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         balance: balance,
         usd: usd,
         symbol: wantedSym,
+        nickname: nickname, // 👈 pass nickname
+        chain: chainNorm, // 👈 pass chain
       );
     }).toList();
   }
 
-  // 🔹 Reusable holding card widget
   Widget _buildHoldingCard({
     required String icon,
     required String title,
@@ -819,62 +803,155 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     required double balance,
     required double usd,
     required String symbol,
+    String? nickname, // 👈 add this
+    String? chain, // 👈 add this
   }) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
-      padding: EdgeInsets.all(3.w),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
+    // identify unique key for dismissible
+    final keyValue = '${symbol}_${chain ?? ''}_${nickname ?? ''}';
+
+    return Dismissible(
+      key: ValueKey(keyValue),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: Colors.redAccent.withOpacity(0.9),
+        child: const Icon(Icons.delete_forever, color: Colors.white, size: 28),
       ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(icon, width: 40, height: 40, fit: BoxFit.cover),
+      confirmDismiss: (_) async {
+        // 🔹 prevent deleting the main wallet (no nickname)
+        if (nickname == null || nickname.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Main wallet cannot be deleted'),
+            backgroundColor: Colors.orange,
+          ));
+          return false;
+        }
+
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: const Text(
+              'Delete Wallet',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: Text(
+              'Are you sure you want to delete “$nickname”?',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child:
+                    const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          SizedBox(width: 3.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(title,
+        );
+        return confirmed ?? false;
+      },
+      onDismissed: (_) async {
+        _deletedKeys.add(keyValue); // 👈 mark deleted instantly
+        setState(() {}); // rebuild UI without it
+        await _deleteChainWallet(context, nickname!);
+      },
+      child: Container(
+        margin: EdgeInsets.only(bottom: 2.h),
+        padding: EdgeInsets.all(3.w),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child:
+                  Image.asset(icon, width: 40, height: 40, fit: BoxFit.cover),
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600)),
+                      Text(
+                        '${_formatCrypto(balance)} $symbol',
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
-                            fontWeight: FontWeight.w600)),
-                    Text(
-                      '${_formatCrypto(balance)} $symbol',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 0.5.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(networkSubtitle,
-                        style: const TextStyle(color: greyColor, fontSize: 13)),
-                    Text(
-                      FxAdapter(context.read<CurrencyNotifier>())
-                          .formatFromUsd(usd),
-                      style: const TextStyle(color: greyColor, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ],
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(networkSubtitle,
+                          style:
+                              const TextStyle(color: greyColor, fontSize: 13)),
+                      Text(
+                        FxAdapter(context.read<CurrencyNotifier>())
+                            .formatFromUsd(usd),
+                        style: const TextStyle(color: greyColor, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _deleteChainWallet(BuildContext context, String nickname) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00D4AA)),
+      ),
+    );
+
+    final result =
+        await AuthService.deleteSingleChainWallet(nickname: nickname);
+
+    Navigator.pop(context); // close loader
+
+    if (result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ Wallet “$nickname” deleted successfully'),
+        backgroundColor: Colors.green,
+      ));
+
+      // 🔄 Refresh holdings
+      final bs = context.read<BalanceStore>();
+      await bs.refresh();
+      if (mounted) setState(() {});
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('❌ ${result.message ?? 'Failed to delete wallet'}'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
   }
 
   /* ---------- small helpers ---------- */

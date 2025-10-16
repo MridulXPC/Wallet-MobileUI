@@ -10,36 +10,50 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+
   @override
   void initState() {
     super.initState();
+
+    // Animation setup
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
+    _fadeAnimation =
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+
+    _controller.forward();
     _navigateToNextScreen();
   }
 
   Future<void> _navigateToNextScreen() async {
-    // Display splash at least 2 seconds
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 3));
 
     final prefs = await SharedPreferences.getInstance();
-
     final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
     final walletPassword = prefs.getString('wallet_password');
     final walletId = prefs.getString('wallet_id');
 
     String nextRoute;
-
     if (walletPassword != null &&
         walletPassword.isNotEmpty &&
         walletId != null &&
         walletId.isNotEmpty) {
-      // ✅ Existing wallet found → App Lock screen
       nextRoute = AppRoutes.appLockScreen;
     } else if (isFirstLaunch) {
-      // 🆕 First time user → Welcome/setup flow
       nextRoute = AppRoutes.welcomeScreen;
     } else {
-      // 🧩 Edge case (user skipped confirm phrase or partial setup)
       nextRoute = AppRoutes.walletSetupScreen;
     }
 
@@ -48,30 +62,37 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.account_balance_wallet,
-              size: 100,
-              color: Theme.of(context).primaryColor,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/Zayralogopng.png',
+                  width: 150,
+                  height: 150,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(height: 40),
+                const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.transparent,
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            Text(
-              'CryptoWallet',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).primaryColor,
-              ),
-            ),
-            const SizedBox(height: 40),
-            const CircularProgressIndicator(color: Colors.white),
-          ],
+          ),
         ),
       ),
     );

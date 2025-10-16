@@ -12,7 +12,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const Color kBg = Color(0xFF0B0D1A);
+  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
 
   final TextEditingController _phraseController = TextEditingController();
   bool _loading = false;
@@ -94,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
   ButtonStyle _whiteButtonStyle() {
     return ElevatedButton.styleFrom(
       backgroundColor: Colors.white,
-      foregroundColor: kBg,
+      foregroundColor: _pageBg,
       minimumSize: const Size.fromHeight(50),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 2,
@@ -127,9 +127,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: _pageBg,
       appBar: AppBar(
-        backgroundColor: kBg,
+        backgroundColor: _pageBg,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text('Login'),
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _phraseController,
                 maxLines: 3,
-                cursorColor: kBg,
+                cursorColor: _pageBg,
                 style: const TextStyle(color: Colors.black87),
                 decoration: _whiteFieldDecoration(
                   hint: 'e.g. gravity tilt method ...',
