@@ -803,11 +803,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     required double balance,
     required double usd,
     required String symbol,
-    String? nickname, // 👈 add this
-    String? chain, // 👈 add this
+    String? nickname,
+    String? chain,
   }) {
-    // identify unique key for dismissible
-    final keyValue = '${symbol}_${chain ?? ''}_${nickname ?? ''}';
+    // unique key — prevents duplicate crashes
+    final keyValue =
+        '${symbol}_${chain ?? ''}_${nickname ?? ''}_${UniqueKey()}';
 
     return Dismissible(
       key: ValueKey(keyValue),
@@ -923,6 +924,19 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   Future<void> _deleteChainWallet(BuildContext context, String nickname) async {
+    // ✅ Load walletId from storage
+    final prefs = await SharedPreferences.getInstance();
+    final walletId = prefs.getString('wallet_id');
+
+    if (walletId == null || walletId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('❌ No wallet ID found. Please log in again.'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+
+    // 🔹 Show loader dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -931,10 +945,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       ),
     );
 
-    final result =
-        await AuthService.deleteSingleChainWallet(nickname: nickname);
+    // 🔹 Call API
+    final result = await AuthService.deleteSingleChainWallet(
+      walletId: walletId,
+      nickname: nickname,
+    );
 
-    Navigator.pop(context); // close loader
+    // Close loader
+    Navigator.pop(context);
 
     if (result.success) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -945,6 +963,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       // 🔄 Refresh holdings
       final bs = context.read<BalanceStore>();
       await bs.refresh();
+
       if (mounted) setState(() {});
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

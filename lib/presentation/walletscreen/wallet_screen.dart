@@ -5,6 +5,7 @@ import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/models/token_model.dart';
 import 'package:cryptowallet/models/explore_model.dart';
+import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
@@ -37,7 +38,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   // API Integration State
   bool _isLoading = true;
   String? _error;
-  List<VaultToken> _tokens = [];
+  List _tokens = [];
   ExploreData? _exploreData;
   Map<String, double> _spotPrices = {}; // USD prices by chain/symbol
   String? _currentWalletAddress;
@@ -269,28 +270,33 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   // ---------------- Current coin data (currency-aware) ----------------
 
   Map<String, String> _getCurrentCoinData() {
-    final chainKey = _getChainForCoin(selectedCoinId);
+    final portfolioStore = context.read<PortfolioStore>();
+    final fx = context.read<CurrencyNotifier>();
 
-    VaultToken? token;
-    try {
-      token = _tokens.firstWhere(
-        (t) => (t.symbol ?? '').toUpperCase() == chainKey.toUpperCase(),
-        orElse: () => _tokens.firstWhere(
-          (t) => (t.name ?? '').toUpperCase().contains(chainKey.toUpperCase()),
-        ),
-      );
-    } catch (_) {}
+    final token = portfolioStore.tokens.firstWhere(
+      (t) => t.symbol.toUpperCase() == selectedCoinId.toUpperCase(),
+      orElse: () => PortfolioToken(
+        id: '',
+        name: selectedCoinId,
+        symbol: selectedCoinId,
+        chain: '',
+        iconUrl: '',
+        balance: 0.0,
+        value: 0.0,
+      ),
+    );
 
-    final priceUsd = _spotPrices[chainKey] ?? 0.0;
-    final balanceStr = token?.balance?.toString() ?? '0.00';
-    final balance = double.tryParse(balanceStr) ?? 0.0;
-    final usdBalance = priceUsd * balance;
+    final double balance = token.balance;
+    final double usdValue = token.value;
+    final String fiatBalance =
+        usdValue > 0 ? fx.formatFromUsd(usdValue) : '≈ \$0.00';
 
     return {
-      'priceUsd': priceUsd > 0 ? priceUsd.toStringAsFixed(2) : '0.00',
-      'balance': balanceStr,
-      'usdBalance': usdBalance.toStringAsFixed(2),
-      'address': _currentWalletAddress ?? 'Loading...',
+      'priceUsd': usdValue.toStringAsFixed(2),
+      'balance': balance.toStringAsFixed(8),
+      'usdBalance': usdValue.toStringAsFixed(2),
+      'fiatBalance': fiatBalance,
+      'address': _currentWalletAddress ?? '—',
     };
   }
 
@@ -684,7 +690,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
     final priceUsd = _priceForCoinUsd(selectedCoinId);
     final usd = balance * priceUsd;
-    final fiat = usd > 0 ? fx.formatFromUsd(usd) : null;
+    final fiat = details['fiatBalance'];
 
     return Container(
       width: double.infinity,
@@ -1841,6 +1847,7 @@ class TransactionDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final fx = context.watch<CurrencyNotifier>();
     final coinBadgeColor = _getCoinColor();
+    final portfolioStore = context.watch<PortfolioStore>();
 
     // If you want to show a fiat shadow here too:
     final double amount =

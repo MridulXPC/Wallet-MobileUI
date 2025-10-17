@@ -529,7 +529,11 @@ class AuthService {
     );
 
     final data = _handleResponse(res);
-    final wallets = (data['wallets'] as List?) ?? (data['data'] as List?) ?? [];
+
+// handle nested structure
+    final inner = (data['wallets'] is Map) ? data['wallets'] : data;
+    final wallets =
+        (inner['wallets'] as List?) ?? (data['data'] as List?) ?? [];
 
     final List<ChainBalance> rows = [];
 
@@ -892,6 +896,14 @@ class AuthService {
 
   /// POST /api/wallet/create-single-chain
   /// Creates a new single-chain wallet address for an existing walletId
+  /// POST /api/wallet/create-single-chain
+  /// Creates a new single-chain wallet address for an existing walletId
+  /// POST /api/wallet/create-single-chain
+  /// Creates a new single-chain wallet address for an existing walletId
+  /// POST /api/wallet/create-single-chain
+  /// Creates a new single-chain wallet address for an existing walletId
+  /// POST /api/wallet/create-single-chain
+  /// Creates a new single-chain wallet address for an existing walletId
   static Future<AuthResponse> createSingleChainWallet({
     required String mnemonic,
     required String chain,
@@ -904,12 +916,12 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // ✅ Updated request body
+    // ✅ API expects these exact keys
     final body = {
-      'mnemonic': mnemonic,
-      'chain': chain,
-      'walletId': walletId,
-      'nickname': nickname,
+      "mnemonic": mnemonic,
+      "chain": chain,
+      "walletId": walletId,
+      "nickname": nickname,
     };
 
     const endpoint = '/api/wallet/create-single-chain';
@@ -926,11 +938,8 @@ class AuthService {
         body: body,
       );
 
-      // 👇 LOG RAW HTTP RESPONSE even for 500s
       debugPrint('📥 Raw response: ${res.statusCode}');
       debugPrint('🧾 Response body: ${res.body}');
-
-      // If backend failed (status 500), throw readable error
       if (res.statusCode >= 500) {
         throw ApiException('Server error ${res.statusCode}: ${res.body}');
       }
@@ -944,10 +953,10 @@ class AuthService {
         debugPrint('💾 Updated walletId (single-chain): $newWalletId');
       }
 
-      // Log summary of new wallet if present
+      // Debug summary
       if (data is Map &&
           data['wallets'] is List &&
-          (data['wallets'] as List).isNotEmpty) {
+          data['wallets'].isNotEmpty) {
         final last = (data['wallets'] as List).last;
         debugPrint(
             '✅ Wallet created: ${last['chain']} → ${last['address']} (${last['nickname'] ?? 'no name'})');
@@ -955,24 +964,22 @@ class AuthService {
 
       return AuthResponse.success(data: data);
     } on ApiException catch (e) {
-      // This is your own handled exception (like auth or API error)
       debugPrint('🚨 ApiException: ${e.message}');
       return AuthResponse.failure('Server returned error: ${e.message}');
     } catch (e, st) {
-      // This will catch unexpected errors or null-pointer issues
       debugPrint('🚨 createSingleChainWallet error: $e\n$st');
       return AuthResponse.failure('Failed to create single-chain wallet: $e');
     }
   }
 
-  /// 🗑️ Delete a single-chain entry by nickname for a wallet
-  /// Primary route (per spec): POST /api/delete-single-chain
-  /// Fallbacks:
-  ///   - POST /api/wallet/delete-single-chain
-  ///   - DELETE variants (if the backend prefers DELETE)
+  /// DELETE /api/delete-single-chain
+  /// Deletes a specific single-chain wallet by walletId + nickname
+  /// POST /api/delete-single-chain
+  /// Deletes a specific single-chain wallet by walletId + nickname
+  /// DELETE /api/wallet/delete-single-chain
   static Future<AuthResponse> deleteSingleChainWallet({
-    String? walletId, // optional: will fall back to stored walletId
-    required String nickname, // chain's nickname used at creation time
+    required String walletId,
+    required String nickname,
     String? token,
   }) async {
     token ??= await getStoredToken();
@@ -980,81 +987,45 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    walletId ??= await getStoredWalletId();
-    if (walletId == null || walletId.isEmpty) {
-      throw const ApiException('walletId is required (not stored yet)');
-    }
-
-    final nick = nickname.trim();
-    if (nick.isEmpty) {
-      throw const ApiException('nickname is required');
-    }
-
-    final payload = {
-      'walletId': walletId, // ← ensure 'walletId' (no trailing comma)
-      'nickname': nick,
+    final body = {
+      "walletId": walletId,
+      "nickname": nickname,
     };
 
-    Future<AuthResponse> _call(String method, String endpoint) async {
-      debugPrint('🗑️ $method $endpoint');
-      debugPrint('📦 Body: ${jsonEncode(payload)}');
-
-      final res = await _makeRequest(
-        method: method,
-        endpoint: endpoint,
-        token: token,
-        requireAuth: true,
-        body: payload,
-      );
-
-      debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
-
-      // Gracefully handle 2xx responses with empty body (e.g., 204 No Content)
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final trimmed = res.body.trim();
-        if (trimmed.isEmpty || trimmed.toLowerCase() == 'null') {
-          return AuthResponse.success(data: const {
-            'message': 'Single-chain deleted',
-            'ok': true,
-          });
-        }
-      }
-
-      final data = _handleResponse(res);
-      return AuthResponse.success(data: data);
-    }
+    const endpoint = '/api/wallet/delete-single-chain'; // ✅ FIXED PATH
 
     try {
-      // Per your spec
-      return await _call('POST', '/api/delete-single-chain');
-    } on ApiException catch (e) {
-      // Route/method fallbacks if the server differs by environment
-      if (e.statusCode == 404 || e.statusCode == 405) {
-        try {
-          return await _call('POST', '/api/wallet/delete-single-chain');
-        } on ApiException catch (e2) {
-          if (e2.statusCode == 404 || e2.statusCode == 405) {
-            // Try DELETE variants if the backend expects HTTP DELETE
-            try {
-              return await _call('DELETE', '/api/delete-single-chain');
-            } on ApiException catch (e3) {
-              if (e3.statusCode == 404 || e3.statusCode == 405) {
-                return await _call('DELETE', '/api/wallet/delete-single-chain');
-              }
-              rethrow;
-            }
-          }
-          rethrow;
-        }
+      debugPrint('🌐 DELETE $endpoint');
+      debugPrint('🔐 Authorization: Bearer ***JWT***');
+      debugPrint('📦 Body: ${jsonEncode(body)}');
+
+      final request = http.Request('DELETE', Uri.parse('$_baseUrl$endpoint'))
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        })
+        ..body = jsonEncode(body);
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      debugPrint('📥 Raw response: ${response.statusCode}');
+      debugPrint('🧾 Response body: ${response.body}');
+      if (response.statusCode >= 500) {
+        throw ApiException(
+            'Server error ${response.statusCode}: ${response.body}');
       }
-      rethrow;
+
+      final data = _handleResponse(response);
+      debugPrint('✅ Deleted wallet nickname="$nickname" for ID=$walletId');
+
+      return AuthResponse.success(data: data);
     } catch (e, st) {
       debugPrint('🚨 deleteSingleChainWallet error: $e\n$st');
-      return AuthResponse.failure('Failed to delete single-chain: $e');
+      return AuthResponse.failure('Failed to delete wallet: $e');
     }
   }
-
-  // ===================== TRANSACTIONS =====================
 
   static Future<AuthResponse> sendTransaction({
     required String userId,
@@ -1250,6 +1221,7 @@ class AuthService {
     required String toToken,
     required double amount,
     required String chain,
+    required String destinationAddress, // ✅ new required field
     double? slippage,
   }) async {
     final jwt = await getStoredToken();
@@ -1257,12 +1229,14 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
+    // ✅ New request body structure
     final body = {
       "fromToken": fromToken,
       "toToken": toToken,
       "amount": amount,
       "chain": chain,
-      if (slippage != null) 'slippage': slippage,
+      "destinationAddress": destinationAddress,
+      if (slippage != null) "slippage": slippage,
     };
 
     Future<AuthResponse> _call(String endpoint) async {
@@ -1279,11 +1253,45 @@ class AuthService {
       );
 
       debugPrint("📥 Raw response: ${res.statusCode} ${res.body}");
-      final data = _handleResponse(res);
-      return AuthResponse.success(data: data);
+
+      final Map<String, dynamic> data = _handleResponse(res);
+
+      // ✅ Safely parse expected structure
+      if (data['success'] != true || data['data'] == null) {
+        throw ApiException(
+          'Invalid swap quote response',
+          statusCode: res.statusCode,
+        );
+      }
+
+      final provider = data['provider'] ?? 'Unknown';
+      final quoteData = data['data'] as Map<String, dynamic>;
+      final fees = (quoteData['fees'] ?? {}) as Map<String, dynamic>;
+
+      // ✅ Construct parsed response model
+      final parsed = {
+        "provider": provider,
+        "fromToken": quoteData['fromToken'],
+        "toToken": quoteData['toToken'],
+        "amountIn": quoteData['amountIn'],
+        "estimatedAmountOut": quoteData['estimatedAmountOut'],
+        "router": quoteData['router'],
+        "fees": {
+          "asset": fees['asset'],
+          "affiliate": fees['affiliate'],
+          "outbound": fees['outbound'],
+          "liquidity": fees['liquidity'],
+          "total": fees['total'],
+          "slippage_bps": fees['slippage_bps'],
+          "total_bps": fees['total_bps'],
+        },
+      };
+
+      return AuthResponse.success(data: parsed);
     }
 
     try {
+      // ✅ First try the standard endpoint
       return await _call('/api/swaps/getQuote');
     } on ApiException catch (e) {
       if (e.statusCode == 404 || e.statusCode == 405) {

@@ -1,5 +1,7 @@
 // lib/presentation/swap_screen.dart
 import 'dart:async';
+import 'dart:math';
+import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -22,6 +24,10 @@ class SwapScreen extends StatefulWidget {
 }
 
 class _SwapScreenState extends State<SwapScreen> {
+  String? _quoteProvider;
+  String? _quoteFee;
+  String? _quoteFiatValue; // formatted currency string
+
   // Initial selection (must match CoinStore ids)
   String fromCoinId = 'BTC';
   String toCoinId = 'ETH';
@@ -112,18 +118,30 @@ class _SwapScreenState extends State<SwapScreen> {
     return syms.contains(_baseSymbol(coinId).toUpperCase());
   }
 
-  /// Balance for coinId from BalanceStore (0 if missing)
-  double _balanceFor(String coinId) {
-    final bs = context.read<BalanceStore>();
-    final sym = _baseSymbol(coinId).toUpperCase();
-    final row = bs.bySymbol[sym];
-    if (row == null) return 0.0;
-    return double.tryParse(row.balance) ?? 0.0;
+  double _balanceForFromPortfolio(String coinId) {
+    final portfolioStore = context.read<PortfolioStore>();
+    final symbol = _baseSymbol(coinId).toUpperCase();
+
+    final token = portfolioStore.tokens.firstWhere(
+      (t) => t.symbol.toUpperCase() == symbol,
+      orElse: () => PortfolioToken(
+        id: '',
+        name: symbol,
+        symbol: symbol,
+        chain: '',
+        iconUrl: '',
+        balance: 0.0,
+        value: 0.0,
+      ),
+    );
+
+    return token.balance;
   }
 
   bool _hasSufficientBalance(String coinId, double amount) {
-    const eps = 1e-9; // avoid float edge cases
-    return _balanceFor(coinId) + eps >= amount;
+    const eps = 1e-9;
+    final bal = _balanceForFromPortfolio(coinId);
+    return bal + eps >= amount;
   }
 
   // --- Sizing: keep big inputs readable without breaking layout
@@ -649,7 +667,8 @@ class _SwapScreenState extends State<SwapScreen> {
         (fiatForValue != null) ? fx.formatFromUsd(fiatForValue) : null;
 
     // Show balance and its fiat if we know USD price
-    final bal = _balanceFor(coinId);
+    final bal = _balanceForFromPortfolio(coinId);
+
     final String balText = bal.toStringAsFixed(8);
     final String? balFiatText =
         (priceUsd != null) ? fx.formatFromUsd(bal * priceUsd) : null;
@@ -704,7 +723,7 @@ class _SwapScreenState extends State<SwapScreen> {
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () {
-                    final maxAmt = _balanceFor(coinId);
+                    final maxAmt = _balanceForFromPortfolio(coinId);
                     _fromController.text =
                         (maxAmt > 0 ? maxAmt : 0).toStringAsFixed(8);
                   },
@@ -798,17 +817,12 @@ class _SwapScreenState extends State<SwapScreen> {
                         alignment: Alignment.centerRight,
                         child: Text(
                           _quoteToAmount != null
-                              ? _quoteToAmount!.toStringAsFixed(8)
-                              : '0',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _quoteToAmount != null
-                                ? Colors.white
-                                : Colors.white30,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            height: 1.1,
+                              ? _quoteToAmount!.toStringAsFixed(6)
+                              : '—',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -918,10 +932,14 @@ class _SwapScreenState extends State<SwapScreen> {
     _quoteSecondsLeft = 0;
   }
 
+  // make sure this is imported
+
   Future<void> _fetchQuote() async {
     final fromSymbol = _symbolFromId(context, fromCoinId);
     final toSymbol = _symbolFromId(context, toCoinId);
-    final chain = _normalizeChain(fromCoinId);
+
+    final fromChain = _normalizeChain(fromCoinId);
+    final toChain = _normalizeChain(toCoinId); // ✅ destination chain for swap
 
     if (fromAmount <= 0) {
       _stopQuoteCountdown();
@@ -932,8 +950,8 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
-    final hasSupported =
-        context.read<BalanceStore>().symbols.isNotEmpty; // known?
+    // 🔹 Check wallet support
+    final hasSupported = context.read<BalanceStore>().symbols.isNotEmpty;
     if (hasSupported &&
         (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
       _stopQuoteCountdown();
@@ -944,17 +962,6 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
-    // Block quote if insufficient balance
-    if (!_hasSufficientBalance(fromCoinId, fromAmount)) {
-      _stopQuoteCountdown();
-      setState(() {
-        _quoteToAmount = null;
-        _quoteError = 'Insufficient balance';
-      });
-      _showErrorSnack('Insufficient balance');
-      return;
-    }
-
     _stopQuoteCountdown();
     setState(() {
       _quoting = true;
@@ -962,51 +969,84 @@ class _SwapScreenState extends State<SwapScreen> {
     });
 
     try {
+      // ✅ Fetch destination address for the to-token chain
+      final destinationAddress =
+          await AuthService.getOrFetchWalletAddress(chain: toChain);
+
+      if (destinationAddress == null || destinationAddress.isEmpty) {
+        throw 'No valid wallet address found for $toChain';
+      }
+
+      // 🔹 Call quote API
       final res = await AuthService.getSwapQuote(
         fromToken: fromSymbol,
         toToken: toSymbol,
         amount: fromAmount,
-        chain: chain,
-        slippage: (_slippage ?? 0.01), // raw number (e.g., 0.01)
+        chain: fromChain,
+        destinationAddress: destinationAddress,
+        slippage: (_slippage ?? 0.01),
       );
 
-      final raw = res.data ?? const {};
-      final Map<String, dynamic> payload = (raw['data'] is Map)
-          ? (raw['data'] as Map).cast<String, dynamic>()
-          : raw.cast<String, dynamic>();
+      final data = res.data ?? {};
+      final provider = data['provider'] ?? 'Unknown';
+      final quoteData = data['data'] ?? data;
 
-      dynamic toAmt = payload['toAmount'] ??
-          payload['estimatedAmountOut'] ??
-          (payload['quote'] is Map ? payload['quote']['toAmount'] : null) ??
-          (payload['result'] is Map ? payload['result']['toAmount'] : null);
+      // 🔹 Parse estimated output from response
+      dynamic estOut = quoteData['estimatedAmountOut'] ?? quoteData['toAmount'];
+      double? parsedOut;
 
-      double? parsed;
-      if (toAmt is num) {
-        parsed = toAmt.toDouble();
-      } else if (toAmt is String) {
-        parsed = double.tryParse(toAmt);
+      if (estOut is num) {
+        parsedOut = estOut.toDouble();
+      } else if (estOut is String) {
+        parsedOut = double.tryParse(estOut);
       }
 
+      // ✅ Convert from base units → actual token units (divide by 10^8)
+      if (parsedOut != null) {
+        parsedOut = parsedOut / pow(10, 8);
+        // ✅ Round to 6 digits
+        parsedOut = double.parse(parsedOut.toStringAsFixed(6));
+      }
+
+      // 🔹 Parse fee info
+      final fees = quoteData['fees'] is Map ? quoteData['fees'] : {};
+      final totalFee = (fees['total'] ?? '0').toString();
+
+      // 🔹 Convert to fiat (optional)
+      String? fiatText;
+      try {
+        final fx = context.read<CurrencyNotifier>();
+        if (parsedOut != null) {
+          fiatText = fx.formatFromUsd(parsedOut);
+        }
+      } catch (_) {
+        fiatText = null;
+      }
+
+      // ✅ Update UI state
       setState(() {
-        _quoteToAmount = parsed;
-        _quoteError = parsed == null ? 'No quote' : null;
+        _quoteToAmount = parsedOut;
+        _quoteProvider = provider.toString();
+        _quoteFee = totalFee;
+        _quoteFiatValue = fiatText;
+        _quoteError = parsedOut == null ? 'No quote available' : null;
       });
 
-      if (parsed != null) {
+      if (parsedOut != null) {
         _startQuoteCountdown(30);
       }
     } catch (e) {
       _stopQuoteCountdown();
       setState(() {
         _quoteToAmount = null;
-        _quoteError = '$e';
+        _quoteError = 'Quote failed: $e';
       });
     } finally {
       if (mounted) setState(() => _quoting = false);
     }
   }
 
-  // ---------- SWAP ----------
+  //------ SWAP ----------
   Future<void> _performSwap() async {
     FocusScope.of(context).unfocus();
 
@@ -1100,6 +1140,7 @@ class _SwapScreenState extends State<SwapScreen> {
     final store = context.watch<CoinStore>();
     context.watch<BalanceStore>();
     context.watch<CurrencyNotifier>(); // 👈 re-render when currency changes
+    final portfolioStore = context.watch<PortfolioStore>();
 
     if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
       fromCoinId = store.coins.values.first.id;
@@ -1339,199 +1380,120 @@ class _SwapScreenState extends State<SwapScreen> {
       ),
       context: context,
       builder: (_) {
-        Future<List<Coin>>? fetchOnce;
-
         return StatefulBuilder(
           builder: (context, setModalState) {
-            fetchOnce ??= () async {
-              final store = context.read<CoinStore>();
-              final tokens =
-                  await AuthService.fetchTokensByWallet(walletId: walletId);
+            final portfolioStore = context.watch<PortfolioStore>();
+            final tokens = portfolioStore.tokens;
 
-              final Set<String> allowedCoinIds = <String>{};
+            // build base chip list
+            final baseSet = <String>{};
+            for (final t in tokens) {
+              baseSet.add(t.symbol.toUpperCase());
+            }
+            final chips = ['ALL', ...baseSet.toList()..sort()];
 
-              for (final t in tokens) {
-                final coinIdFromApi = _tokenCoinId(t);
-                final symbolFromApi = _tokenSymbol(t);
+            // filter
+            final filtered = tokens.where((t) {
+              final matchesChip =
+                  _chipFilter == 'ALL' || t.symbol == _chipFilter;
+              final q = _search.trim().toLowerCase();
+              final matchesSearch = q.isEmpty ||
+                  t.symbol.toLowerCase().contains(q) ||
+                  t.name.toLowerCase().contains(q);
+              return matchesChip && matchesSearch;
+            }).toList();
 
-                if (coinIdFromApi != null &&
-                    store.coins.containsKey(coinIdFromApi)) {
-                  allowedCoinIds.add(coinIdFromApi);
-                  continue;
-                }
-
-                if (symbolFromApi != null) {
-                  final symUp = symbolFromApi.toUpperCase();
-
-                  final bySymbol = store.coins.values.where(
-                    (c) => c.symbol.toUpperCase() == symUp,
-                  );
-                  if (bySymbol.isNotEmpty) {
-                    allowedCoinIds.addAll(bySymbol.map((c) => c.id));
-                    continue;
-                  }
-
-                  final byBase = store.coins.values.where(
-                    (c) => _baseSymbol(c.id).toUpperCase() == symUp,
-                  );
-                  if (byBase.isNotEmpty) {
-                    allowedCoinIds.addAll(byBase.map((c) => c.id));
-                  }
-                }
-              }
-
-              final coinsForPicker = (allowedCoinIds.isEmpty
-                      ? store.coins.values
-                      : store.coins.values
-                          .where((c) => allowedCoinIds.contains(c.id)))
-                  .toList()
-                ..sort((a, b) => a.symbol.compareTo(b.symbol));
-
-              return _dedupeCoinsByChain(coinsForPicker);
-            }();
-
-            return FutureBuilder<List<Coin>>(
-              future: fetchOnce,
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return SafeArea(
-                    child: SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.7,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+            return SafeArea(
+              child: ClipRect(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomRight,
+                      stops: [0.0, 0.55, 1.0],
+                      colors: [
+                        Color.fromARGB(255, 6, 11, 33),
+                        Color.fromARGB(255, 0, 0, 0),
+                        Color.fromARGB(255, 0, 12, 56),
+                      ],
                     ),
-                  );
-                }
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 6),
+                        const Text('Select Crypto',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 18)),
+                        const SizedBox(height: 12),
 
-                if (snap.hasError) {
-                  return SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(height: 12),
-                          const Text('Select Crypto',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 18)),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Failed to load tokens for this wallet.\n${snap.error}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.redAccent),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: () => setModalState(() {
-                              fetchOnce = null; // retry
-                            }),
-                            child: const Text('Retry'),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-
-                final allCoins = snap.data ?? const <Coin>[];
-
-                final baseSet = <String>{};
-                for (final c in allCoins) baseSet.add(_baseSymbol(c.id));
-                final chips = ['ALL', ...baseSet.toList()..sort()];
-
-                final filtered = allCoins.where((c) {
-                  final matchesChip =
-                      _chipFilter == 'ALL' || _baseSymbol(c.id) == _chipFilter;
-                  final q = _search.trim().toLowerCase();
-                  final matchesSearch = q.isEmpty ||
-                      c.symbol.toLowerCase().contains(q) ||
-                      c.name.toLowerCase().contains(q) ||
-                      c.id.toLowerCase().contains(q);
-                  return matchesChip && matchesSearch;
-                }).toList();
-
-                return SafeArea(
-                  child: ClipRect(
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomRight,
-                          stops: [0.0, 0.55, 1.0],
-                          colors: [
-                            Color.fromARGB(255, 6, 11, 33),
-                            Color.fromARGB(255, 0, 0, 0),
-                            Color.fromARGB(255, 0, 12, 56),
-                          ],
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        // 🔹 Search bar
+                        Row(
                           children: [
-                            const SizedBox(height: 6),
-                            const Text('Select Crypto',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 18)),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      hintText:
-                                          'Search symbol, name, or network',
-                                      hintStyle: const TextStyle(
-                                          color: Colors.white54),
-                                      prefixIcon: const Icon(Icons.search,
-                                          color: Colors.white54),
-                                      filled: true,
-                                      fillColor: const Color(0xFF2A2D3A),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                    ),
-                                    onChanged: (v) =>
-                                        setModalState(() => _search = v),
+                            Expanded(
+                              child: TextField(
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  hintText: 'Search symbol or name',
+                                  hintStyle:
+                                      const TextStyle(color: Colors.white54),
+                                  prefixIcon: const Icon(Icons.search,
+                                      color: Colors.white54),
+                                  filled: true,
+                                  fillColor: const Color(0xFF2A2D3A),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide.none,
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: chips.map((filter) {
-                                  final isSelected = _chipFilter == filter;
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6),
-                                    child: ChoiceChip(
-                                      label: Text(filter),
-                                      selected: isSelected,
-                                      onSelected: (_) => setModalState(
-                                          () => _chipFilter = filter),
-                                      selectedColor: Colors.blue,
-                                      labelStyle: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.white70,
-                                      ),
-                                      backgroundColor: const Color(0xFF2A2D3A),
-                                    ),
-                                  );
-                                }).toList(),
+                                onChanged: (v) =>
+                                    setModalState(() => _search = v),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: 440,
-                              child: filtered.isEmpty
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 🔹 Chip filter row
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: chips.map((filter) {
+                              final isSelected = _chipFilter == filter;
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                child: ChoiceChip(
+                                  label: Text(filter),
+                                  selected: isSelected,
+                                  onSelected: (_) =>
+                                      setModalState(() => _chipFilter = filter),
+                                  selectedColor: Colors.blue,
+                                  labelStyle: TextStyle(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                  backgroundColor: const Color(0xFF2A2D3A),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // 🔹 Token list
+                        SizedBox(
+                          height: 440,
+                          child: portfolioStore.loading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                      color: Color(0xFF00D4AA)),
+                                )
+                              : filtered.isEmpty
                                   ? const Center(
                                       child: Text(
                                         'No tokens available for this wallet.',
@@ -1541,33 +1503,54 @@ class _SwapScreenState extends State<SwapScreen> {
                                   : ListView.builder(
                                       itemCount: filtered.length,
                                       itemBuilder: (context, i) {
-                                        final c = filtered[i];
+                                        final t = filtered[i];
+
                                         return ListTile(
-                                          leading: _coinAvatar(
-                                              c.assetPath, c.symbol),
+                                          leading: CircleAvatar(
+                                            backgroundImage:
+                                                NetworkImage(t.iconUrl),
+                                            backgroundColor: Colors.transparent,
+                                          ),
                                           title: Text(
-                                            c.symbol,
+                                            t.symbol,
                                             style: const TextStyle(
                                                 color: Colors.white),
                                           ),
                                           subtitle: Text(
-                                            c.name,
+                                            t.name,
                                             style: const TextStyle(
                                                 color: Colors.white70),
                                           ),
-                                          trailing: Text(
-                                            _networkHint(c.id),
-                                            style: const TextStyle(
-                                                color: Colors.white54,
-                                                fontSize: 12),
+                                          trailing: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                t.balance.toStringAsFixed(4),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              Text(
+                                                '\$${t.value.toStringAsFixed(2)}',
+                                                style: const TextStyle(
+                                                  color: Colors.white54,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                           onTap: () {
                                             Navigator.pop(context);
                                             setState(() {
                                               if (isFrom) {
-                                                fromCoinId = c.id;
+                                                fromCoinId = t.symbol;
                                               } else {
-                                                toCoinId = c.id;
+                                                toCoinId = t.symbol;
                                               }
                                               _quoteToAmount = null;
                                               _quoteError = null;
@@ -1578,14 +1561,12 @@ class _SwapScreenState extends State<SwapScreen> {
                                         );
                                       },
                                     ),
-                            ),
-                          ],
-                        ),
-                      ),
+                        )
+                      ],
                     ),
                   ),
-                );
-              },
+                ),
+              ),
             );
           },
         );

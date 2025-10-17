@@ -110,7 +110,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(5),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
@@ -123,7 +123,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                     Colors.white.withOpacity(0.05)
                   ],
                 ),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(6),
                 border: Border.all(
                     color: Colors.white.withOpacity(0.2), width: 1.5),
                 boxShadow: [

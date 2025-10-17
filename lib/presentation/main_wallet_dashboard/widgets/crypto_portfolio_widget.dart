@@ -138,30 +138,33 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         final base = _baseSymbolFor(t.symbol, t.chain);
         final chain = (t.chain ?? '').toUpperCase();
 
-        // Only consider MAIN chains (skip LN, TRX, GASFREE etc.)
         final isMainnet = switch (base) {
           'BTC' => chain == 'BTC',
           'ETH' => chain == 'ETH',
-          'USDT' => chain == 'ETH', // treat ERC20 as main
+          'USDT' => chain == 'ETH' || chain == 'TRX' || chain == 'TRON',
           _ => true,
         };
-
         if (!isMainnet) continue;
 
         final usdValNum = (t.value is num)
             ? (t.value as num).toDouble()
             : double.tryParse('${t.value}') ?? 0.0;
 
+        final balNum = double.tryParse('${t.balance}') ?? 0.0;
+
         final existing = grouped[base];
         if (existing != null) {
           existing['usdValueNum'] += usdValNum;
+          existing['usdBalanceNum'] += usdValNum; // ✅ add this line
+          existing['balanceNum'] += balNum;
         } else {
           grouped[base] = {
             "symbol": base,
             "name": _nameForSymbol(context, base, t.name),
             "icon": _assetForSymbol(context, base),
             "usdValueNum": usdValNum,
-            "usdBalanceNum": usdValNum,
+            "usdBalanceNum": usdValNum, // used for fiat display
+            "balanceNum": balNum,
             "balance": t.balance ?? '0.0000',
             "change24h": '${t.changePercent ?? 0.0}%',
             "isPositive": (t.changePercent ?? 0.0) >= 0,
@@ -169,7 +172,19 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         }
       }
 
-      _visible = grouped.values.toList();
+// Convert numeric balanceNum → string for UI
+      _visible = grouped.values.map((e) {
+        e['balance'] = (e['balanceNum'] ?? 0.0).toStringAsFixed(4);
+        e['usdBalanceNum'] =
+            (e['usdBalanceNum'] ?? 0.0); // ✅ ensure it’s up to date
+        return e;
+      }).toList();
+
+// Convert numeric balanceNum → string for UI
+      _visible = grouped.values.map((e) {
+        e['balance'] = (e['balanceNum'] ?? 0.0).toStringAsFixed(4);
+        return e;
+      }).toList();
     } catch (e, st) {
       debugPrint('❌ Portfolio load error: $e\n$st');
       _error = e.toString();

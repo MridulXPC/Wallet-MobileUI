@@ -1,6 +1,7 @@
 import 'package:cryptowallet/core/currency_notifier.dart';
 import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,17 +27,16 @@ void main() async {
   final currency = CurrencyNotifier();
   await currency.bootstrap();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<CurrencyNotifier>.value(value: currency),
-        ChangeNotifierProvider(create: (_) => CoinStore()),
-        ChangeNotifierProvider(create: (_) => WalletStore()),
-        ChangeNotifierProvider(create: (_) => BalanceStore()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  runApp(MultiProvider(
+    providers: [
+      ChangeNotifierProvider(create: (_) => WalletStore()),
+      ChangeNotifierProvider(create: (_) => CoinStore()),
+      ChangeNotifierProvider(create: (_) => BalanceStore()),
+      ChangeNotifierProvider(create: (_) => CurrencyNotifier()),
+      ChangeNotifierProvider(create: (_) => PortfolioStore()), // ✅ NEW
+    ],
+    child: MyApp(),
+  ));
 }
 
 Future<String> determineNextRoute() async {

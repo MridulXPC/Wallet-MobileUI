@@ -1,21 +1,23 @@
 // lib/services/models/vault_token.dart
+
 class VaultToken {
   final String? id;
   final String name;
   final String symbol;
   final String chain;
   final String? contractAddress;
+  final String iconUrl;
 
-  /// Balance as a string (e.g., "0.0000")
+  /// Balance as string (e.g., "0.0000")
   final String balance;
 
-  /// Total USD value of the position (balance * price)
+  /// Total USD value (balance * price)
   final double value;
 
-  /// Optional current price in USD
+  /// Optional: price in USD
   final double? priceUsd;
 
-  /// Optional 24h percent change (e.g., -3.42 means -3.42%)
+  /// Optional: 24h % change (may be null)
   final double? changePercent;
 
   VaultToken({
@@ -24,13 +26,15 @@ class VaultToken {
     required this.symbol,
     required this.chain,
     required this.contractAddress,
+    required this.iconUrl,
     required this.balance,
     required this.value,
-    required this.priceUsd,
-    required this.changePercent,
+    this.priceUsd,
+    this.changePercent,
   });
 
-  static double? _d(dynamic v) {
+  // --- Helper to safely parse dynamic values to double ---
+  static double? _toDouble(dynamic v) {
     if (v == null) return null;
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v);
@@ -38,17 +42,13 @@ class VaultToken {
   }
 
   factory VaultToken.fromJson(Map<String, dynamic> j) {
-    final balanceStr = (j['balance'] ?? j['amount'] ?? '0').toString();
-    final price = _d(j['priceUsd'] ?? j['usdPrice'] ?? j['price']);
-    final fiat = _d(j['fiatValue'] ?? j['usdValue'] ?? j['balanceUSD']);
-    final balanceNum = _d(j['balance']) ?? _d(j['amount']) ?? 0.0;
-    final totalUsd = fiat ?? ((balanceNum ?? 0.0) * (price ?? 0.0));
+    final balanceStr = (j['balance'] ?? '0').toString();
+    final balanceNum = _toDouble(j['balance']) ?? 0.0;
+    final valueNum = _toDouble(j['value']) ?? 0.0;
 
-    // Try multiple keys commonly used by APIs for 24h % change
-    final pct = _d(j['change24h']) ??
-        _d(j['percentChange24h']) ??
-        _d(j['priceChangePercent']) ??
-        _d(j['changePercent']);
+    // Optional fields
+    final price = _toDouble(j['priceUsd']);
+    final pct = _toDouble(j['changePercent']);
 
     return VaultToken(
       id: (j['_id'] ?? j['id'])?.toString(),
@@ -56,8 +56,9 @@ class VaultToken {
       symbol: (j['symbol'] ?? '').toString(),
       chain: (j['chain'] ?? '').toString(),
       contractAddress: j['contractAddress']?.toString(),
+      iconUrl: j['iconUrl']?.toString() ?? '',
       balance: balanceStr,
-      value: (totalUsd ?? 0.0),
+      value: valueNum != 0.0 ? valueNum : (balanceNum * (price ?? 0.0)),
       priceUsd: price,
       changePercent: pct,
     );
