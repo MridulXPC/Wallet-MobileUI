@@ -60,13 +60,13 @@ class CoinStore extends ChangeNotifier {
     ),
     "USDT-ETH": const Coin(
       id: "USDT-ETH",
-      name: "Tether",
+      name: "Tether (ERC20)",
       symbol: "USDT",
       assetPath: "assets/currencyicons/usdtoneth.png",
     ),
     "USDT-TRX": const Coin(
       id: "USDT-TRX",
-      name: "Tether",
+      name: "Tether (TRC20)",
       symbol: "USDT",
       assetPath: "assets/currencyicons/usdtontrx.png",
     ),
@@ -109,7 +109,6 @@ class CoinStore extends ChangeNotifier {
   };
 
   /// 🔹 Separate big, soft watermark logos just for cards
-  /// (keyed by BASE symbol — not the networked id)
   final Map<String, String> _cardAssets = const {
     'BTC': 'assets/iconsforcard/logoicon.png',
     'BNB': 'assets/iconsforcard/logoicon13.png',
@@ -121,16 +120,43 @@ class CoinStore extends ChangeNotifier {
   };
 
   Map<String, Coin> get coins => _coins;
-  Coin? getById(String id) => _coins[id];
 
-  /// Returns the background/watermark PNG path for any coin id (e.g. "USDT-ETH")
-  /// by collapsing to its base symbol ("USDT").
+  /// ✅ Smart resolver: handles variant IDs from APIs
+  /// ✅ Smart resolver: handles variant IDs from APIs (with correct priority)
+  Coin? getById(String id) {
+    final key = id.toUpperCase();
+
+    // Direct match
+    if (_coins.containsKey(key)) return _coins[key];
+
+    // 🔹 Check USDT variants FIRST (so ETH inside USDTERC20 doesn’t override)
+    if (key.contains('USDTERC20') || key.contains('USDT-ETH')) {
+      return _coins['USDT-ETH'];
+    }
+    if (key.contains('USDTTRC20') || key.contains('USDT-TRX')) {
+      return _coins['USDT-TRX'];
+    }
+
+    // 🔹 Then handle other tokens normally
+    if (key.contains('BTC-LN')) return _coins['BTC-LN'];
+    if (key.contains('BTC')) return _coins['BTC'];
+    if (key.contains('BNB')) return _coins['BNB'];
+    if (key.contains('SOL')) return _coins['SOL'];
+    if (key.contains('TRX')) return _coins['TRX'];
+    if (key.contains('XMR')) return _coins['XMR'];
+    if (key.contains('USDT')) return _coins['USDT'];
+    if (key.contains('ETH')) return _coins['ETH'];
+
+    return null;
+  }
+
+  /// ✅ Returns the background/watermark PNG path for any coin id (e.g. "USDT-ETH")
   String? cardAssetFor(String coinId) {
     final base = coinId.contains('-') ? coinId.split('-').first : coinId;
     return _cardAssets[base];
   }
 
-  // If later your dummy/API wants to tweak labels/icons:
+  /// ✅ Safe upsert method (used by dynamic updates)
   void upsertMany(Iterable<Coin> items) {
     final next = Map<String, Coin>.from(_coins);
     for (final c in items) next[c.id] = c;

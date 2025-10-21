@@ -20,9 +20,9 @@ class _WelcomeCarouselScreenState extends State<WelcomeCarouselScreen> {
 
   // 🔹 Carousel slides data
   final List<Map<String, String>> slides = [
-    {"image": "assets/CaouselArtboardone.jpg"},
-    {"image": "assets/CaouselArtboardtwo.jpg"},
-    {"image": "assets/CaouselArtboardthree.jpg"},
+    {"image": "assets/Caousel2Artboardone.jpg"},
+    {"image": "assets/Caousel2Artboardtwo.jpg"},
+    {"image": "assets/Caousel2Artboardthree.jpg"},
   ];
 
   @override
