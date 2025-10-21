@@ -6,6 +6,7 @@ import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_cryptoc
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/balance_store.dart';
 import 'package:cryptowallet/stores/coin_store.dart';
+import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -71,13 +72,23 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     super.didChangeDependencies();
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
     if (args != null && tokenData == null) {
       setState(() => tokenData = args);
       _applyInitialTabFromArgs();
       _startLiveStream();
       _loadChartFor(selectedPeriod);
-
       _txFuture = AuthService.fetchTransactionHistoryByWallet(limit: 100);
+
+      // 👇 Add this block — refresh wallet and balance stores
+      final bs = context.read<BalanceStore>();
+      final walletStore = context.read<WalletStore>();
+
+      Future.microtask(() async {
+        await walletStore.loadWalletsFromBackend(); // 🆕
+        await bs.refresh(); // 🆕 ensures holdings up to date
+        if (mounted) setState(() {});
+      });
     }
   }
 
@@ -696,56 +707,151 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
 
   List<Widget> _buildCoinHoldings(FxAdapter fx) {
     final bs = context.watch<BalanceStore>();
+    final walletStore = context.watch<WalletStore>();
     final store = context.read<CoinStore>();
-
-    if (bs.loading && bs.rows.isEmpty) {
-      return const [
-        Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        ),
-      ];
-    }
 
     final wantedSym = sym.toUpperCase();
 
-    // 🧭 Include all wallets for this symbol (main + nicknamed)
-    final rowsForCoin = bs.rows.where((r) {
-      final s = (r.symbol.isNotEmpty
-              ? r.symbol
-              : (r.token.isNotEmpty ? r.token : r.blockchain))
-          .toUpperCase();
-      return s == wantedSym || s.startsWith('$wantedSym ');
-    }).toList();
+    // 🧩 Log wallet store state
+    debugPrint(
+        '🟢 WalletStore has ${walletStore.wallets.length} wallets loaded');
+    for (final w in walletStore.wallets) {
+      debugPrint('   → walletId=${w.id}, chains=${w.chains.length}');
+    }
 
-    // 🧭 Only show default templates if user has zero real wallets
-// 🧭 Show default templates if user has zero wallets
-    if (rowsForCoin.isEmpty) {
+    debugPrint(
+        '🟢 BalanceStore rows = ${bs.rows.length}, loading=${bs.loading}');
+
+    // ✅ Prefer balance store data if non-empty
+    List<Widget> holdings = [];
+
+    if (bs.rows.isNotEmpty) {
+      final rowsForCoin = bs.rows.where((r) {
+        final s = (r.symbol.isNotEmpty
+                ? r.symbol
+                : (r.token.isNotEmpty ? r.token : r.blockchain))
+            .toUpperCase();
+        return s == wantedSym || s.startsWith('$wantedSym ');
+      }).toList();
+
+      debugPrint(
+          '✅ Found ${rowsForCoin.length} rows in BalanceStore for $wantedSym');
+
+      if (rowsForCoin.isNotEmpty) {
+        holdings = rowsForCoin.map((r) {
+          final chainNorm = _normalizeChain(r.blockchain.toUpperCase());
+          final balance = double.tryParse(r.balance) ?? 0.0;
+          final usd = (r.value ?? 0.0);
+          final nickname = (r.nickname ?? '').trim();
+
+          final coinIdGuess = switch (wantedSym) {
+            'USDT' => 'USDT-$chainNorm',
+            'BTC' => chainNorm == 'LN' ? 'BTC-LN' : 'BTC',
+            _ => '$wantedSym-$chainNorm',
+          };
+
+          final coinForIcon =
+              store.getById(coinIdGuess) ?? store.getById(wantedSym);
+          final icon =
+              coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+
+          final baseTitle = coinForIcon?.name ??
+              (wantedSym == 'USDT'
+                  ? 'USDT (${_chainUiName(chainNorm)})'
+                  : '$wantedSym (${_chainUiName(chainNorm)})');
+          final title =
+              nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
+
+          final networkSubtitle = wantedSym == 'USDT'
+              ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
+              : '${_chainUiName(chainNorm)} Network';
+
+          return _buildHoldingCard(
+            icon: icon,
+            title: title,
+            networkSubtitle: networkSubtitle,
+            balance: balance,
+            usd: usd,
+            symbol: wantedSym,
+            nickname: nickname,
+            chain: chainNorm,
+          );
+        }).toList();
+      }
+    }
+
+    // ✅ Fallback to WalletStore if BalanceStore empty or incomplete
+    if (holdings.isEmpty && walletStore.wallets.isNotEmpty) {
+      final allChains =
+          walletStore.wallets.expand((w) => w.chains).toList(growable: false);
+      debugPrint(
+          '⚡ Fallback: ${allChains.length} total chains across all wallets');
+
+      final chains = allChains.where((c) {
+        final symbol = (c.symbol ?? '').toString().toUpperCase();
+        final chainCode =
+            (c.chain ?? c.blockchain ?? '').toString().toUpperCase();
+        return symbol == wantedSym || chainCode == wantedSym;
+      }).toList();
+
+      debugPrint(
+          '⚡ Found ${chains.length} $wantedSym chains in WalletStore fallback');
+
+      holdings = chains.map((chain) {
+        final chainCode = (chain.blockchain ?? chain.chain ?? '').toUpperCase();
+        final nickname = (chain.nickname ?? '').trim();
+        final balance = double.tryParse(chain.balance ?? '0') ?? 0.0;
+        final usd = chain.value ?? 0.0;
+
+        final coinForIcon =
+            store.getById('$wantedSym-$chainCode') ?? store.getById(wantedSym);
+        final icon =
+            coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+        final baseTitle =
+            coinForIcon?.name ?? '$wantedSym (${_chainUiName(chainCode)})';
+        final title =
+            nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
+        final networkSubtitle =
+            '${_networkShort(chainCode)} • ${_chainUiName(chainCode)} Network';
+
+        return _buildHoldingCard(
+          icon: icon,
+          title: title,
+          networkSubtitle: networkSubtitle,
+          balance: balance,
+          usd: usd,
+          symbol: wantedSym,
+          nickname: nickname,
+          chain: chainCode,
+        );
+      }).toList();
+    }
+
+    // ✅ Final fallback — default templates
+// ✅ Final fallback — default templates
+    if (holdings.isEmpty) {
+      debugPrint(
+          '⚠️ No holdings found for $wantedSym, showing default template.');
       final defaultChains = switch (wantedSym) {
-        'BTC' => ['BTC', 'LN'], // ✅ show both
-        'USDT' => ['ETH', 'TRX', 'GASFREE'], // ✅ show all networks
-        _ => ['MAIN'], // ✅ others only main
+        'BTC' => ['BTC', 'LN'],
+        'USDT' => ['ETH', 'TRX', 'GASFREE'],
+        _ => ['MAIN'],
       };
 
-      return defaultChains.map((chain) {
-        final icon = store.getById('$wantedSym-$chain')?.assetPath ??
+      holdings = defaultChains.map((chainCode) {
+        final icon = store.getById('$wantedSym-$chainCode')?.assetPath ??
             store.getById(wantedSym)?.assetPath ??
             'assets/currencyicons/bitcoin.png';
 
         final title = wantedSym == 'USDT'
-            ? 'USDT (${_chainUiName(chain)})'
-            : '$wantedSym (${_chainUiName(chain)})';
+            ? 'USDT (${_chainUiName(chainCode)})'
+            : '$wantedSym (${_chainUiName(chainCode)})';
 
         final networkSubtitle = wantedSym == 'USDT'
-            ? '${_networkShort(chain)} • ${_chainUiName(chain)} Network'
-            : '${_chainUiName(chain)} Network';
+            ? '${_networkShort(chainCode)} • ${_chainUiName(chainCode)} Network'
+            : '${_chainUiName(chainCode)} Network';
 
+        // 👇  No address here, just use chainCode to make the key unique
         return _buildHoldingCard(
           icon: icon,
           title: title,
@@ -753,47 +859,14 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           balance: 0.0,
           usd: 0.0,
           symbol: wantedSym,
+          nickname: null,
+          chain: chainCode,
+          address: chainCode, // <- safe unique id
         );
       }).toList();
     }
 
-    return rowsForCoin.map((r) {
-      final chainNorm = _normalizeChain(r.blockchain.toUpperCase());
-      final balance = double.tryParse(r.balance) ?? 0.0;
-      final usd = (r.value ?? 0.0);
-      final nickname = (r.nickname ?? '').trim();
-
-      final coinIdGuess = switch (wantedSym) {
-        'USDT' => 'USDT-$chainNorm',
-        'BTC' => chainNorm == 'LN' ? 'BTC-LN' : 'BTC',
-        _ => '$wantedSym-$chainNorm',
-      };
-
-      final coinForIcon =
-          store.getById(coinIdGuess) ?? store.getById(wantedSym);
-      final icon = coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-
-      final baseTitle = coinForIcon?.name ??
-          (wantedSym == 'USDT'
-              ? 'USDT (${_chainUiName(chainNorm)})'
-              : '$wantedSym (${_chainUiName(chainNorm)})');
-      final title = nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
-
-      final networkSubtitle = wantedSym == 'USDT'
-          ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
-          : '${_chainUiName(chainNorm)} Network';
-
-      return _buildHoldingCard(
-        icon: icon,
-        title: title,
-        networkSubtitle: networkSubtitle,
-        balance: balance,
-        usd: usd,
-        symbol: wantedSym,
-        nickname: nickname, // 👈 pass nickname
-        chain: chainNorm, // 👈 pass chain
-      );
-    }).toList();
+    return holdings;
   }
 
   Widget _buildHoldingCard({
@@ -805,13 +878,22 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     required String symbol,
     String? nickname,
     String? chain,
+    String? address,
+    String? walletId, // 👈 optional backend wallet ID
   }) {
-    // unique key — prevents duplicate crashes
-    final keyValue =
-        '${symbol}_${chain ?? ''}_${nickname ?? ''}_${UniqueKey()}';
+    // ✅ Always generate a unique fallback key
+    final safeUnique = address?.isNotEmpty == true
+        ? address!
+        : (walletId ?? Object.hash(symbol, chain, nickname).toString());
+
+    final keyValue = '${symbol}_${chain ?? ''}_${nickname ?? ''}_$safeUnique'
+        .replaceAll(' ', '_')
+        .trim();
+
+    if (_deletedKeys.contains(keyValue)) return const SizedBox.shrink();
 
     return Dismissible(
-      key: ValueKey(keyValue),
+      key: ValueKey(keyValue), // ✅ now guaranteed unique
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -820,7 +902,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         child: const Icon(Icons.delete_forever, color: Colors.white, size: 28),
       ),
       confirmDismiss: (_) async {
-        // 🔹 prevent deleting the main wallet (no nickname)
         if (nickname == null || nickname.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Main wallet cannot be deleted'),
@@ -828,15 +909,12 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           ));
           return false;
         }
-
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
-            title: const Text(
-              'Delete Wallet',
-              style: TextStyle(color: Colors.white),
-            ),
+            title: const Text('Delete Wallet',
+                style: TextStyle(color: Colors.white)),
             content: Text(
               'Are you sure you want to delete “$nickname”?',
               style: const TextStyle(color: Colors.white70, fontSize: 14),
@@ -859,24 +937,32 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         return confirmed ?? false;
       },
       onDismissed: (_) async {
-        _deletedKeys.add(keyValue); // 👈 mark deleted instantly
-        setState(() {}); // rebuild UI without it
-        await _deleteChainWallet(context, nickname!);
+        _deletedKeys.add(keyValue);
+        setState(() {});
+        if (nickname != null && nickname.isNotEmpty) {
+          await _deleteChainWallet(context, nickname);
+        }
       },
       child: Container(
         margin: EdgeInsets.only(bottom: 2.h),
         padding: EdgeInsets.all(3.w),
         decoration: BoxDecoration(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white.withOpacity(0.10), width: 1),
         ),
         child: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child:
-                  Image.asset(icon, width: 40, height: 40, fit: BoxFit.cover),
+              child: Image.asset(
+                icon,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.currency_bitcoin,
+                    color: Colors.orangeAccent),
+              ),
             ),
             SizedBox(width: 3.w),
             Expanded(
@@ -886,31 +972,41 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(title,
+                      Flexible(
+                        child: Text(
+                          title,
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600)),
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                       Text(
                         '${_formatCrypto(balance)} $symbol',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700),
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
-                  SizedBox(height: 0.5.h),
+                  SizedBox(height: 0.6.h),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(networkSubtitle,
-                          style:
-                              const TextStyle(color: greyColor, fontSize: 13)),
+                      Text(
+                        networkSubtitle,
+                        style: const TextStyle(
+                            color: Color(0xFF8E8E8E), fontSize: 13),
+                      ),
                       Text(
                         FxAdapter(context.read<CurrencyNotifier>())
                             .formatFromUsd(usd),
-                        style: const TextStyle(color: greyColor, fontSize: 14),
+                        style: const TextStyle(
+                            color: Color(0xFF8E8E8E), fontSize: 14),
                       ),
                     ],
                   ),
@@ -960,9 +1056,11 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         backgroundColor: Colors.green,
       ));
 
-      // 🔄 Refresh holdings
+      // 🔄 Refresh both stores
       final bs = context.read<BalanceStore>();
-      await bs.refresh();
+      final walletStore = context.read<WalletStore>();
+      await walletStore.loadWalletsFromBackend(); // 🆕
+      await bs.refresh(); // 🆕
 
       if (mounted) setState(() {});
     } else {

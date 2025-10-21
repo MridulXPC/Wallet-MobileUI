@@ -118,7 +118,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
               if (mounted) {
                 final store = rootCtx.read<WalletStore>();
-                await store.reloadFromLocalAndActivate(w.id);
+                // await store.reloadFromLocalAndActivate(w.id);
                 await rootCtx
                     .read<BalanceStore>()
                     .refresh(); // immediate update

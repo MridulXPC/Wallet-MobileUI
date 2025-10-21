@@ -65,6 +65,9 @@ class ChainBalance {
     this.nickname,
   });
 
+  // ✅ Safe getter for unified access
+  String get chain => blockchain;
+
   factory ChainBalance.fromJson(Map<String, dynamic> json) {
     return ChainBalance(
       blockchain:
@@ -514,8 +517,10 @@ class AuthService {
   // ===================== WALLETS =====================
   /// ✅ NEW: Fetch all chain wallets for a given walletId
   /// This converts the `/api/wallet/get-wallets` response into a flat list of ChainBalance models
-  static Future<List<ChainBalance>> fetchWalletsForUser(
-      {required String walletId}) async {
+// services/api_service.dart (excerpt)
+  static Future<List<ChainBalance>> fetchWalletsForUser({
+    required String walletId,
+  }) async {
     final token = await getStoredToken();
     if (token == null || token.isEmpty) {
       throw const ApiException('No authentication token available');
@@ -530,65 +535,48 @@ class AuthService {
 
     final data = _handleResponse(res);
 
-// handle nested structure
-    final inner = (data['wallets'] is Map) ? data['wallets'] : data;
-    final wallets =
-        (inner['wallets'] as List?) ?? (data['data'] as List?) ?? [];
+    // ✅ Correctly handle nested structure
+    final walletsData =
+        (data['wallets'] is Map ? data['wallets']['wallets'] : null) ??
+            (data['wallets'] as List?) ??
+            (data['data'] as List?) ??
+            [];
 
-    final List<ChainBalance> rows = [];
+    final List<ChainBalance> chains = [];
 
-    for (final w in wallets) {
-      if (w is! Map) continue;
-      final chains = (w['chains'] as List?) ?? [];
-      for (final c in chains) {
+    for (final wallet in walletsData) {
+      if (wallet is! Map) continue;
+
+      final chainList = wallet['chains'] as List? ?? [];
+      for (final c in chainList) {
         if (c is! Map) continue;
 
-        final chain = (c['chain'] ?? '').toString();
-        final address = (c['address'] ?? '').toString();
-        final nickname =
-            (c['nickname'] ?? w['name'] ?? w['walletName'] ?? '').toString();
+        final chain = c['chain']?.toString() ?? '';
+        final address = c['address']?.toString() ?? '';
+        final nickname = c['nickname']?.toString() ?? '';
+        final balance = c['balance']?.toString() ?? '0';
 
-        // Some chains might have nested "nativeAsset" data
-        Map<String, dynamic>? native = (c['nativeAsset'] is Map)
-            ? (c['nativeAsset'] as Map).cast<String, dynamic>()
+        // optional nested nativeAsset data
+        final native = c['nativeAsset'] is Map
+            ? (c['nativeAsset'] as Map<String, dynamic>)
             : null;
 
-        rows.add(ChainBalance(
+        chains.add(ChainBalance(
           blockchain: chain,
           address: address,
           token: native?['symbol']?.toString() ?? chain,
           symbol: native?['symbol']?.toString() ?? chain,
-          balance: (native?['balance'] ?? '0').toString(),
+          balance: balance,
           value: native?['usdValue'] is num
               ? (native?['usdValue'] as num).toDouble()
               : double.tryParse(native?['usdValue']?.toString() ?? '0'),
-          nickname: nickname, // ✅ add nickname here
+          nickname: nickname.isNotEmpty ? nickname : wallet['name'] ?? '',
         ));
       }
     }
 
-    // ✅ fallback if wallet object has direct 'chain' and 'address'
-    for (final w in wallets) {
-      if (w is! Map) continue;
-      if (w['chains'] == null || (w['chains'] as List).isEmpty) {
-        final chain = w['chain']?.toString();
-        final address = w['address']?.toString();
-        if (chain != null && chain.isNotEmpty && address != null) {
-          rows.add(ChainBalance(
-            blockchain: chain,
-            address: address,
-            token: chain,
-            symbol: chain,
-            balance: '0',
-            value: 0.0,
-            nickname: (w['nickname'] ?? w['walletName'] ?? '').toString(), // ✅
-          ));
-        }
-      }
-    }
-
-    debugPrint('🔄 fetchWalletsForUser -> ${rows.length} chain entries found');
-    return rows;
+    debugPrint('✅ fetchWalletsForUser: ${chains.length} chains found');
+    return chains;
   }
 
   static Future<String?> getStoredWalletId() async {
@@ -987,39 +975,23 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    final body = {
-      "walletId": walletId,
-      "nickname": nickname,
-    };
-
-    const endpoint = '/api/wallet/delete-single-chain'; // ✅ FIXED PATH
+    const endpoint = '/api/wallet/delete-single-chain';
+    final body = {"walletId": walletId, "nickname": nickname};
 
     try {
-      debugPrint('🌐 DELETE $endpoint');
-      debugPrint('🔐 Authorization: Bearer ***JWT***');
+      debugPrint('🌐 POST (delete) $endpoint');
       debugPrint('📦 Body: ${jsonEncode(body)}');
 
-      final request = http.Request('DELETE', Uri.parse('$_baseUrl$endpoint'))
-        ..headers.addAll({
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        })
-        ..body = jsonEncode(body);
+      final res = await _makeRequest(
+        method: 'POST', // ✅ switch from DELETE to POST
+        endpoint: endpoint,
+        token: token,
+        body: body,
+      );
 
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
-
-      debugPrint('📥 Raw response: ${response.statusCode}');
-      debugPrint('🧾 Response body: ${response.body}');
-      if (response.statusCode >= 500) {
-        throw ApiException(
-            'Server error ${response.statusCode}: ${response.body}');
-      }
-
-      final data = _handleResponse(response);
+      debugPrint('📥 ${res.statusCode} ${res.body}');
+      final data = _handleResponse(res);
       debugPrint('✅ Deleted wallet nickname="$nickname" for ID=$walletId');
-
       return AuthResponse.success(data: data);
     } catch (e, st) {
       debugPrint('🚨 deleteSingleChainWallet error: $e\n$st');

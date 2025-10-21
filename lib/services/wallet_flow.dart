@@ -20,6 +20,7 @@ class WalletFlow {
               name: m['name'],
               primaryAddress: m['primaryAddress'] ?? '',
               createdAt: DateTime.parse(m['createdAt']),
+              chains: [],
             ))
         .toList();
   }
@@ -68,6 +69,7 @@ class WalletFlow {
       name: name ?? 'My Wallet',
       primaryAddress: primaryAddress,
       createdAt: DateTime.now(),
+      chains: [],
     );
     final next = [...current, local];
     await _saveLocalWallets(next);

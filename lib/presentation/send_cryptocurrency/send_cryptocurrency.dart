@@ -4,6 +4,7 @@ import 'package:cryptowallet/core/currency_adapter.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
+import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:cryptowallet/widgets/tx_failure_card.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
@@ -541,45 +542,28 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
   // ---------- Build rows from BalanceStore (+ prices) ----------
   Future<List<_AssetRow>> _loadAssetsFromStore() async {
-    final bs = context.read<BalanceStore>();
-    await _ensurePricesLoaded();
-
+    final ps = context.read<PortfolioStore>();
     final store = context.read<CoinStore>();
 
+    if (ps.tokens.isEmpty && !ps.loading) {
+      await ps.fetchCurrentWalletPortfolio();
+    }
+
     final rows = <_AssetRow>[];
-    for (final r in bs.rows) {
-      final symbol = (r.symbol.isNotEmpty
-              ? r.symbol
-              : (r.token.isNotEmpty ? r.token : r.blockchain))
-          .toUpperCase();
 
-      if (symbol.isEmpty) continue;
-
-      final bal = double.tryParse(r.balance) ?? 0.0;
-      // derive price: prefer spot, else value/balance (if balance > 0)
-      double price = _priceBySymbol[symbol] ?? 0.0; // USD
-      if (price == 0.0) {
-        final v = r.value ?? 0.0; // USD
-        if (bal > 0.0 && v > 0.0) price = v / bal;
-      }
-
-      final resolved = _resolveCoinFromStore(
-        store: store,
-        id: symbol,
-        symbol: symbol,
-      );
-
-      final id = resolved?.id ?? symbol;
-      final name = resolved?.name ?? symbol;
-      final assetPath =
-          resolved?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+    for (final t in ps.tokens) {
+      final coin = store.getById(t.symbol) ?? store.getById(t.chain);
+      final assetPath = coin?.assetPath ?? 'assets/currencyicons/bitcoin.png';
+      final name = coin?.name ?? t.name;
+      final id = coin?.id ?? t.symbol;
 
       rows.add(_AssetRow(
         id: id,
-        symbol: symbol,
+        symbol: t.symbol,
         name: name,
-        price: price, // USD
-        balance: bal,
+        price: t.value /
+            (t.balance == 0 ? 1 : t.balance), // derive USD price if needed
+        balance: t.balance,
         assetPath: assetPath,
       ));
     }
@@ -769,64 +753,33 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   Future<void> _initSelectionIfNeeded() async {
     if (!mounted) return;
 
-    final bs = context.read<BalanceStore>();
+    final ps = context.read<PortfolioStore>();
     final store = context.read<CoinStore>();
 
-    if (bs.rows.isEmpty && !bs.loading) {
-      await bs.refresh();
+    if (ps.tokens.isEmpty && !ps.loading) {
+      await ps.fetchCurrentWalletPortfolio();
     }
+
     if (!mounted) return;
 
-    await _ensurePricesLoaded();
-    if (!mounted) return;
-
-    final bySym = bs.bySymbol;
-    String wantedId = widget.initialCoinId ?? _selectedAssetSymbol;
+    final wantedId = widget.initialCoinId ?? _selectedAssetSymbol;
     final wantedSymbol =
         wantedId.contains('-') ? wantedId.split('-').first : wantedId;
 
-    final fallbackSym =
-        bySym.isNotEmpty ? bySym.keys.first : wantedSymbol.toUpperCase();
+    final t = ps.getBySymbol(wantedSymbol) ??
+        (ps.tokens.isNotEmpty ? ps.tokens.first : null);
+    if (t == null) return;
 
-    final chosen = bySym[wantedSymbol.toUpperCase()] ?? bySym[fallbackSym];
+    final coin = store.getById(t.symbol) ?? store.getById(t.chain);
+    final assetPath = coin?.assetPath ?? 'assets/currencyicons/bitcoin.png';
 
-    final coinResolved = _resolveCoinFromStore(
-      store: store,
-      id: wantedSymbol,
-      symbol: wantedSymbol,
-    );
-
-    final sym = wantedSymbol.toUpperCase();
-    final bal = chosen == null ? 0.0 : (double.tryParse(chosen.balance) ?? 0.0);
-
-    double price = _priceBySymbol[sym] ?? 0.0; // USD
-    if (price == 0.0 && chosen != null) {
-      final v = chosen.value ?? 0.0; // USD
-      if (bal > 0.0 && v > 0.0) price = v / bal;
-    }
-
-    if (!mounted) return;
     setState(() {
-      _selectedAsset = coinResolved?.name ?? sym;
-      _selectedAssetSymbol = sym;
-      _selectedAssetBalance = bal;
-      _selectedAssetIconPath =
-          coinResolved?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-      _selectedAssetPrice = price; // USD
-
-      if (widget.startInUsd) _isCryptoSelected = false;
-
-      if (widget.initialUsd != null) {
-        if (_isCryptoSelected) {
-          final crypto = widget.initialUsd! /
-              (_selectedAssetPrice == 0 ? 1 : _selectedAssetPrice);
-          _currentAmount = _trimCrypto(crypto);
-        } else {
-          // keypad shows selected currency, convert USD to selected for initial display
-          final fx = FxAdapter(context.read<CurrencyNotifier>());
-          _currentAmount = fx.fromUsd(widget.initialUsd!).toStringAsFixed(2);
-        }
-      }
+      _selectedAsset = t.name;
+      _selectedAssetSymbol = t.symbol;
+      _selectedAssetBalance = t.balance;
+      _selectedAssetIconPath = assetPath;
+      _selectedAssetPrice =
+          t.value / (t.balance == 0 ? 1 : t.balance); // derive USD price
     });
 
     if (!mounted) return;
@@ -852,11 +805,12 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
     // rebuild on currency change
     final fx = FxAdapter(context.watch<CurrencyNotifier>());
 
-    final bs = context.watch<BalanceStore>();
-    final row = bs.bySymbol[_selectedAssetSymbol.toUpperCase()];
-    final liveBal = row == null ? 0.0 : (double.tryParse(row.balance) ?? 0.0);
-    if (liveBal != _selectedAssetBalance) {
-      _selectedAssetBalance = liveBal;
+    final ps = context.watch<PortfolioStore>();
+    final token = ps.getBySymbol(_selectedAssetSymbol);
+    if (token != null && token.balance != _selectedAssetBalance) {
+      _selectedAssetBalance = token.balance;
+      _selectedAssetPrice =
+          token.value / (token.balance == 0 ? 1 : token.balance);
     }
 
     final screenHeight = MediaQuery.of(context).size.height;

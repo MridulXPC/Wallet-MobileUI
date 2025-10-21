@@ -1251,18 +1251,7 @@ class _SwapScreenState extends State<SwapScreen> {
                   coinId: toCoinId,
                   isFrom: false,
                   value: _quoteToAmount ?? 0.0),
-              if (midRate != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, left: 22, right: 22),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      midRate,
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ),
-                ),
+              if (hasQuote) _buildQuoteCard(),
               if (_swapError != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -1340,36 +1329,101 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  // ---------------- API-backed Picker ----------------
-  /// Extracts coinId from VaultToken without using [].
-  String? _tokenCoinId(dynamic token) {
-    try {
-      final dyn = token as dynamic;
-      final v = dyn.coinId ?? dyn.id;
-      if (v != null) return v.toString();
-    } catch (_) {}
-    try {
-      final m = (token as dynamic).toJson() as Map<String, dynamic>;
-      final v = m['coinId'] ?? m['id'];
-      if (v != null) return v.toString();
-    } catch (_) {}
-    return null;
+  Widget _buildQuoteCard() {
+    if (_quoteProvider == null && _quoteToAmount == null)
+      return const SizedBox.shrink();
+
+    final fromSym = _symbolFromId(context, fromCoinId);
+    final toSym = _symbolFromId(context, toCoinId);
+
+    // Mid rate text
+    final rateText = (fromAmount > 0 && (_quoteToAmount ?? 0) > 0)
+        ? '1 $fromSym ≈ ${(_quoteToAmount! / fromAmount).toStringAsFixed(6)} $toSym'
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171B2B),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quote Details',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_quoteProvider != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Provider',
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                Text(_quoteProvider!,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          if (rateText != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Exchange Rate',
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                Text(rateText,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+          if (_quoteFee != null && _quoteFee!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Network Fee',
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                Text('${_quoteFee!} USD',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+          if (_quoteFiatValue != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Fiat Value',
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                Text(_quoteFiatValue!,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
-  /// Extracts symbol from VaultToken without using [].
-  String? _tokenSymbol(dynamic token) {
-    try {
-      final dyn = token as dynamic;
-      final v = dyn.symbol ?? dyn.ticker;
-      if (v != null) return v.toString();
-    } catch (_) {}
-    try {
-      final m = (token as dynamic).toJson() as Map<String, dynamic>;
-      final v = m['symbol'] ?? m['ticker'];
-      if (v != null) return v.toString();
-    } catch (_) {}
-    return null;
-  }
+  // ---------------- API-backed Picker ----------------
 
   void _selectCoinApi({required bool isFrom, required String walletId}) {
     showModalBottomSheet(

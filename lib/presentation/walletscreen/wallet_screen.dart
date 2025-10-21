@@ -3,13 +3,13 @@ import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
+import 'package:cryptowallet/models/token_model.dart';
 import 'package:cryptowallet/models/explore_model.dart';
 import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart'; // for Clipboard
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 currency
@@ -128,27 +128,18 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         _error = null;
       });
 
-      final portfolioStore = context.read<PortfolioStore>();
+      await Future.wait([_loadWallets(), _loadSpotPrices()]);
 
-      // 🔹 Fetch portfolio tokens first (loads your BTC, ETH, etc.)
-      await portfolioStore.fetchCurrentWalletPortfolio();
-
-      // 🔹 Then proceed with your other data
-      await Future.wait([
-        _loadSpotPrices(),
-        _loadWalletAddress(),
-      ]);
-
-      if (portfolioStore.tokens.isNotEmpty) {
-        // Default select first non-zero balance token if available
-        final nonZero = portfolioStore.tokens.firstWhere(
-          (t) => t.balance > 0,
-          orElse: () => portfolioStore.tokens.first,
-        );
-        selectedCoinId = nonZero.symbol;
+      if (_tokens.isNotEmpty) {
+        final firstBase =
+            _baseFromToken(_tokens.first.symbol, _tokens.first.chain);
+        if (firstBase.isNotEmpty) selectedCoinId = firstBase;
       }
 
-      await _loadTransactionData();
+      await _loadWalletAddress();
+      if (_currentWalletAddress != null) {
+        await _loadTransactionData();
+      }
     } catch (e) {
       setState(() {
         _error = 'Failed to load wallet data: ${e.toString()}';
@@ -157,6 +148,41 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  String _coinIdFromChain(String chain) {
+    final c = chain.toUpperCase().trim();
+    switch (c) {
+      case 'BTC':
+        return 'BTC';
+      case 'ETH':
+        return 'ETH';
+      case 'BNB':
+        return 'BNB';
+      case 'SOL':
+        return 'SOL';
+      case 'TRON':
+      case 'TRX':
+        return 'TRX';
+      case 'XMR':
+        return 'XMR';
+      case 'USDT-ETH':
+        return 'USDT-ETH';
+      case 'USDT-TRX':
+        return 'USDT-TRX';
+      default:
+        return c;
+    }
+  }
+
+  Future<void> _loadWallets() async {
+    try {
+      // (Optional) You can cache wallet name here if your API returns it
+      // final wallets = await AuthService.fetchWallets();
+      setState(() {});
+    } catch (e) {
+      debugPrint('Error loading wallets: $e');
     }
   }
 
@@ -273,18 +299,6 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       'address': _currentWalletAddress ?? '—',
     };
   }
-
-  bool get _isGasFreeWallet => selectedCoinId.toUpperCase().contains('GASFREE');
-
-  bool get _isUSDTTRC20 =>
-      selectedCoinId.toUpperCase().contains('USDTTRC20') ||
-      selectedCoinId.toUpperCase().contains('USDT-TRX');
-
-  bool get _isUSDTERC20 =>
-      selectedCoinId.toUpperCase().contains('USDTERC20') ||
-      selectedCoinId.toUpperCase().contains('USDT-ETH');
-
-  bool get _isBTCLightning => selectedCoinId.toUpperCase().contains('BTC-LN');
 
   // ---------------- Transactions mapping ----------------
 
@@ -651,125 +665,33 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  Widget _buildGasFreeCard(
-      PortfolioToken token, double balance, String fiatValue) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF074E0A),
-            Color(0xFF002D1B),
-            Color(0xFF000D04),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'USDT GAS-FREE WALLET',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              _miniIconBox(
-                  Icons.local_gas_station, Colors.greenAccent, Colors.white),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Icon + balance
-          Row(
-            children: [
-              _buildTokenIcon(token.iconUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      balance.toStringAsFixed(8),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '≈ $fiatValue',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 13.5),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBalanceCard(Coin? coin, Map<String, String> details) {
-    final portfolioStore = context.watch<PortfolioStore>();
-    final fx = context.read<CurrencyNotifier>();
-
-    final token = portfolioStore.tokens.firstWhere(
-      (t) => t.symbol.toUpperCase() == selectedCoinId.toUpperCase(),
-      orElse: () => PortfolioToken(
-        id: '',
-        name: selectedCoinId,
-        symbol: selectedCoinId,
-        chain: '',
-        iconUrl: '',
-        balance: 0.0,
-        value: 0.0,
-      ),
-    );
-
-    final double balance = token.balance;
-    final String fiatValue = fx.formatFromUsd(token.value);
-
-    // ✅ Show special card if this is a GASFREE wallet
-    if (_isGasFreeWallet) {
-      return _buildGasFreeCard(token, balance, fiatValue);
-    }
-
-    // 🔹 Default flip card for all other wallets
     return AnimatedBuilder(
       animation: _flipAnimation,
       builder: (context, child) {
-        final isFront = _flipAnimation.value < 0.5;
+        final isShowingFront = _flipAnimation.value < 0.5;
         return Transform(
           alignment: Alignment.center,
           transform: Matrix4.identity()
             ..setEntry(3, 2, 0.001)
             ..rotateY(_flipAnimation.value * 3.14159),
-          child: isFront
-              ? _buildPortfolioFrontCard(token, balance, fiatValue)
-              : _buildPortfolioBackCard(token, balance, fiatValue),
+          child: isShowingFront
+              ? _buildFrontCard(coin, details)
+              : _buildBackCard(coin, details),
         );
       },
     );
   }
 
-  Widget _buildPortfolioFrontCard(
-      PortfolioToken token, double balance, String fiatValue) {
+  Widget _buildFrontCard(Coin? coin, Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
+    final symbol = coin?.symbol ?? selectedCoinId;
+    final address = details['address'] ?? '—';
+    final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
+    final priceUsd = _priceForCoinUsd(selectedCoinId);
+    final usd = balance * priceUsd;
+    final fiat = details['fiatBalance'];
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -782,63 +704,54 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Title & actions
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                token.name.isNotEmpty
-                    ? '${token.name} (${token.symbol})'
-                    : token.symbol,
+                '$symbol - Main Account',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              GestureDetector(
-                onTap: _toggleCardFlip,
-                child: _miniIconBox(Icons.flip, kTileBorder, Colors.white70),
-              ),
+              _buildActionIcons(),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(address, style: const TextStyle(color: kMuted, fontSize: 11)),
           const SizedBox(height: 16),
-          // Icon + Balance
-          Row(
-            children: [
-              _buildTokenIcon(token.iconUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      balance.toStringAsFixed(8),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '≈ $fiatValue',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Text(
+            balance.toStringAsFixed(8),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 42,
+              fontWeight: FontWeight.w600,
+            ),
           ),
+          if (fiat != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '≈ $fiat',
+                style: const TextStyle(color: Colors.white70, fontSize: 13.5),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildPortfolioBackCard(
-      PortfolioToken token, double balance, String fiatValue) {
+  Widget _buildBackCard(Coin? coin, Map<String, String> details) {
+    final fx = context.read<CurrencyNotifier>();
+    final symbol = coin?.symbol ?? selectedCoinId;
+    final address = details['address'] ?? '—';
+    final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
+    final priceUsd = _priceForCoinUsd(selectedCoinId);
+    final usd = balance * priceUsd;
+    final fiat = usd > 0 ? fx.formatFromUsd(usd) : null;
+
     return Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()..rotateY(3.14159),
@@ -854,24 +767,41 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with flip
+            // Header with gasfree indicator and flip
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${token.symbol} - Chain: ${token.chain}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.eco, color: Colors.green, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$symbol - Gas Free Mode',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
                 GestureDetector(
                   onTap: _toggleCardFlip,
-                  child: _miniIconBox(Icons.flip, kTileBorder, Colors.white70),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4A6A4A),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.refresh,
+                        color: Colors.green, size: 14),
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            Text(address,
+                style: const TextStyle(color: Color(0xFF8B9B8B), fontSize: 11)),
             const SizedBox(height: 16),
             Text(
               balance.toStringAsFixed(8),
@@ -881,10 +811,14 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Text(
-              '≈ $fiatValue',
-              style: const TextStyle(color: Colors.white70, fontSize: 13.5),
-            ),
+            if (fiat != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '≈ $fiat',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13.5),
+                ),
+              ),
           ],
         ),
       ),
@@ -1006,79 +940,270 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  // ---------------- Icon Builder ----------------
-  Widget _buildTokenIcon(String idOrUrl, {double size = 42}) {
+  Map<String, List<Map<String, dynamic>>> _groupChainsByNetwork(
+      List<dynamic> chains) {
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+
+    for (var chain in chains) {
+      final c = chain as Map<String, dynamic>? ?? {};
+      final chainName = (c['chain'] ?? '').toString().toUpperCase();
+
+      String baseNetwork = '';
+      String variant = '';
+
+      // Identify base network and variant
+      if (chainName.contains('ETH') || chainName.contains('ERC')) {
+        baseNetwork = 'ETH';
+        variant = chainName.contains('ERC') ? 'ERC20' : 'MAIN';
+      } else if (chainName.contains('TRX') ||
+          chainName.contains('TRON') ||
+          chainName.contains('TRC')) {
+        baseNetwork = 'TRON';
+        variant = chainName.contains('TRC') ? 'TRC20' : 'MAIN';
+      } else if (chainName.contains('BTC')) {
+        baseNetwork = 'BTC';
+        variant = chainName.contains('LN') || chainName.contains('LIGHTNING')
+            ? 'LIGHTNING'
+            : 'MAIN';
+      } else {
+        baseNetwork = chainName;
+        variant = 'MAIN';
+      }
+
+      if (!grouped.containsKey(baseNetwork)) {
+        grouped[baseNetwork] = [];
+      }
+
+      grouped[baseNetwork]!.add({
+        ...c,
+        'variant': variant,
+        'baseNetwork': baseNetwork,
+      });
+    }
+
+    return grouped;
+  }
+
+  Color _getVariantColor(String variant) {
+    switch (variant) {
+      case 'MAIN':
+        return const Color(0xFF2A2D3A);
+      case 'ERC20':
+        return const Color(0xFF3A2D5A); // Purple tint for ERC20
+      case 'TRC20':
+        return const Color(0xFF5A2D2D); // Red tint for TRC20
+      case 'LIGHTNING':
+        return const Color(0xFF2D5A5A); // Teal tint for Lightning
+      default:
+        return const Color(0xFF2A2D3A);
+    }
+  }
+
+  LinearGradient _getVariantGradient(String variant) {
+    switch (variant) {
+      case 'ERC20':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF3A2D5A),
+            Color.fromARGB(255, 20, 0, 40),
+            Color.fromARGB(255, 40, 0, 80),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        );
+      case 'TRC20':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF5A2D2D),
+            Color.fromARGB(255, 40, 0, 0),
+            Color.fromARGB(255, 80, 0, 20),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        );
+      case 'LIGHTNING':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF2D5A5A),
+            Color.fromARGB(255, 0, 40, 40),
+            Color.fromARGB(255, 0, 80, 60),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        );
+      default:
+        return kCardFrontGrad;
+    }
+  }
+
+  Widget _buildNetworkCards(List<Map<String, dynamic>> networkVariants) {
+    return SizedBox(
+      height: 180,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: networkVariants.length,
+        itemBuilder: (context, index) {
+          final variant = networkVariants[index];
+          final variantType = variant['variant'] as String;
+          final chain = variant['chain'] as String;
+          final address = variant['address'] as String;
+          final balance = variant['balance'].toString();
+          final coinId = _coinIdFromChain(chain);
+
+          return _buildNetworkCard(
+            variantType: variantType,
+            chain: chain,
+            address: address,
+            balance: balance,
+            coinId: coinId,
+            isSelected:
+                selectedCoinId == coinId && _currentWalletAddress == address,
+            onTap: () async {
+              setState(() {
+                selectedCoinId = coinId;
+                _currentWalletAddress = address;
+                _isCardFlipped = false;
+                _flipController.reset();
+                _lightningState = 'sync';
+                _isLightningComplete = false;
+                _exploreData = null;
+              });
+              await _loadTransactionData();
+            },
+          );
+        },
+      ),
+    );
+  }
+
+// Build individual network card
+  Widget _buildNetworkCard({
+    required String variantType,
+    required String chain,
+    required String address,
+    required String balance,
+    required String coinId,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     final store = context.read<CoinStore>();
-    final token = idOrUrl.toUpperCase();
+    final coin = store.getById(coinId);
+    final fx = context.read<CurrencyNotifier>();
 
-    // ✅ Step 1: Map API token variants → CoinStore IDs
-    String lookupId;
-    if (token.contains('USDTERC20') || token.contains('USDT-ETH')) {
-      lookupId = 'USDT-ETH';
-    } else if (token.contains('USDTTRC20') || token.contains('USDT-TRX')) {
-      lookupId = 'USDT-TRX';
-    } else if (token.contains('BTC-LN')) {
-      lookupId = 'BTC-LN';
-    } else if (token.startsWith('BTC')) {
-      lookupId = 'BTC';
-    } else if (token.startsWith('ETH')) {
-      lookupId = 'ETH';
-    } else if (token.startsWith('BNB')) {
-      lookupId = 'BNB';
-    } else if (token.startsWith('SOL')) {
-      lookupId = 'SOL';
-    } else if (token.startsWith('TRX')) {
-      lookupId = 'TRX';
-    } else if (token.startsWith('XMR')) {
-      lookupId = 'XMR';
-    } else if (token.startsWith('USDT')) {
-      lookupId = 'USDT';
-    } else {
-      lookupId = token;
-    }
+    final double bal = double.tryParse(balance) ?? 0.0;
+    final double priceUsd = _priceForCoinUsd(coinId);
+    final double usdValue = bal * priceUsd;
+    final String fiatValue =
+        usdValue > 0 ? fx.formatFromUsd(usdValue) : '≈ \$0.00';
 
-    // ✅ Step 2: Use CoinStore image if found
-    final coin = store.getById(lookupId);
-    if (coin != null && coin.assetPath.isNotEmpty) {
-      return Image.asset(
-        coin.assetPath,
-        width: size,
-        height: size,
-        errorBuilder: (_, __, ___) => const Icon(
-          Icons.currency_bitcoin,
-          color: Colors.white54,
-          size: 36,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 280,
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: _getVariantGradient(variantType),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.green : _getVariantColor(variantType),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _getVariantColor(variantType).withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      );
-    }
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon and variant badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    if (coin?.assetPath != null)
+                      Image.asset(coin!.assetPath, width: 28, height: 28)
+                    else
+                      const Icon(Icons.currency_bitcoin,
+                          color: Colors.white, size: 24),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          chain,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (variantType != 'MAIN')
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              variantType,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                if (isSelected)
+                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
+              ],
+            ),
+            const SizedBox(height: 12),
 
-    // ✅ Step 3: fallback to network or generic icon
-    if (idOrUrl.toLowerCase().endsWith('.svg')) {
-      return SvgPicture.network(
-        idOrUrl,
-        width: size,
-        height: size,
-        placeholderBuilder: (context) => const Icon(
-          Icons.currency_bitcoin,
-          color: Colors.white54,
-          size: 36,
-        ),
-      );
-    } else if (idOrUrl.startsWith('http')) {
-      return Image.network(
-        idOrUrl,
-        width: size,
-        height: size,
-        errorBuilder: (_, __, ___) => const Icon(
-          Icons.currency_bitcoin,
-          color: Colors.white54,
-          size: 36,
-        ),
-      );
-    }
+            // Address
+            Text(
+              _shortenAddress(address),
+              style: const TextStyle(color: Colors.white60, fontSize: 11),
+            ),
 
-    // ✅ Step 4: fallback generic
-    return const Icon(Icons.currency_bitcoin, color: Colors.white, size: 36);
+            const Spacer(),
+
+            // Balance
+            Text(
+              bal.toStringAsFixed(8),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              fiatValue,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildAvailableRow(Map<String, String> details) {
@@ -1727,109 +1852,178 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   void _showWalletChainSelector() {
-    final portfolioStore = context.read<PortfolioStore>();
-    final tokens = portfolioStore.tokens;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => ClipRect(
-        child: Container(
-          decoration: const BoxDecoration(gradient: kSheetGrad),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12, top: 6),
-                  decoration: BoxDecoration(
-                    color: kTile,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Select Token',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (tokens.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No tokens found in portfolio',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: tokens.length,
-                      itemBuilder: (context, i) {
-                        final t = tokens[i];
-                        final isSelected = selectedCoinId.toUpperCase() ==
-                            t.symbol.toUpperCase();
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            tileColor:
-                                isSelected ? kTile : const Color(0xFF1F2329),
-                            leading: _buildTokenIcon(t.iconUrl, size: 32),
-                            title: Text(
-                              '${t.name} (${t.symbol})',
-                              style: const TextStyle(
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          final store = context.read<CoinStore>();
+
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: AuthService.fetchWallets(),
+            builder: (context, snap) {
+              final wallets = snap.data ?? const <Map<String, dynamic>>[];
+
+              final List<dynamic> chains = (wallets.isNotEmpty &&
+                      wallets.first is Map<String, dynamic> &&
+                      (wallets.first as Map<String, dynamic>)['chains'] is List)
+                  ? (wallets.first as Map<String, dynamic>)['chains'] as List
+                  : const <dynamic>[];
+
+              return ClipRect(
+                child: Container(
+                  decoration: const BoxDecoration(gradient: kSheetGrad),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: kTile,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Select Network / Chain',
+                              style: TextStyle(
                                 color: Colors.white,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            subtitle: Text(
-                              '${t.balance.toStringAsFixed(8)} ${t.symbol}',
-                              style: const TextStyle(
-                                color: kMuted,
-                                fontSize: 12,
-                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (snap.connectionState == ConnectionState.waiting)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                      if (snap.hasError)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Failed to load wallets.\n${snap.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      if (snap.connectionState == ConnectionState.done &&
+                          chains.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No chains found in this wallet.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      if (chains.isNotEmpty)
+                        Expanded(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
                             ),
-                            trailing: Text(
-                              context
-                                  .read<CurrencyNotifier>()
-                                  .formatFromUsd(t.value),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                            onTap: () {
-                              setState(() {
-                                selectedCoinId = t.symbol;
-                                _isCardFlipped = false;
-                                _flipController.reset();
-                              });
-                              Navigator.pop(context);
+                            itemCount: chains.length,
+                            itemBuilder: (context, i) {
+                              final c =
+                                  chains[i] as Map<String, dynamic>? ?? {};
+                              final chain = (c['chain'] ?? '').toString();
+                              final addr = (c['address'] ?? '').toString();
+                              final bal = (c['balance'] ?? '0').toString();
+
+                              final coinId = _coinIdFromChain(chain);
+                              final coin = store.getById(coinId);
+
+                              final isSelected = selectedCoinId == coinId;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                child: ListTile(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  tileColor: isSelected
+                                      ? kTile
+                                      : const Color(0xFF1F2329),
+                                  leading: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: (coin != null &&
+                                            coin.assetPath.isNotEmpty)
+                                        ? Image.asset(
+                                            coin.assetPath,
+                                            width: 24,
+                                            height: 24,
+                                          )
+                                        : const Icon(
+                                            Icons.language,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                  ),
+                                  title: Text(
+                                    chain,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    addr.isEmpty ? '—' : _shortenAddress(addr),
+                                    style: const TextStyle(
+                                      color: kMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  trailing: Text(
+                                    '$bal $chain',
+                                    style: const TextStyle(
+                                      color: kMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    setState(() {
+                                      selectedCoinId = coinId;
+                                      _currentWalletAddress = addr;
+                                      _isCardFlipped = false;
+                                      _flipController.reset();
+                                      _lightningState = 'sync';
+                                      _isLightningComplete = false;
+                                      _exploreData = null;
+                                    });
+                                    await _loadTransactionData();
+                                  },
+                                ),
+                              );
                             },
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-        ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
