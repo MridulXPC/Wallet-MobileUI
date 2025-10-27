@@ -16,7 +16,7 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
   @override
   Widget build(BuildContext context) {
     final coinStore = context.watch<CoinStore>();
-    final coins = coinStore.coins.values.toList();
+    coinStore.coins.values.toList();
 
     // choose 5 coins for the top row (you can reorder this list)
     final topRowIds = <String>["BTC", "BTC-LN", "ETH", "TRX", "BNB"];

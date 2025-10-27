@@ -34,13 +34,6 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
     });
   }
 
-  void _openTerms() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-          builder: (_) => const _DocScreen(title: 'Terms of Use')),
-    );
-  }
-
   void _openPrivacy() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -163,7 +156,7 @@ class _TechSupportScreenState extends State<TechSupportScreen> {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text, {super.key});
+  const _SectionHeader(this.text);
   final String text;
 
   @override
@@ -187,7 +180,6 @@ class _SettingCard extends StatelessWidget {
     required this.subtitle,
     this.trailing,
     this.onTap,
-    super.key,
   });
 
   final IconData leadingIcon;
@@ -289,19 +281,19 @@ class _DocScreen extends StatelessWidget {
 
 Privacy Policy
 1. Introduction
-Welcome to Echelon Technologies Private Limited (“Echelon,” “we,” “us,” or “our”).
-Echelon respects your privacy and is committed to protecting your personal information. This Privacy Policy (“Policy”) describes how we collect, use, disclose, and safeguard information about you when you access or use our website, mobile applications, products, and other services (collectively, the “Platform”).
+Welcome to Zyara Technologies Private Limited (“Zyara,” “we,” “us,” or “our”).
+Zyara respects your privacy and is committed to protecting your personal information. This Privacy Policy (“Policy”) describes how we collect, use, disclose, and safeguard information about you when you access or use our website, mobile applications, products, and other services (collectively, the “Platform”).
 This Policy also explains the rights and choices you have with respect to your data and how you can exercise them.
 By registering for an account, using our Platform, or otherwise providing information to us, you consent to the collection and use of your personal data as described in this Policy.
  If you do not agree with this Policy, please refrain from using the Platform.
 2. Scope and Applicability
 This Policy applies to:
-All users of Echelon’s Platform, including individuals and entities that create accounts or interact with features on the Platform.
+All users of Zyara’s Platform, including individuals and entities that create accounts or interact with features on the Platform.
 All personal data collected through our website, applications, communication channels, or integrations.
-All processing activities performed by Echelon in India or in jurisdictions where we operate.
-This Policy does not apply to third-party websites, applications, or services that are not controlled by Echelon, even if they are linked through the Platform. We encourage you to review the privacy policies of such third parties.
+All processing activities performed by Zyara in India or in jurisdictions where we operate.
+This Policy does not apply to third-party websites, applications, or services that are not controlled by Zyara, even if they are linked through the Platform. We encourage you to review the privacy policies of such third parties.
 3. Information We Collect
-Echelon collects information directly from you, automatically through your use of the Platform, and from third parties. The information we collect depends on how you use the Platform and the features you access.
+Zyara collects information directly from you, automatically through your use of the Platform, and from third parties. The information we collect depends on how you use the Platform and the features you access.
 3.1 Information You Provide to Us
 We collect information that you voluntarily provide when you create or manage your account, use features, or communicate with us. This may include:
 Account information: Your name, phone number, email address, password, profile photo, user ID, and other details provided during registration.
@@ -310,7 +302,7 @@ Account information: Your name, phone number, email address, password, profile p
 Identity verification data: KYC documents such as PAN, Aadhaar, government-issued ID, or other documentation when required by law or policy.
 
 
-Transaction information: Details of transfers, exchanges, payments, or value movements performed within the Echelon ecosystem.
+Transaction information: Details of transfers, exchanges, payments, or value movements performed within the Zyara ecosystem.
 
 
 Communications: Information contained in emails, messages, feedback forms, or customer service inquiries.
@@ -345,7 +337,7 @@ Verification partners: For KYC, fraud prevention, or authentication services.
 Analytics providers: That help us understand user behavior and service performance.
 
 
-Business partners or affiliates: In relation to products, offers, or services within the Echelon ecosystem.
+Business partners or affiliates: In relation to products, offers, or services within the Zyara ecosystem.
 
 
 Publicly available databases: Where such collection is lawful.
@@ -361,7 +353,7 @@ To register and maintain user accounts.
 To provide access to Platform features and services.
 
 
-To enable value transfers, payments, and other authorized transactions within the Echelon environment.
+To enable value transfers, payments, and other authorized transactions within the Zyara environment.
 
 
 To maintain accurate records of balances and transactions.
@@ -404,7 +396,7 @@ To deliver in-app or email updates about system changes or new services.
 To send you product updates, promotional materials, or announcements (only where you have opted in).
 
 
-To provide you with offers related to Echelon’s ecosystem partners.
+To provide you with offers related to Zyara’s ecosystem partners.
 
 
 4.6 Legal and Regulatory Obligations
@@ -416,15 +408,15 @@ To maintain records for audits, dispute resolution, and compliance purposes.
 
 We do not use your data for profiling or automated decision-making that has legal or significant effects on you without your explicit consent.
 5. How We Share Information
-Echelon does not sell, rent, or trade your personal data. However, we may share information with specific parties as necessary to provide and improve our services.
+Zyara does not sell, rent, or trade your personal data. However, we may share information with specific parties as necessary to provide and improve our services.
 5.1 Service Providers
-We may share information with third-party vendors that support Echelon in areas such as hosting, cloud infrastructure, customer service, identity verification, analytics, and communications.
+We may share information with third-party vendors that support Zyara in areas such as hosting, cloud infrastructure, customer service, identity verification, analytics, and communications.
 
 
 All such vendors operate under strict data protection agreements and are obligated to safeguard your information.
 5.2 Affiliates and Group Entities
 We may share information with our subsidiaries, affiliates, or related entities to facilitate internal operations, cross-platform services, or user support.
-5.3 Partners within the Echelon Ecosystem
+5.3 Partners within the Zyara Ecosystem
 We may disclose limited information to ecosystem partners for the purpose of facilitating authorized activities within the Platform, such as in-platform transactions, rewards, or collaborations.
 5.4 Legal Disclosures
 We may disclose your information if required by:
@@ -437,11 +429,11 @@ Government or law enforcement requests.
 Regulatory or compliance requirements.
 
 
-To protect the safety, rights, or property of Echelon, its users, or the public.
+To protect the safety, rights, or property of Zyara, its users, or the public.
 
 
 5.5 Business Transfers
-If Echelon is involved in a merger, acquisition, restructuring, or sale of assets, your information may be transferred as part of that transaction, subject to confidentiality protections.
+If Zyara is involved in a merger, acquisition, restructuring, or sale of assets, your information may be transferred as part of that transaction, subject to confidentiality protections.
 6. Data Retention
 We retain personal information only as long as necessary for the purposes described in this Policy, including:
 Compliance with legal obligations.
@@ -458,7 +450,7 @@ Security and fraud prevention.
 
 Transactional records may be retained for longer durations to satisfy regulatory requirements. When personal data is no longer needed, we delete or anonymize it securely.
 7. Data Security
-Echelon implements industry-standard administrative, technical, and organizational measures to protect your data. These include:
+Zyara implements industry-standard administrative, technical, and organizational measures to protect your data. These include:
 Encrypted storage and transmission of sensitive information.
 
 
@@ -490,10 +482,10 @@ Right to data portability – to obtain a copy of your personal data in a struct
 
 
 Right to grievance redressal – to raise complaints or concerns regarding data handling.
-To exercise these rights, contact us at [privacy@echelon…]
+To exercise these rights, contact us at [privacy@Zyara…]
 We will verify your identity before processing any request and respond within statutory timelines.
 9. Cookies and Tracking Technologies
-Echelon uses cookies and related technologies to operate efficiently and improve user experience.
+Zyara uses cookies and related technologies to operate efficiently and improve user experience.
 Cookies are small files stored on your device that help:
 Maintain login sessions.
 
@@ -505,24 +497,24 @@ Support fraud detection and prevention.
 
 You can control or delete cookies via browser settings. However, disabling cookies may limit your ability to use some features of the Platform.
 10. Data Transfers
-Although Echelon primarily stores and processes data in India, we may transfer limited data to trusted third-party processors located in other jurisdictions for specific operational purposes (such as analytics or cloud hosting).
+Although Zyara primarily stores and processes data in India, we may transfer limited data to trusted third-party processors located in other jurisdictions for specific operational purposes (such as analytics or cloud hosting).
 Where data is transferred internationally, we ensure that adequate legal safeguards are implemented, including contractual protections and security standards equivalent to those required under Indian law.
 11. Protection of Minors
-Echelon does not knowingly collect personal data from individuals under the age of 18 without parental or guardian consent.
+Zyara does not knowingly collect personal data from individuals under the age of 18 without parental or guardian consent.
 If we learn that we have inadvertently collected data from a minor without proper authorization, we will take steps to delete it immediately.
 12. Links to Third-Party Websites
 The Platform may contain links to external websites or third-party services. We are not responsible for their privacy practices or content. We encourage users to review the privacy policies of those third parties before engaging with them.
 13. Grievance Officer
 In accordance with the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011 and the Digital Personal Data Protection Act, 2023, the details of our Grievance Officer are as follows:
 Name: [Insert Name]
-Designation: Grievance Officer – Echelon Technologies Private Limited
-Email: privacy@echelon..
+Designation: Grievance Officer – Zyara Technologies Private Limited
+Email: privacy@Zyara..
 Address: [Insert Office Address]
 We will acknowledge grievances within 24 hours and aim to resolve them within 30 days.
 14. Changes to This Policy
 We may modify this Policy periodically to reflect updates in our practices, legal obligations, or technological developments.
 Revised versions will be posted on the Platform with a new “Last Updated” date.
-Your continued use of Echelon after such updates constitutes your acceptance of the revised Policy.
+Your continued use of Zyara after such updates constitutes your acceptance of the revised Policy.
 15. Governing Law and Jurisdiction
 This Policy is governed by and construed in accordance with the laws of India.
  Any disputes arising under this Policy shall be subject to the exclusive jurisdiction of the courts located in City, India.

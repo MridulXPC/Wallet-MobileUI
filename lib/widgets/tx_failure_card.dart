@@ -22,7 +22,6 @@ class TxFailureCard extends StatefulWidget {
   }) : _onRemove = null;
 
   const TxFailureCard._internal({
-    super.key,
     required this.title,
     required this.message,
     this.txId,
@@ -43,7 +42,6 @@ class TxFailureCard extends StatefulWidget {
     bool barrier = false,
   }) async {
     final overlay = Overlay.of(context, rootOverlay: true);
-    if (overlay == null) return;
 
     late OverlayEntry entry;
     entry = OverlayEntry(
@@ -119,8 +117,6 @@ class _TxFailureCardState extends State<TxFailureCard>
   @override
   Widget build(BuildContext context) {
     // Card theme (matches your dark UI)
-    const bg = Color(0xFF171B2B);
-    const border = Color(0xFF2A2D3A);
     const accent = Color(0xFFEF6727);
 
     final card = FadeTransition(

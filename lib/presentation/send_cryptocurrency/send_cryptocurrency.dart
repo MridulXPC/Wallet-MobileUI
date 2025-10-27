@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cryptowallet/core/currency_adapter.dart';
 import 'package:cryptowallet/presentation/receive_cryptocurrency/receive_btclightning.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationScreen.dart';
-import 'package:cryptowallet/presentation/send_cryptocurrency/SendConfirmationView.dart';
 import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:cryptowallet/widgets/tx_failure_card.dart';
 import 'package:flutter/material.dart';
@@ -11,8 +10,6 @@ import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 
 import 'package:cryptowallet/stores/coin_store.dart';
-import 'package:cryptowallet/stores/balance_store.dart';
-import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 // currency notifier (wrapped by FxAdapter)
@@ -360,8 +357,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   double _selectedAssetPrice = 0.00;
 
   // cached spot prices for user-held symbols (USD)
-  Map<String, double> _priceBySymbol = const {};
-  bool _loadingPrices = false;
 
   @override
   void dispose() {
@@ -462,15 +457,15 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
       return;
     }
 
-    if (amountCrypto > _selectedAssetBalance) {
-      TxFailureCard.show(
-        context,
-        title: 'Transaction failed',
-        message: 'Insufficient balance',
-        barrier: true,
-      );
-      return;
-    }
+    // if (amountCrypto > _selectedAssetBalance) {
+    //   TxFailureCard.show(
+    //     context,
+    //     title: 'Transaction failed',
+    //     message: 'Insufficient balance',
+    //     barrier: true,
+    //   );
+    //   return;
+    // }
 
     final amountCryptoStr = _trimCrypto(amountCrypto);
 
@@ -523,22 +518,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
   }
 
   // ---------- Resolve Coin from CoinStore ----------
-  Coin? _resolveCoinFromStore({
-    required CoinStore store,
-    required String id,
-    required String symbol,
-  }) {
-    Coin? coin = store.getById(id);
-    if (coin != null) return coin;
-
-    for (final c in store.coins.values) {
-      if (c.symbol.toUpperCase() == symbol.toUpperCase()) return c;
-    }
-
-    final base = id.contains('-') ? id.split('-').first : id;
-    coin = store.getById(base);
-    return coin;
-  }
 
   // ---------- Build rows from BalanceStore (+ prices) ----------
   Future<List<_AssetRow>> _loadAssetsFromStore() async {
@@ -784,20 +763,6 @@ class _SendCryptocurrencyState extends State<SendCryptocurrency> {
 
     if (!mounted) return;
     _recomputeUsdFromInput();
-  }
-
-  Future<void> _ensurePricesLoaded() async {
-    if (_priceBySymbol.isNotEmpty) return;
-    if (!mounted) return;
-    final syms = context.read<BalanceStore>().symbols;
-    if (syms.isEmpty) return;
-
-    final prices = await AuthService.fetchSpotPrices(symbols: syms);
-    if (!mounted) return;
-
-    setState(() {
-      _priceBySymbol = prices; // USD
-    });
   }
 
   @override

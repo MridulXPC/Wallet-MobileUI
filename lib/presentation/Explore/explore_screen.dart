@@ -689,16 +689,6 @@ String _shorten(String s, {int head = 6, int tail = 6}) {
 }
 
 // (kept for generic number formatting if needed elsewhere)
-String _thousands(String s) {
-  final re = RegExp(r'(\d+)(\d{3})');
-  var parts = s.split('.');
-  var x = parts[0];
-  var y = parts.length > 1 ? '.${parts[1]}' : '';
-  while (re.hasMatch(x)) {
-    x = x.replaceAllMapped(re, (m) => '${m[1]},${m[2]}');
-  }
-  return '$x$y';
-}
 
 String _fmtAmount(double n) {
   if (n.abs() >= 1) return n.toStringAsFixed(2);

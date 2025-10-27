@@ -89,37 +89,6 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
 
   // pickers ------------------------------------------------------------------
 
-  Future<void> _pickLanguage() async {
-    const langs = <(String code, String label)>[
-      ('en-US', 'English (US)'),
-      ('en-GB', 'English (UK)'),
-      ('es-ES', 'Español (ES)'),
-      ('es-419', 'Español (LATAM)'),
-      ('fr-FR', 'Français'),
-      ('de-DE', 'Deutsch'),
-      ('pt-BR', 'Português (BR)'),
-      ('hi-IN', 'हिन्दी'),
-      ('zh-CN', '简体中文'),
-      ('ja-JP', '日本語'),
-    ];
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _PickerSheet(
-        title: 'Select Language',
-        options: langs
-            .map((e) => PickerItem(value: e.$1, title: e.$2))
-            .toList(growable: false),
-        selectedValue: _language,
-      ),
-    );
-    if (picked != null && picked != _language) {
-      setState(() => _language = picked);
-      _saveString(_kLang, picked);
-      _snack('Language set to ${langs.firstWhere((e) => e.$1 == picked).$2}');
-    }
-  }
-
   Future<void> _pickCurrency() async {
     const fx = <(String code, String label)>[
       ('USD', 'US Dollar'),

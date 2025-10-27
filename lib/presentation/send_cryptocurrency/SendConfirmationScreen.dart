@@ -58,7 +58,6 @@ class _SendConfirmationScreenState extends State<SendConfirmationScreen> {
 
   // --------- Helpers ---------
   String get _assetSymbol => _flow.assetSymbol;
-  String get _assetName => _flow.assetName;
 
   /// Spot price (USD per coin) derived from flow (amount + usdValue)
   double get _assetPrice => _flow.usdValue > 0

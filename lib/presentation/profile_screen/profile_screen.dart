@@ -226,52 +226,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/// Banner row used for notifications strip
-class _HubBanner extends StatelessWidget {
-  const _HubBanner({
-    required this.leading,
-    required this.title,
-    required this.onTap,
-  });
-
-  final Widget leading;
-  final String title;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: _ProfileScreenState._card,
-      borderRadius: BorderRadius.circular(6),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Container(
-          height: 64,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              leading,
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600),
-                ),
-              ),
-              const Icon(Icons.chevron_right,
-                  color: _ProfileScreenState._faint),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Square cards in the 2x2 grid
 class _HubSquareCard extends StatelessWidget {
   const _HubSquareCard({

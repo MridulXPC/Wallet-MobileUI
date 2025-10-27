@@ -233,21 +233,42 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     if (streamSym == null) return;
 
     final url = 'wss://stream.binance.com:9443/ws/$streamSym@ticker';
+    debugPrint('🌐 Connecting Binance stream: $url');
     _ws = IOWebSocketChannel.connect(Uri.parse(url));
 
     _wsSub = _ws!.stream.listen(
       (event) {
         try {
-          final m = jsonDecode(event as String) as Map<String, dynamic>;
-          final last = double.tryParse(m['c']?.toString() ?? '');
+          final data = jsonDecode(event as String) as Map<String, dynamic>;
+
+          // Binance ticker event keys:
+          // c = last price, P = percent change, p = absolute change
+          final last = double.tryParse(data['c']?.toString() ?? '');
+          final changePct = double.tryParse(data['P']?.toString() ?? '');
+          final changeAbs = double.tryParse(data['p']?.toString() ?? '');
+
           if (!mounted) return;
+
           setState(() {
-            if (last != null) _livePrice = last;
+            if (last != null) {
+              _livePrice = last;
+              _livePriceUsd = last; // ✅ also update USD price for display
+            }
+            if (changePct != null) _changePercent24 = changePct;
+            if (changeAbs != null) _changeAbsUsd24 = changeAbs;
           });
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('⚠️ Binance stream parse error: $e');
+        }
       },
-      onDone: _scheduleReconnect,
-      onError: (_) => _scheduleReconnect(),
+      onDone: () {
+        debugPrint('🔌 Binance stream closed, reconnecting...');
+        _scheduleReconnect();
+      },
+      onError: (err) {
+        debugPrint('❌ Binance stream error: $err');
+        _scheduleReconnect();
+      },
       cancelOnError: true,
     );
   }
@@ -544,34 +565,47 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   Widget _buildTokenPriceDisplay(FxAdapter fx) {
-    final price = _livePriceUsd ?? _fallbackPrice;
+    // Show nothing until first live or fallback data ready
+    final hasLive = _livePrice != null || _livePriceUsd != null;
+    final price = _livePrice ?? _livePriceUsd ?? _fallbackPrice;
     final changePct = _changePercent24 ?? 0.0;
     final changeAbs = _changeAbsUsd24 ?? 0.0;
     final isUp = changePct >= 0;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
-      child: Column(
-        children: [
-          Text(
-            '\$${price.toStringAsFixed(2)}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 30,
-              fontWeight: FontWeight.w700,
+      child: hasLive
+          ? Column(
+              children: [
+                Text(
+                  '\$${price.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 0.8.h),
+                Text(
+                  '${isUp ? '+' : ''}${changePct.toStringAsFixed(2)}% '
+                  '(${isUp ? '+' : ''}\$${changeAbs.toStringAsFixed(2)})',
+                  style: TextStyle(
+                    color: isUp ? Colors.greenAccent : Colors.redAccent,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            )
+          : const Center(
+              child: Padding(
+                padding: EdgeInsets.only(top: 16),
+                child: Text(
+                  'Fetching live price...',
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ),
             ),
-          ),
-          SizedBox(height: 0.8.h),
-          Text(
-            '${isUp ? '+' : ''}${changePct.toStringAsFixed(2)}% (${isUp ? '+' : ''}\$${changeAbs.toStringAsFixed(2)})',
-            style: TextStyle(
-              color: isUp ? Colors.greenAccent : Colors.redAccent,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -788,9 +822,8 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           '⚡ Fallback: ${allChains.length} total chains across all wallets');
 
       final chains = allChains.where((c) {
-        final symbol = (c.symbol ?? '').toString().toUpperCase();
-        final chainCode =
-            (c.chain ?? c.blockchain ?? '').toString().toUpperCase();
+        final symbol = (c.symbol).toString().toUpperCase();
+        final chainCode = (c.chain).toString().toUpperCase();
         return symbol == wantedSym || chainCode == wantedSym;
       }).toList();
 
@@ -798,9 +831,9 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
           '⚡ Found ${chains.length} $wantedSym chains in WalletStore fallback');
 
       holdings = chains.map((chain) {
-        final chainCode = (chain.blockchain ?? chain.chain ?? '').toUpperCase();
+        final chainCode = (chain.blockchain).toUpperCase();
         final nickname = (chain.nickname ?? '').trim();
-        final balance = double.tryParse(chain.balance ?? '0') ?? 0.0;
+        final balance = double.tryParse(chain.balance) ?? 0.0;
         final usd = chain.value ?? 0.0;
 
         final coinForIcon =
@@ -1429,42 +1462,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
             style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
       ],
     );
-  }
-
-  String _getTimeAgo(String dateTime) {
-    try {
-      final parts = dateTime.split(' ');
-      if (parts.length >= 3) {
-        final day = int.parse(parts[0]);
-        final month = parts[1];
-        final year = int.parse(parts[2]);
-
-        final months = {
-          'Jan': 1,
-          'Feb': 2,
-          'Mar': 3,
-          'Apr': 4,
-          'May': 5,
-          'Jun': 6,
-          'Jul': 7,
-          'Aug': 8,
-          'Sep': 9,
-          'Oct': 10,
-          'Nov': 11,
-          'Dec': 12
-        };
-
-        final transactionDate = DateTime(year, months[month] ?? 1, day);
-        final now = DateTime.now();
-        final difference = now.difference(transactionDate).inDays;
-
-        if (difference == 0) return 'Today';
-        if (difference == 1) return 'Yesterday';
-        if (difference < 30) return '$difference days ago';
-        return '$day $month $year';
-      }
-    } catch (_) {}
-    return '12 days ago';
   }
 
   String _timeAgoFromDate(DateTime dt) {

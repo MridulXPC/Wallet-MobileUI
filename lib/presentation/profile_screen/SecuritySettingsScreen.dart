@@ -321,7 +321,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text, {super.key});
+  const _SectionHeader(this.text);
   final String text;
 
   @override
@@ -346,7 +346,6 @@ class _SettingCard extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.isDanger = false,
-    super.key,
   });
 
   final IconData leadingIcon;
@@ -508,94 +507,6 @@ class _PickerSheet extends StatelessWidget {
                       onTap: () => Navigator.pop(context, value),
                     );
                   },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoSheet extends StatelessWidget {
-  const _InfoSheet({
-    required this.title,
-    required this.body,
-    required this.primaryText,
-    required this.onPrimary,
-  });
-
-  final String title;
-  final String body;
-  final String primaryText;
-  final VoidCallback onPrimary;
-
-  static const _bgGrad = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomRight,
-    stops: [0.0, 0.55, 1.0],
-    colors: [
-      Color.fromARGB(255, 6, 11, 33),
-      Color.fromARGB(255, 0, 0, 0),
-      Color.fromARGB(255, 0, 12, 56),
-    ],
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      child: Container(
-        decoration: const BoxDecoration(gradient: _bgGrad),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF171B2B),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Row(
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  body,
-                  style: const TextStyle(
-                      color: _SecuritySettingsScreenState._faint),
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0E57FF),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  onPressed: onPrimary,
-                  child: Text(primaryText,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

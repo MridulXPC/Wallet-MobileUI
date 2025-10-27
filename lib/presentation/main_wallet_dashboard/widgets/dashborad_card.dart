@@ -65,11 +65,6 @@ class _CryptoStatCardState extends State<CryptoStatCard> {
   }
 
   // Coin-display decimals (ONLY for coin-denominated numbers, not fiat)
-  int _coinPriceDecimalsFor(String coinId) {
-    final base =
-        (coinId.contains('-') ? coinId.split('-').first : coinId).toUpperCase();
-    return base == 'TRX' ? 4 : 2;
-  }
 
   Color _dominantColor = const Color(0xFF1A73E8);
   bool _isColorReady = false;

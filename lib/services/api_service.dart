@@ -256,6 +256,41 @@ class AuthService {
     }
   }
 
+  static Future<AuthResponse> getUserProfile({String? token}) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    const endpoint = '/api/auth/me';
+
+    try {
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: endpoint,
+        token: token,
+        requireAuth: true,
+      );
+
+      final data = _handleResponse(res);
+      final user = data['user'] as Map<String, dynamic>? ?? {};
+      final id = user['_id']?.toString();
+
+      if (id != null && id.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_spUserIdKey, id);
+        debugPrint('💾 Stored userId: $id');
+      } else {
+        debugPrint('⚠️ getUserProfile: userId not found in response');
+      }
+
+      return AuthResponse.success(data: data);
+    } catch (e) {
+      debugPrint('🚨 getUserProfile error: $e');
+      return AuthResponse.failure('Failed to fetch user profile: $e');
+    }
+  }
+
   static Future<AuthResponse> authorizeWebSession({
     required String sessionId,
     String? token,
@@ -478,9 +513,9 @@ class AuthService {
       List<dynamic> list;
       if (data is List) {
         list = data as List;
-      } else if (data is Map && data['data'] is List) {
+      } else if (data['data'] is List) {
         list = data['data'] as List<dynamic>;
-      } else if (data is Map && data['tokens'] is List) {
+      } else if (data['tokens'] is List) {
         list = data['tokens'] as List<dynamic>;
       } else {
         list = const <dynamic>[];
@@ -511,7 +546,25 @@ class AuthService {
 
   static Future<String?> getOrFetchUserId() async {
     final cached = await getStoredUserId();
-    return (cached != null && cached.isNotEmpty) ? cached : null;
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    try {
+      final profile = await getUserProfile(); // calls /api/auth/me
+      final data = profile.data?['user'] as Map<String, dynamic>?;
+      final id = data?['_id']?.toString();
+
+      if (id != null && id.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_spUserIdKey, id);
+        return id;
+      }
+
+      debugPrint('⚠️ getOrFetchUserId: no user._id in /auth/me response');
+      return null;
+    } catch (e) {
+      debugPrint('🚨 getOrFetchUserId failed: $e');
+      return null;
+    }
   }
 
   // ===================== WALLETS =====================
@@ -747,7 +800,7 @@ class AuthService {
       }
 
       if (best == null ||
-          (t != null && (bestTime == null || t.isAfter(bestTime!)))) {
+          (t != null && (bestTime == null || t.isAfter(bestTime)))) {
         best = w;
         bestTime = t;
       }
@@ -942,9 +995,7 @@ class AuthService {
       }
 
       // Debug summary
-      if (data is Map &&
-          data['wallets'] is List &&
-          data['wallets'].isNotEmpty) {
+      if (data['wallets'] is List && data['wallets'].isNotEmpty) {
         final last = (data['wallets'] as List).last;
         debugPrint(
             '✅ Wallet created: ${last['chain']} → ${last['address']} (${last['nickname'] ?? 'no name'})');
@@ -1000,7 +1051,6 @@ class AuthService {
   }
 
   static Future<AuthResponse> sendTransaction({
-    required String userId,
     required String walletAddress,
     required String toAddress,
     required String amount,
@@ -1012,6 +1062,11 @@ class AuthService {
       final jwt = await getStoredToken();
       if (jwt == null || jwt.isEmpty) {
         throw const ApiException("No authentication token available");
+      }
+
+      final userId = await getOrFetchUserId();
+      if (userId == null || userId.isEmpty) {
+        throw const ApiException("Failed to resolve userId from /auth/me");
       }
 
       final requestBody = <String, dynamic>{
@@ -1039,6 +1094,7 @@ class AuthService {
       debugPrint("📥 Raw response: ${response.statusCode} ${response.body}");
       final data = _handleResponse(response);
       debugPrint("✅ ${data['message'] ?? 'Transaction sent successfully'}");
+
       return AuthResponse.success(data: data);
     } on ApiException {
       rethrow;
@@ -1067,7 +1123,6 @@ class AuthService {
     }
 
     return sendTransaction(
-      userId: uid,
       walletAddress: fromAddress,
       toAddress: toAddress,
       amount: amount,
@@ -1807,7 +1862,7 @@ class HttpKit {
     }
 
     if (lastErr != null && lastSt != null) {
-      Error.throwWithStackTrace(lastErr!, lastSt);
+      Error.throwWithStackTrace(lastErr, lastSt);
     }
     throw Exception('Request failed');
   }

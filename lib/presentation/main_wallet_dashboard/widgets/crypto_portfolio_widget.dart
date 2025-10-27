@@ -1,4 +1,7 @@
 // lib/presentation/main_wallet_dashboard/widgets/crypto_portfolio_widget.dart
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/services/api_service.dart';
@@ -7,6 +10,7 @@ import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 added
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Optional: pre-cache all coin icons once (e.g., call from splash/init)
 Future<void> precacheCoinIcons(BuildContext context) async {
@@ -136,7 +140,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
 
       for (final t in tokens) {
         final base = _baseSymbolFor(t.symbol, t.chain);
-        final chain = (t.chain ?? '').toUpperCase();
+        final chain = (t.chain).toUpperCase();
 
         final isMainnet = switch (base) {
           'BTC' => chain == 'BTC',
@@ -146,9 +150,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
         };
         if (!isMainnet) continue;
 
-        final usdValNum = (t.value is num)
-            ? (t.value as num).toDouble()
-            : double.tryParse('${t.value}') ?? 0.0;
+        final usdValNum = (t.value as num).toDouble();
 
         final balNum = double.tryParse('${t.balance}') ?? 0.0;
 
@@ -165,7 +167,7 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
             "usdValueNum": usdValNum,
             "usdBalanceNum": usdValNum, // used for fiat display
             "balanceNum": balNum,
-            "balance": t.balance ?? '0.0000',
+            "balance": t.balance,
             "change24h": '${t.changePercent ?? 0.0}%',
             "isPositive": (t.changePercent ?? 0.0) >= 0,
           };
@@ -346,35 +348,107 @@ class _CoinAvatar extends StatelessWidget {
 }
 
 /// One row item — values formatted by CurrencyNotifier (reactive to currency).
-class _PortfolioRow extends StatelessWidget {
+class _PortfolioRow extends StatefulWidget {
   final Map<String, dynamic> item;
   const _PortfolioRow({required this.item});
 
   @override
+  State<_PortfolioRow> createState() => _PortfolioRowState();
+}
+
+class _PortfolioRowState extends State<_PortfolioRow> {
+  WebSocketChannel? _ws;
+  StreamSubscription? _sub;
+
+  double? _liveChangePct;
+
+  double get _initialChange =>
+      double.tryParse((widget.item["change24h"] ?? "0").replaceAll('%', '')) ??
+      0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectTickerIfSupported();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _ws?.sink.close();
+    super.dispose();
+  }
+
+  // 🔹 Convert symbol to Binance format
+  String? _binanceSymbolFor(String symbol) {
+    final s = symbol.toUpperCase();
+    // Basic matching for common pairs — extend as needed
+    if (s == 'BTC') return 'btcusdt';
+    if (s == 'ETH') return 'ethusdt';
+    if (s == 'BNB') return 'bnbusdt';
+    if (s == 'TRX') return 'trxusdt';
+    if (s == 'USDT') return null; // stable, skip
+    return '${s.toLowerCase()}usdt';
+  }
+
+  void _connectTickerIfSupported() {
+    final symbol = widget.item["symbol"]?.toString().toUpperCase() ?? "";
+    final binanceSymbol = _binanceSymbolFor(symbol);
+    if (binanceSymbol == null) return;
+
+    final url = 'wss://stream.binance.com:9443/ws/$binanceSymbol@ticker';
+    try {
+      _ws = WebSocketChannel.connect(Uri.parse(url));
+      _sub = _ws!.stream.listen(
+        (raw) {
+          try {
+            final data = jsonDecode(raw as String);
+            final pct = double.tryParse('${data['P']}'); // 24h % change
+            if (pct != null && mounted) {
+              setState(() => _liveChangePct = pct);
+            }
+          } catch (_) {}
+        },
+        onDone: _scheduleReconnect,
+        onError: (_) => _scheduleReconnect(),
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
+  void _scheduleReconnect() {
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) _connectTickerIfSupported();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final fx = context.watch<CurrencyNotifier>(); // 👈 react to currency/rates
+    final fx = context.watch<CurrencyNotifier>();
 
     final String icon =
-        (item["icon"] as String?) ?? 'assets/currencyicons/bitcoin.png';
-    final isPositive = (item["isPositive"] ?? true) as bool;
-    final changeColor = isPositive ? Colors.green : Colors.red;
-
-    // Raw USD numbers stored by parent:
-    final double usdValueNum = (item["usdValueNum"] is num)
-        ? (item["usdValueNum"] as num).toDouble()
+        (widget.item["icon"] as String?) ?? 'assets/currencyicons/bitcoin.png';
+    final double usdValueNum = (widget.item["usdValueNum"] is num)
+        ? (widget.item["usdValueNum"] as num).toDouble()
         : 0.0;
-    final double usdBalanceNum = (item["usdBalanceNum"] is num)
-        ? (item["usdBalanceNum"] as num).toDouble()
+    final double usdBalanceNum = (widget.item["usdBalanceNum"] is num)
+        ? (widget.item["usdBalanceNum"] as num).toDouble()
         : 0.0;
 
-    // Format now in selected fiat:
     final String fiatValue = fx.formatFromUsd(usdValueNum);
     final String fiatBalanceApprox = fx.formatFromUsd(usdBalanceNum);
 
+    final double change = _liveChangePct ?? _initialChange;
+    final String changeText =
+        "${change.toStringAsFixed(2)}%"; // formatted for UI
+    final Color changeColor = change >= 0 ? Colors.green : Colors.red;
+
     return InkWell(
-      key: ValueKey(item["id"] ?? item["symbol"]),
       onTap: () {
-        Navigator.pushNamed(context, AppRoutes.tokenDetail, arguments: item);
+        Navigator.pushNamed(context, AppRoutes.tokenDetail,
+            arguments: widget.item);
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10.0),
@@ -386,7 +460,7 @@ class _PortfolioRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item["name"] ?? item["symbol"] ?? '',
+                  Text(widget.item["name"] ?? widget.item["symbol"] ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -401,12 +475,13 @@ class _PortfolioRow extends StatelessWidget {
                               color: Colors.white54, fontSize: 12)),
                       const SizedBox(width: 6),
                       Icon(
-                          isPositive
-                              ? Icons.arrow_drop_up
-                              : Icons.arrow_drop_down,
-                          color: changeColor,
-                          size: 18),
-                      Text(item["change24h"] ?? "0.00%",
+                        change >= 0
+                            ? Icons.arrow_drop_up
+                            : Icons.arrow_drop_down,
+                        color: changeColor,
+                        size: 18,
+                      ),
+                      Text(changeText,
                           style: TextStyle(color: changeColor, fontSize: 12)),
                     ],
                   ),
@@ -416,7 +491,7 @@ class _PortfolioRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(item["balance"]?.toString() ?? "0.00",
+                Text(widget.item["balance"]?.toString() ?? "0.00",
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,

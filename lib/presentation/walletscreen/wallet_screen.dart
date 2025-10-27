@@ -3,7 +3,6 @@ import 'package:cryptowallet/presentation/bottomnavbar.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/routes/app_routes.dart';
 import 'package:cryptowallet/services/api_service.dart';
-import 'package:cryptowallet/models/token_model.dart';
 import 'package:cryptowallet/models/explore_model.dart';
 import 'package:cryptowallet/stores/portfolio_store.dart';
 import 'package:flutter/material.dart';
@@ -306,12 +305,12 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     if (_exploreData?.transactions == null) return [];
 
     final String? currentAddr = _currentWalletAddress?.toLowerCase();
-    final txs = _exploreData!.transactions!;
+    final txs = _exploreData!.transactions;
 
     return txs.map((tx) {
       // ----- type (send/receive) from current address -----
-      final String from = (tx.from ?? '').toString();
-      final String to = (tx.to ?? '').toString();
+      final String from = (tx.from).toString();
+      final String to = (tx.to).toString();
       final fl = from.toLowerCase();
       final tl = to.toLowerCase();
 
@@ -352,7 +351,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
       // ----- id (avoid dead-null-aware by checking emptiness) -----
       final String id =
-          ((tx.hash?.isNotEmpty ?? false) ? tx.hash! : UniqueKey().toString());
+          ((tx.hash.isNotEmpty) ? tx.hash : UniqueKey().toString());
 
       // ----- optional fee -----
       final feeMap = <String, String>{};
@@ -364,13 +363,13 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       return {
         'id': id,
         'type': type, // 'send' | 'receive'
-        'status': (tx.status ?? 'Unknown').toString(),
+        'status': (tx.status).toString(),
         'amount': amountStr, // native amount
         'coin': selectedCoinId, // tag with selected chain
         'dateTime': dateStr,
         'from': from,
         'to': to,
-        'hash': (tx.hash ?? '').toString(),
+        'hash': (tx.hash).toString(),
         'block': tx.blockNumber,
         'feeDetails': feeMap.isEmpty ? null : feeMap,
       };
@@ -684,12 +683,11 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   }
 
   Widget _buildFrontCard(Coin? coin, Map<String, String> details) {
-    final fx = context.read<CurrencyNotifier>();
+    context.read<CurrencyNotifier>();
     final symbol = coin?.symbol ?? selectedCoinId;
     final address = details['address'] ?? '—';
     final balance = double.tryParse(details['balance'] ?? '0') ?? 0.0;
-    final priceUsd = _priceForCoinUsd(selectedCoinId);
-    final usd = balance * priceUsd;
+    _priceForCoinUsd(selectedCoinId);
     final fiat = details['fiatBalance'];
 
     return Container(
@@ -940,271 +938,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     );
   }
 
-  Map<String, List<Map<String, dynamic>>> _groupChainsByNetwork(
-      List<dynamic> chains) {
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
-
-    for (var chain in chains) {
-      final c = chain as Map<String, dynamic>? ?? {};
-      final chainName = (c['chain'] ?? '').toString().toUpperCase();
-
-      String baseNetwork = '';
-      String variant = '';
-
-      // Identify base network and variant
-      if (chainName.contains('ETH') || chainName.contains('ERC')) {
-        baseNetwork = 'ETH';
-        variant = chainName.contains('ERC') ? 'ERC20' : 'MAIN';
-      } else if (chainName.contains('TRX') ||
-          chainName.contains('TRON') ||
-          chainName.contains('TRC')) {
-        baseNetwork = 'TRON';
-        variant = chainName.contains('TRC') ? 'TRC20' : 'MAIN';
-      } else if (chainName.contains('BTC')) {
-        baseNetwork = 'BTC';
-        variant = chainName.contains('LN') || chainName.contains('LIGHTNING')
-            ? 'LIGHTNING'
-            : 'MAIN';
-      } else {
-        baseNetwork = chainName;
-        variant = 'MAIN';
-      }
-
-      if (!grouped.containsKey(baseNetwork)) {
-        grouped[baseNetwork] = [];
-      }
-
-      grouped[baseNetwork]!.add({
-        ...c,
-        'variant': variant,
-        'baseNetwork': baseNetwork,
-      });
-    }
-
-    return grouped;
-  }
-
-  Color _getVariantColor(String variant) {
-    switch (variant) {
-      case 'MAIN':
-        return const Color(0xFF2A2D3A);
-      case 'ERC20':
-        return const Color(0xFF3A2D5A); // Purple tint for ERC20
-      case 'TRC20':
-        return const Color(0xFF5A2D2D); // Red tint for TRC20
-      case 'LIGHTNING':
-        return const Color(0xFF2D5A5A); // Teal tint for Lightning
-      default:
-        return const Color(0xFF2A2D3A);
-    }
-  }
-
-  LinearGradient _getVariantGradient(String variant) {
-    switch (variant) {
-      case 'ERC20':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF3A2D5A),
-            Color.fromARGB(255, 20, 0, 40),
-            Color.fromARGB(255, 40, 0, 80),
-          ],
-          stops: [0.0, 0.5, 1.0],
-        );
-      case 'TRC20':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF5A2D2D),
-            Color.fromARGB(255, 40, 0, 0),
-            Color.fromARGB(255, 80, 0, 20),
-          ],
-          stops: [0.0, 0.5, 1.0],
-        );
-      case 'LIGHTNING':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF2D5A5A),
-            Color.fromARGB(255, 0, 40, 40),
-            Color.fromARGB(255, 0, 80, 60),
-          ],
-          stops: [0.0, 0.5, 1.0],
-        );
-      default:
-        return kCardFrontGrad;
-    }
-  }
-
-  Widget _buildNetworkCards(List<Map<String, dynamic>> networkVariants) {
-    return SizedBox(
-      height: 180,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: networkVariants.length,
-        itemBuilder: (context, index) {
-          final variant = networkVariants[index];
-          final variantType = variant['variant'] as String;
-          final chain = variant['chain'] as String;
-          final address = variant['address'] as String;
-          final balance = variant['balance'].toString();
-          final coinId = _coinIdFromChain(chain);
-
-          return _buildNetworkCard(
-            variantType: variantType,
-            chain: chain,
-            address: address,
-            balance: balance,
-            coinId: coinId,
-            isSelected:
-                selectedCoinId == coinId && _currentWalletAddress == address,
-            onTap: () async {
-              setState(() {
-                selectedCoinId = coinId;
-                _currentWalletAddress = address;
-                _isCardFlipped = false;
-                _flipController.reset();
-                _lightningState = 'sync';
-                _isLightningComplete = false;
-                _exploreData = null;
-              });
-              await _loadTransactionData();
-            },
-          );
-        },
-      ),
-    );
-  }
-
 // Build individual network card
-  Widget _buildNetworkCard({
-    required String variantType,
-    required String chain,
-    required String address,
-    required String balance,
-    required String coinId,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    final store = context.read<CoinStore>();
-    final coin = store.getById(coinId);
-    final fx = context.read<CurrencyNotifier>();
-
-    final double bal = double.tryParse(balance) ?? 0.0;
-    final double priceUsd = _priceForCoinUsd(coinId);
-    final double usdValue = bal * priceUsd;
-    final String fiatValue =
-        usdValue > 0 ? fx.formatFromUsd(usdValue) : '≈ \$0.00';
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 280,
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: _getVariantGradient(variantType),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? Colors.green : _getVariantColor(variantType),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _getVariantColor(variantType).withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with icon and variant badge
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    if (coin?.assetPath != null)
-                      Image.asset(coin!.assetPath, width: 28, height: 28)
-                    else
-                      const Icon(Icons.currency_bitcoin,
-                          color: Colors.white, size: 24),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          chain,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (variantType != 'MAIN')
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              variantType,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-                if (isSelected)
-                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Address
-            Text(
-              _shortenAddress(address),
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
-            ),
-
-            const Spacer(),
-
-            // Balance
-            Text(
-              bal.toStringAsFixed(8),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              fiatValue,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildAvailableRow(Map<String, String> details) {
     final fx = context.read<CurrencyNotifier>();
@@ -1868,11 +1602,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
             builder: (context, snap) {
               final wallets = snap.data ?? const <Map<String, dynamic>>[];
 
-              final List<dynamic> chains = (wallets.isNotEmpty &&
-                      wallets.first is Map<String, dynamic> &&
-                      (wallets.first as Map<String, dynamic>)['chains'] is List)
-                  ? (wallets.first as Map<String, dynamic>)['chains'] as List
-                  : const <dynamic>[];
+              final List<dynamic> chains =
+                  (wallets.isNotEmpty && (wallets.first)['chains'] is List)
+                      ? (wallets.first)['chains'] as List
+                      : const <dynamic>[];
 
               return ClipRect(
                 child: Container(
@@ -2113,7 +1846,7 @@ class TransactionDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final fx = context.watch<CurrencyNotifier>();
     final coinBadgeColor = _getCoinColor();
-    final portfolioStore = context.watch<PortfolioStore>();
+    context.watch<PortfolioStore>();
 
     // If you want to show a fiat shadow here too:
     final double amount =

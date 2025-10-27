@@ -112,11 +112,11 @@ class BalanceStore extends ChangeNotifier {
   Future<void> _syncWalletChains(String walletId) async {
     try {
       final data = await AuthService.fetchWalletsForUser(walletId: walletId);
-      if (data != null && data.isNotEmpty) {
+      if (data.isNotEmpty) {
         for (final newChain in data) {
           final already = _rows.any((r) =>
               r.blockchain.toUpperCase() ==
-              (newChain.blockchain?.toUpperCase() ?? ''));
+              (newChain.blockchain.toUpperCase()));
           if (!already) {
             _rows = [..._rows, newChain];
           }

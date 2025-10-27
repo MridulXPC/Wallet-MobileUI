@@ -44,7 +44,6 @@ class _SwapScreenState extends State<SwapScreen> {
 
   // Quote state
   double? _quoteToAmount;
-  String? _quoteError;
   bool _quoting = false;
   Timer? _debounce;
 
@@ -186,7 +185,6 @@ class _SwapScreenState extends State<SwapScreen> {
       _fromController.clear();
       fromAmount = 0.0;
       _quoteToAmount = null;
-      _quoteError = null;
     });
     _stopQuoteCountdown();
     _scheduleQuote();
@@ -592,7 +590,6 @@ class _SwapScreenState extends State<SwapScreen> {
                                     toCoinId = c.id;
                                   }
                                   _quoteToAmount = null;
-                                  _quoteError = null;
                                 });
                                 _stopQuoteCountdown();
                                 _scheduleQuote();
@@ -945,7 +942,6 @@ class _SwapScreenState extends State<SwapScreen> {
       _stopQuoteCountdown();
       setState(() {
         _quoteToAmount = null;
-        _quoteError = null;
       });
       return;
     }
@@ -957,7 +953,6 @@ class _SwapScreenState extends State<SwapScreen> {
       _stopQuoteCountdown();
       setState(() {
         _quoteToAmount = null;
-        _quoteError = 'Selected coins are not supported by this wallet';
       });
       return;
     }
@@ -965,7 +960,6 @@ class _SwapScreenState extends State<SwapScreen> {
     _stopQuoteCountdown();
     setState(() {
       _quoting = true;
-      _quoteError = null;
     });
 
     try {
@@ -1029,7 +1023,6 @@ class _SwapScreenState extends State<SwapScreen> {
         _quoteProvider = provider.toString();
         _quoteFee = totalFee;
         _quoteFiatValue = fiatText;
-        _quoteError = parsedOut == null ? 'No quote available' : null;
       });
 
       if (parsedOut != null) {
@@ -1039,7 +1032,6 @@ class _SwapScreenState extends State<SwapScreen> {
       _stopQuoteCountdown();
       setState(() {
         _quoteToAmount = null;
-        _quoteError = 'Quote failed: $e';
       });
     } finally {
       if (mounted) setState(() => _quoting = false);
@@ -1140,7 +1132,7 @@ class _SwapScreenState extends State<SwapScreen> {
     final store = context.watch<CoinStore>();
     context.watch<BalanceStore>();
     context.watch<CurrencyNotifier>(); // 👈 re-render when currency changes
-    final portfolioStore = context.watch<PortfolioStore>();
+    context.watch<PortfolioStore>();
 
     if (store.getById(fromCoinId) == null && store.coins.isNotEmpty) {
       fromCoinId = store.coins.values.first.id;
@@ -1175,11 +1167,6 @@ class _SwapScreenState extends State<SwapScreen> {
     );
 
     // Optional mid-rate summary (1 FROM ≈ X TO) using current quote
-    final String? midRate = (fromAmount > 0 && (_quoteToAmount ?? 0) > 0)
-        ? '1 ${_symbolFromId(context, fromCoinId)} ≈ '
-            '${(_quoteToAmount! / fromAmount).toStringAsFixed(6)} '
-            '${_symbolFromId(context, toCoinId)}'
-        : null;
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -1607,7 +1594,6 @@ class _SwapScreenState extends State<SwapScreen> {
                                                 toCoinId = t.symbol;
                                               }
                                               _quoteToAmount = null;
-                                              _quoteError = null;
                                             });
                                             _stopQuoteCountdown();
                                             _scheduleQuote();

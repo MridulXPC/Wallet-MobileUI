@@ -167,8 +167,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
       ts = created;
     } else {
       // if your model stores createdAt as String, parse it:
-      final parsed = DateTime.tryParse(created?.toString() ?? '');
-      ts = parsed ?? DateTime.now();
+      ts = DateTime.now(); // Default to current time if parsing fails
     }
 
     // optional: numeric USD amount if your model has it; otherwise null

@@ -12,7 +12,6 @@ import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-
 import 'package:cryptowallet/stores/balance_store.dart';
 
 class WalletHomeScreen extends StatefulWidget {
@@ -24,12 +23,12 @@ class WalletHomeScreen extends StatefulWidget {
 
 class _WalletHomeScreenState extends State<WalletHomeScreen> {
   int _selectedIndex = 0;
-
   late final PageController _pageController;
   int _currentPage = 0;
   late final Timer _pagerTimer;
+  late final BalanceStore _balanceStore;
 
-  static const Color _pageBg = Color(0xFF0B0D1A); // deep navy
+  static const Color _pageBg = Color(0xFF0B0D1A);
 
   void _onItemTapped(int index) {
     if (index == 1) {
@@ -44,17 +43,15 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
       Navigator.pushNamed(context, AppRoutes.profileScreen);
       return;
     }
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
   }
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
+    _balanceStore = context.read<BalanceStore>();
 
-    // auto-swipe the top card
     _pagerTimer = Timer.periodic(const Duration(seconds: 4), (t) {
       if (!mounted) return;
       if (_pageController.hasClients) {
@@ -67,12 +64,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
       }
     });
 
-    // start balances polling: now + every 30s
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<BalanceStore>().startAutoRefresh(
-            interval: const Duration(seconds: 30),
-          );
+      _balanceStore.startAutoRefresh(interval: const Duration(seconds: 30));
     });
   }
 
@@ -80,7 +74,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   void dispose() {
     _pageController.dispose();
     _pagerTimer.cancel();
-    context.read<BalanceStore>().stopAutoRefresh();
+    _balanceStore.stopAutoRefresh(); // ✅ safe (no context lookup)
     super.dispose();
   }
 
@@ -114,14 +108,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
           Future<void> _create() async {
             try {
               Navigator.of(rootCtx).pop();
-              final w = await WalletFlow.createNewWallet(); // API + save
+              final w = await WalletFlow.createNewWallet();
 
               if (mounted) {
-                final store = rootCtx.read<WalletStore>();
-                // await store.reloadFromLocalAndActivate(w.id);
-                await rootCtx
-                    .read<BalanceStore>()
-                    .refresh(); // immediate update
+                await rootCtx.read<BalanceStore>().refresh();
               }
 
               ScaffoldMessenger.of(rootCtx).showSnackBar(
@@ -143,20 +133,26 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 6),
-                  const Text('Your Wallets',
-                      style: TextStyle(color: Colors.white, fontSize: 18)),
+                  const Text(
+                    'Your Wallets',
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
                   const SizedBox(height: 12),
                   ...wallets.map((w) => ListTile(
                         leading: const Icon(Icons.account_balance_wallet,
                             color: Colors.white70),
-                        title: Text(w.name,
-                            style: const TextStyle(color: Colors.white)),
+                        title: Text(
+                          w.name,
+                          style: const TextStyle(color: Colors.white),
+                        ),
                         subtitle: Text(
                           w.primaryAddress.isEmpty
                               ? 'No address'
                               : '${w.primaryAddress.substring(0, 8)}…${w.primaryAddress.substring(w.primaryAddress.length - 6)}',
                           style: const TextStyle(
-                              color: Colors.white54, fontSize: 12),
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
                         ),
                         onTap: () async {
                           Navigator.of(rootCtx).pop();
@@ -171,10 +167,14 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                   ListTile(
                     leading:
                         const Icon(Icons.add_circle, color: Colors.lightGreen),
-                    title: const Text('Wallet',
-                        style: TextStyle(color: Colors.white)),
-                    subtitle: const Text('Generates a new seed & address',
-                        style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    title: const Text(
+                      'Wallet',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    subtitle: const Text(
+                      'Generates a new seed & address',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
                     onTap: _create,
                   ),
                 ],
@@ -188,11 +188,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // keep CoinStore reactive if needed elsewhere
     context.watch<CoinStore>();
-
     final balances = context.watch<BalanceStore>();
-    final totalDisplay = balances.totalUsdFormatted; // <-- "$246.36"
+    final totalDisplay = balances.totalUsdFormatted;
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -209,7 +207,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VaultHeaderCard(
-                  // Shows backend total_balance (USD), auto-refreshing every 30s
                   totalValue: totalDisplay,
                   vaultName: 'Main Wallet',
                   onTap: () {},

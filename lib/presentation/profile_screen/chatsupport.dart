@@ -37,7 +37,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     if (_welcomeInjected) return;
     _messages.add(
       _Msg(
-        text: 'Hi! Welcome to Echelon Wallet Support 👋',
+        text: 'Hi! Welcome to Zyara Wallet Support 👋',
         fromAgent: true,
         ts: DateTime.now(),
         isLocalWelcome: true,
@@ -638,7 +638,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         title: Row(
           children: [
             const Text(
-              'Echelon Wallet Support',
+              'Zyara Wallet Support',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
             ),

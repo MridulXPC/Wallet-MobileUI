@@ -28,11 +28,11 @@ class PortfolioToken {
   factory PortfolioToken.fromVault(VaultToken v) {
     return PortfolioToken(
       id: v.id ?? '',
-      name: v.name ?? '',
-      symbol: v.symbol ?? '',
-      chain: v.chain ?? '',
-      iconUrl: v.iconUrl ?? '',
-      balance: double.tryParse(v.balance ?? '0.0') ?? 0.0,
+      name: v.name,
+      symbol: v.symbol,
+      chain: v.chain,
+      iconUrl: v.iconUrl,
+      balance: double.tryParse(v.balance) ?? 0.0,
       value: v.value,
     );
   }

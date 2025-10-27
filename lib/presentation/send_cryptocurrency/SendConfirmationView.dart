@@ -105,6 +105,23 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
     }
   }
 
+  String get _apiChain {
+    final c = widget.flowData.chain.trim().toUpperCase();
+    if (c.contains('ERC20') || c.contains('USDT-ETH') || c.contains('ETH')) {
+      return 'ETH';
+    }
+    if (c.contains('TRX') || c.contains('TRC20') || c.contains('USDT-TRX')) {
+      return 'TRX';
+    }
+    if (c.contains('BEP20') || c.contains('BNB')) {
+      return 'BNB';
+    }
+    if (c.contains('SOL')) {
+      return 'SOL';
+    }
+    return c;
+  }
+
   Future<void> _confirmAndSend() async {
     debugPrint('▶️ confirm tapped');
     final toAddr = (widget.flowData.toAddress ?? '').trim();
@@ -143,13 +160,12 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
       }
 
       final res = await AuthService.sendTransaction(
-        userId: userId,
         walletAddress: walletAddress,
         toAddress: toAddr,
         amount: amtStr,
-        chain: widget.flowData.chain,
+        chain: _apiChain, // ✅ fixed chain mapping
         token: _apiToken,
-        priority: _priority, // "Standard" | "Fast"
+        priority: _priority,
       );
 
       if (!mounted) return;
@@ -428,7 +444,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             onSelected: (_) {
                               setState(() {
                                 _priority = "Standard";
-                                _recalcFees();
+                                // _recalcFees();
                               });
                             },
                             selectedColor: Colors.white,
@@ -446,7 +462,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                             onSelected: (_) {
                               setState(() {
                                 _priority = "Fast";
-                                _recalcFees();
+                                // _recalcFees();
                               });
                             },
                             selectedColor: Colors.white,

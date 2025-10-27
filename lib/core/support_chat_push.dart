@@ -11,8 +11,6 @@ class SupportChatPush {
   bool _connecting = false;
   bool _chatScreenOpen = false; // when true, don't badge-increment
 
-  bool _authed = false;
-
   /// Call this early (e.g., after login or app start) or from TechSupportScreen.initState.
   Future<void> init() async {
     if (_socket != null || _connecting) return;
