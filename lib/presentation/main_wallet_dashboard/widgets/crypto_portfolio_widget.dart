@@ -74,9 +74,9 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     final s = (symbol ?? '').toUpperCase();
     final c = (chain ?? '').toUpperCase();
 
-    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDT';
+    if (s == 'USDTERC20' || (s == 'USDT' && c == 'ETH')) return 'USDTERC20';
     if (s == 'USDTTRC20' || (s == 'USDT' && (c == 'TRX' || c == 'TRON'))) {
-      return 'USDT';
+      return 'USDTTRC20';
     }
     return s.isEmpty ? c : s;
   }

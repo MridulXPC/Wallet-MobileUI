@@ -61,13 +61,13 @@ class CoinStore extends ChangeNotifier {
     "USDT-ETH": const Coin(
       id: "USDT-ETH",
       name: "Tether (ERC20)",
-      symbol: "USDT",
+      symbol: "USDTERC20",
       assetPath: "assets/currencyicons/usdtoneth.png",
     ),
     "USDT-TRX": const Coin(
       id: "USDT-TRX",
       name: "Tether (TRC20)",
-      symbol: "USDT",
+      symbol: "USDTTRC20",
       assetPath: "assets/currencyicons/usdtontrx.png",
     ),
     "XMR": const Coin(

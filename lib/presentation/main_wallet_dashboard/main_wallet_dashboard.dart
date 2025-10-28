@@ -112,7 +112,8 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     });
 
     // Balance refresh timer - every 20 seconds
-    _balanceRefreshTimer = Timer.periodic(const Duration(seconds: 20), (t) {
+    _balanceRefreshTimer =
+        Timer.periodic(const Duration(seconds: 2000000000000000000), (t) {
       _fetchBalance();
     });
 

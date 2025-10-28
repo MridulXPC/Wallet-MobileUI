@@ -104,8 +104,6 @@ class WalletStore extends ChangeNotifier {
 
       _loading = false;
       notifyListeners();
-
-      _startBalanceTimer(); // 🚀 start auto-refresh
     } catch (e, st) {
       _loading = false;
       debugPrint('❌ hydrateFromBackend failed: $e\n$st');
@@ -147,16 +145,16 @@ class WalletStore extends ChangeNotifier {
 
   // ---------------- Auto Refresh Balances ----------------
 
-  void _startBalanceTimer() {
-    _stopBalanceTimer(); // cancel any existing timer
-    if (_activeWalletId == null) return;
+  // void _startBalanceTimer() {
+  //   _stopBalanceTimer(); // cancel any existing timer
+  //   if (_activeWalletId == null) return;
 
-    _balanceTimer = Timer.periodic(_refreshInterval, (_) async {
-      await _refreshBalances();
-    });
+  //   _balanceTimer = Timer.periodic(_refreshInterval, (_) async {
+  //     await _refreshBalances();
+  //   });
 
-    debugPrint('🔁 Started balance refresh timer (20s)');
-  }
+  //   debugPrint('🔁 Started balance refresh timer (20s)');
+  // }
 
   void _stopBalanceTimer() {
     _balanceTimer?.cancel();
@@ -164,25 +162,25 @@ class WalletStore extends ChangeNotifier {
     debugPrint('🛑 Balance refresh timer stopped');
   }
 
-  Future<void> _refreshBalances() async {
-    final id = _activeWalletId;
-    if (id == null) return;
+  // Future<void> _refreshBalances() async {
+  //   final id = _activeWalletId;
+  //   if (id == null) return;
 
-    try {
-      debugPrint('⏳ Refreshing balances for wallet $id...');
-      final payload = await AuthService.fetchBalancesAndTotal(walletId: id);
+  //   try {
+  //     debugPrint('⏳ Refreshing balances for wallet $id...');
+  //     final payload = await AuthService.fetchBalancesAndTotal(walletId: id);
 
-      final idx = _wallets.indexWhere((w) => w.id == id);
-      if (idx != -1) {
-        final updated = _wallets[idx].copyWith(chains: payload.rows);
-        _wallets = List.from(_wallets)..[idx] = updated;
-        notifyListeners();
-        debugPrint('💰 Updated balances (total USD: ${payload.totalUsd})');
-      }
-    } catch (e) {
-      debugPrint('⚠️ Failed to refresh balances: $e');
-    }
-  }
+  //     final idx = _wallets.indexWhere((w) => w.id == id);
+  //     if (idx != -1) {
+  //       final updated = _wallets[idx].copyWith(chains: payload.rows);
+  //       _wallets = List.from(_wallets)..[idx] = updated;
+  //       notifyListeners();
+  //       debugPrint('💰 Updated balances (total USD: ${payload.totalUsd})');
+  //     }
+  //   } catch (e) {
+  //     debugPrint('⚠️ Failed to refresh balances: $e');
+  //   }
+  // }
 
   // ---------------- Active Wallet ----------------
 
@@ -195,7 +193,7 @@ class WalletStore extends ChangeNotifier {
     if (_activeWalletId == id) return;
     _activeWalletId = id;
     await _persistActive(id);
-    _startBalanceTimer(); // restart timer for new wallet
+    // restart timer for new wallet
     notifyListeners();
   }
 

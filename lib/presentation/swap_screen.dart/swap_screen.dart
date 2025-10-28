@@ -80,17 +80,51 @@ class _SwapScreenState extends State<SwapScreen> {
 
   /// Normalize a coinId/network into the backend chain string.
   String _normalizeChain(String coinId) {
-    var net = _networkPart(coinId).toUpperCase().trim();
-    if (net == 'LN') net = 'BTC';
-    if (net == 'TRX') return 'TRON';
-    if (net == 'BNB-BNB') return 'BNB';
-    if (net == 'SOL-SOL') return 'SOL';
-    return net;
+    var id = coinId.toUpperCase().trim();
+
+    // 🧩 Handle cases like "USDT-TRX" or "BTC-BTC"
+    if (id.contains('-')) {
+      final net = id.split('-').last.trim();
+      if (net == 'TRX') return 'TRON';
+      if (net == 'BNB') return 'BNB';
+      if (net == 'ETH') return 'ETH';
+      if (net == 'SOL') return 'SOL';
+      return net;
+    }
+
+    // 🧩 Handle compact forms like "USDTERC20", "USDTTRC20", "USDCBEP20"
+    if (id.endsWith('ERC20')) return 'ETH';
+    if (id.endsWith('TRC20')) return 'TRON';
+    if (id.endsWith('BEP20')) return 'BNB';
+    if (id.endsWith('SPL')) return 'SOL';
+    if (id.endsWith('AVAXC')) return 'AVAX';
+    if (id.endsWith('MATIC')) return 'POLYGON';
+
+    // BTC lightning etc.
+    if (id.endsWith('LN')) return 'BTC';
+    if (id == 'BTC' ||
+        id == 'ETH' ||
+        id == 'BNB' ||
+        id == 'TRON' ||
+        id == 'SOL') {
+      return id;
+    }
+
+    // Default fallback
+    return 'ETH';
   }
 
   String _symbolFromId(BuildContext ctx, String coinId) {
     final c = _coinById(ctx, coinId);
-    return c?.symbol ?? _baseSymbol(coinId).toUpperCase();
+    if (c != null) return c.symbol;
+
+    // fallback parse from id
+    final id = coinId.toUpperCase();
+    if (id.startsWith('USDT')) return 'USDT';
+    if (id.startsWith('USDC')) return 'USDC';
+    if (id.startsWith('BTC')) return 'BTC';
+    if (id.startsWith('ETH')) return 'ETH';
+    return _baseSymbol(coinId).toUpperCase();
   }
 
   /// Try to read a USD price from Coin model (supports several field names defensively).
@@ -932,11 +966,11 @@ class _SwapScreenState extends State<SwapScreen> {
   // make sure this is imported
 
   Future<void> _fetchQuote() async {
-    final fromSymbol = _symbolFromId(context, fromCoinId);
-    final toSymbol = _symbolFromId(context, toCoinId);
+    final fromToken = fromCoinId.toUpperCase().trim(); // e.g. USDTERC20
+    final toToken = toCoinId.toUpperCase().trim(); // e.g. ETH or USDTTRC20
 
-    final fromChain = _normalizeChain(fromCoinId);
-    final toChain = _normalizeChain(toCoinId); // ✅ destination chain for swap
+    final fromChain = _normalizeChain(fromCoinId); // e.g. ETH
+    final toChain = _normalizeChain(toCoinId);
 
     if (fromAmount <= 0) {
       _stopQuoteCountdown();
@@ -973,8 +1007,8 @@ class _SwapScreenState extends State<SwapScreen> {
 
       // 🔹 Call quote API
       final res = await AuthService.getSwapQuote(
-        fromToken: fromSymbol,
-        toToken: toSymbol,
+        fromToken: fromToken,
+        toToken: toToken,
         amount: fromAmount,
         chain: fromChain,
         destinationAddress: destinationAddress,

@@ -24,7 +24,6 @@ class PortfolioToken {
     required this.balance,
     required this.value,
   });
-
   factory PortfolioToken.fromVault(VaultToken v) {
     return PortfolioToken(
       id: v.id ?? '',

@@ -1256,31 +1256,53 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // ✅ Normalize token names for backend expectations
+    // ✅ Token normalization rules
     String normalizeToken(String token, String chain) {
+      print(
+          '-----------------------normalizeToken: token=$token, chain=$chain');
       token = token.toUpperCase().trim();
       final net = chain.toUpperCase().trim();
 
-      // Handle USDT variants based on chain
+      // 🔹 USDT mappings
       if (token == 'USDT') {
         switch (net) {
           case 'ETH':
             return 'USDTERC20';
-
+          case 'TRX':
+          case 'TRON':
+            return 'USDTTRC20';
           default:
-            return 'USDT'; // fallback
+            return 'USDT';
         }
       }
 
-      // Add other normalization rules here if needed
+      // 🔹 USDC mappings (optional but consistent)
+      if (token == 'USDC') {
+        switch (net) {
+          case 'ETH':
+            return 'USDCERC20';
+          case 'BSC':
+          case 'BNB':
+            return 'USDCBEP20';
+          case 'TRX':
+          case 'TRON':
+            return 'USDCTRC20';
+          case 'SOL':
+            return 'USDCSPL';
+          default:
+            return 'USDC';
+        }
+      }
+
+      // 🔹 BTC Lightning mapping
       if (token == 'BTC' && net == 'LN') return 'BTCLN';
+
       return token;
     }
 
     final normalizedFrom = normalizeToken(fromToken, chain);
     final normalizedTo = normalizeToken(toToken, chain);
 
-    // ✅ Request body
     final body = {
       "fromToken": normalizedFrom,
       "toToken": normalizedTo,
@@ -1364,32 +1386,32 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // ✅ Normalize token names based on chain
+    // ✅ Token normalization rules (same as above)
     String normalizeToken(String token, String chain) {
       token = token.toUpperCase().trim();
       final net = chain.toUpperCase().trim();
 
-      // USDT mapping
       if (token == 'USDT') {
         switch (net) {
           case 'ETH':
             return 'USDTERC20';
-
+          case 'TRX':
+          case 'TRON':
+            return 'USDTTRC20';
           default:
             return 'USDT';
         }
       }
 
-      // USDC mapping (optional but helpful)
       if (token == 'USDC') {
         switch (net) {
           case 'ETH':
             return 'USDCERC20';
-          case 'BNB':
           case 'BSC':
+          case 'BNB':
             return 'USDCBEP20';
-          case 'TRON':
           case 'TRX':
+          case 'TRON':
             return 'USDCTRC20';
           case 'SOL':
             return 'USDCSPL';
@@ -1398,7 +1420,6 @@ class AuthService {
         }
       }
 
-      // BTC Lightning mapping
       if (token == 'BTC' && net == 'LN') return 'BTCLN';
 
       return token;
@@ -1407,7 +1428,6 @@ class AuthService {
     final normalizedFrom = normalizeToken(fromToken, chainI);
     final normalizedTo = normalizeToken(toToken, chainI);
 
-    // ✅ Build request body with normalized tokens
     final body = {
       "walletId": walletId,
       "fromToken": normalizedFrom,
@@ -1432,7 +1452,6 @@ class AuthService {
       );
 
       debugPrint("📥 Raw response: ${res.statusCode} ${res.body}");
-
       final data = _handleResponse(res);
       return AuthResponse.success(data: data);
     }
