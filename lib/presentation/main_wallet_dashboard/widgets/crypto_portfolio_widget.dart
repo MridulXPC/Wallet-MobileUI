@@ -38,6 +38,8 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
   List<Map<String, dynamic>> _visible = [];
   bool _loading = false;
   String? _error;
+  Timer? _balanceTimer;
+  static const _refreshInterval = Duration(seconds: 20);
 
   String? _activeWalletIdMemo;
 
@@ -48,17 +50,18 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
       final id = context.read<WalletStore>().activeWalletId;
       _activeWalletIdMemo = id;
       _refreshForWallet(id);
+      _startAutoBalanceRefresh(id); // 👈 start periodic refresh
     });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // React to wallet change
     final currentId = context.watch<WalletStore>().activeWalletId;
     if (currentId != _activeWalletIdMemo) {
       _activeWalletIdMemo = currentId;
       _refreshForWallet(currentId);
+      _startAutoBalanceRefresh(currentId); // 👈 restart for new wallet
     }
   }
 
@@ -194,6 +197,28 @@ class _CryptoPortfolioWidgetState extends State<CryptoPortfolioWidget>
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+// 🔁 Auto-refresh wallet balances every 20s
+  void _startAutoBalanceRefresh(String? walletId) {
+    _balanceTimer?.cancel(); // stop any existing timer
+    if (walletId == null || walletId.isEmpty) return;
+
+    _balanceTimer = Timer.periodic(_refreshInterval, (_) async {
+      try {
+        final payload =
+            await AuthService.fetchBalancesAndTotal(walletId: walletId);
+        debugPrint('💰 Auto-updated balances (total: ${payload.totalUsd})');
+
+        // You can optionally trigger a re-fetch for display
+        await _refreshForWallet(walletId);
+      } catch (e) {
+        debugPrint('⚠️ Balance auto-refresh failed: $e');
+      }
+    });
+
+    debugPrint(
+        '🔁 Started auto balance refresh every 20 seconds for $walletId');
   }
 
   // ---------------- UI ----------------
@@ -374,8 +399,7 @@ class _PortfolioRowState extends State<_PortfolioRow> {
 
   @override
   void dispose() {
-    _sub?.cancel();
-    _ws?.sink.close();
+// 👈 stop timer
     super.dispose();
   }
 

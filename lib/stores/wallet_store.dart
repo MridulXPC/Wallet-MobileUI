@@ -1,4 +1,5 @@
 // lib/stores/wallet_store.dart
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptowallet/services/api_service.dart';
@@ -37,10 +38,12 @@ class LocalWallet {
 
 class WalletStore extends ChangeNotifier {
   static const _spActiveId = 'active_wallet_id';
+  static const _refreshInterval = Duration(seconds: 20);
 
   List<LocalWallet> _wallets = [];
   String? _activeWalletId;
   bool _loading = false;
+  Timer? _balanceTimer;
 
   // ---- Getters ----
   List<LocalWallet> get wallets => _wallets;
@@ -75,6 +78,7 @@ class WalletStore extends ChangeNotifier {
         _wallets = [];
         _activeWalletId = null;
         _loading = false;
+        _stopBalanceTimer();
         notifyListeners();
         return;
       }
@@ -100,6 +104,8 @@ class WalletStore extends ChangeNotifier {
 
       _loading = false;
       notifyListeners();
+
+      _startBalanceTimer(); // 🚀 start auto-refresh
     } catch (e, st) {
       _loading = false;
       debugPrint('❌ hydrateFromBackend failed: $e\n$st');
@@ -125,6 +131,7 @@ class WalletStore extends ChangeNotifier {
         _wallets = [];
         _activeWalletId = null;
         _loading = false;
+        _stopBalanceTimer();
         notifyListeners();
         return;
       }
@@ -135,6 +142,45 @@ class WalletStore extends ChangeNotifier {
       _loading = false;
       debugPrint('❌ loadWalletsFromBackend failed: $e\n$st');
       notifyListeners();
+    }
+  }
+
+  // ---------------- Auto Refresh Balances ----------------
+
+  void _startBalanceTimer() {
+    _stopBalanceTimer(); // cancel any existing timer
+    if (_activeWalletId == null) return;
+
+    _balanceTimer = Timer.periodic(_refreshInterval, (_) async {
+      await _refreshBalances();
+    });
+
+    debugPrint('🔁 Started balance refresh timer (20s)');
+  }
+
+  void _stopBalanceTimer() {
+    _balanceTimer?.cancel();
+    _balanceTimer = null;
+    debugPrint('🛑 Balance refresh timer stopped');
+  }
+
+  Future<void> _refreshBalances() async {
+    final id = _activeWalletId;
+    if (id == null) return;
+
+    try {
+      debugPrint('⏳ Refreshing balances for wallet $id...');
+      final payload = await AuthService.fetchBalancesAndTotal(walletId: id);
+
+      final idx = _wallets.indexWhere((w) => w.id == id);
+      if (idx != -1) {
+        final updated = _wallets[idx].copyWith(chains: payload.rows);
+        _wallets = List.from(_wallets)..[idx] = updated;
+        notifyListeners();
+        debugPrint('💰 Updated balances (total USD: ${payload.totalUsd})');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to refresh balances: $e');
     }
   }
 
@@ -149,6 +195,7 @@ class WalletStore extends ChangeNotifier {
     if (_activeWalletId == id) return;
     _activeWalletId = id;
     await _persistActive(id);
+    _startBalanceTimer(); // restart timer for new wallet
     notifyListeners();
   }
 
@@ -199,5 +246,13 @@ class WalletStore extends ChangeNotifier {
       final candidate = '$base $i';
       if (!names.contains(candidate)) return candidate;
     }
+  }
+
+  // ---------------- Cleanup ----------------
+
+  @override
+  void dispose() {
+    _stopBalanceTimer();
+    super.dispose();
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:cryptowallet/services/wallet_flow.dart';
+import 'package:cryptowallet/services/api_service.dart'; // Add your API service import
 import 'package:cryptowallet/stores/coin_store.dart';
 import 'package:cryptowallet/core/app_export.dart';
 import 'package:cryptowallet/presentation/bottomnavbar.dart';
@@ -26,7 +27,13 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   late final PageController _pageController;
   int _currentPage = 0;
   late final Timer _pagerTimer;
+  late final Timer _balanceRefreshTimer;
   late final BalanceStore _balanceStore;
+
+  // Balance data
+  List<ChainBalance> _balances = [];
+  double _totalUsd = 0.0;
+  bool _isLoadingBalance = false;
 
   static const Color _pageBg = Color(0xFF0B0D1A);
 
@@ -46,12 +53,52 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     setState(() => _selectedIndex = index);
   }
 
+  Future<void> _fetchBalance() async {
+    if (!mounted || _isLoadingBalance) return;
+
+    setState(() => _isLoadingBalance = true);
+
+    try {
+      debugPrint('🔄 Fetching balance at ${DateTime.now()}');
+
+      // Direct API call using your existing function
+      final payload = await AuthService.fetchBalancesAndTotal();
+
+      if (!mounted) return;
+
+      setState(() {
+        _balances = payload.rows;
+        _totalUsd = payload.totalUsd;
+      });
+
+      debugPrint(
+          '✅ Balance refreshed successfully: \$${_totalUsd.toStringAsFixed(2)}');
+    } catch (e) {
+      debugPrint('❌ Error refreshing balance: $e');
+
+      if (mounted && !e.toString().contains('authentication')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh balance: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingBalance = false);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 1.0);
     _balanceStore = context.read<BalanceStore>();
 
+    // Auto-scroll timer for cards
     _pagerTimer = Timer.periodic(const Duration(seconds: 4), (t) {
       if (!mounted) return;
       if (_pageController.hasClients) {
@@ -64,9 +111,15 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
       }
     });
 
+    // Balance refresh timer - every 20 seconds
+    _balanceRefreshTimer = Timer.periodic(const Duration(seconds: 20), (t) {
+      _fetchBalance();
+    });
+
+    // Initial fetch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _balanceStore.startAutoRefresh(interval: const Duration(seconds: 30));
+      _fetchBalance();
     });
   }
 
@@ -74,7 +127,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
   void dispose() {
     _pageController.dispose();
     _pagerTimer.cancel();
-    _balanceStore.stopAutoRefresh(); // ✅ safe (no context lookup)
+    _balanceRefreshTimer.cancel();
     super.dispose();
   }
 
@@ -111,7 +164,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               final w = await WalletFlow.createNewWallet();
 
               if (mounted) {
-                await rootCtx.read<BalanceStore>().refresh();
+                await _fetchBalance(); // Refresh after wallet creation
               }
 
               ScaffoldMessenger.of(rootCtx).showSnackBar(
@@ -158,7 +211,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                           Navigator.of(rootCtx).pop();
                           if (mounted) {
                             await rootCtx.read<WalletStore>().setActive(w.id);
-                            await rootCtx.read<BalanceStore>().refresh();
+                            await _fetchBalance(); // Refresh after wallet change
                           }
                         },
                       )),
@@ -186,11 +239,14 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     );
   }
 
+  String get _totalUsdFormatted => '\$${_totalUsd.toStringAsFixed(2)}';
+
   @override
   Widget build(BuildContext context) {
     context.watch<CoinStore>();
-    final balances = context.watch<BalanceStore>();
-    final totalDisplay = balances.totalUsdFormatted;
+
+    // Use local state for balance display
+    final totalDisplay = _totalUsdFormatted;
 
     return Scaffold(
       backgroundColor: _pageBg,
@@ -206,13 +262,34 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                VaultHeaderCard(
-                  totalValue: totalDisplay,
-                  vaultName: 'Main Wallet',
-                  onTap: () {},
-                  onChangeWallet: () => _openChangeWalletSheet(context),
-                  onActivities: () => Navigator.of(context, rootNavigator: true)
-                      .pushNamed(AppRoutes.transactionHistory),
+                Stack(
+                  children: [
+                    VaultHeaderCard(
+                      totalValue: totalDisplay,
+                      vaultName: 'Main Wallet',
+                      onTap: () {},
+                      onChangeWallet: () => _openChangeWalletSheet(context),
+                      onActivities: () =>
+                          Navigator.of(context, rootNavigator: true)
+                              .pushNamed(AppRoutes.transactionHistory),
+                    ),
+                    // Loading indicator
+                    if (_isLoadingBalance)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white.withOpacity(0.7),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const MainCoinsOnly(),
                 const Padding(

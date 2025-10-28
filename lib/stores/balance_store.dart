@@ -75,6 +75,15 @@ class BalanceStore extends ChangeNotifier {
     }
   }
 
+  /// ✅ NEW: Directly update balances from external API calls
+  /// Use this when you want to update the store without triggering a full refresh
+  void updateBalances(List<ChainBalance> balances, double totalUsd) {
+    _rows = balances;
+    _totalUsd = totalUsd;
+    _error = null;
+    _safeNotify();
+  }
+
   /// Pulls rows + USD total from backend for the current walletId.
   Future<void> refresh({String? walletId}) async {
     if (_loading) return;
@@ -166,9 +175,7 @@ class BalanceStore extends ChangeNotifier {
     }
   }
 
-  /// R
-  ///
-  /// efresh immediately (deferred to next frame) and then every [interval].
+  /// Refresh immediately (deferred to next frame) and then every [interval].
   void startAutoRefresh({
     Duration interval = const Duration(seconds: 30),
     String? walletId,

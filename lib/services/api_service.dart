@@ -1248,7 +1248,7 @@ class AuthService {
     required String toToken,
     required double amount,
     required String chain,
-    required String destinationAddress, // ✅ new required field
+    required String destinationAddress,
     double? slippage,
   }) async {
     final jwt = await getStoredToken();
@@ -1256,10 +1256,34 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    // ✅ New request body structure
+    // ✅ Normalize token names for backend expectations
+    String normalizeToken(String token, String chain) {
+      token = token.toUpperCase().trim();
+      final net = chain.toUpperCase().trim();
+
+      // Handle USDT variants based on chain
+      if (token == 'USDT') {
+        switch (net) {
+          case 'ETH':
+            return 'USDTERC20';
+
+          default:
+            return 'USDT'; // fallback
+        }
+      }
+
+      // Add other normalization rules here if needed
+      if (token == 'BTC' && net == 'LN') return 'BTCLN';
+      return token;
+    }
+
+    final normalizedFrom = normalizeToken(fromToken, chain);
+    final normalizedTo = normalizeToken(toToken, chain);
+
+    // ✅ Request body
     final body = {
-      "fromToken": fromToken,
-      "toToken": toToken,
+      "fromToken": normalizedFrom,
+      "toToken": normalizedTo,
       "amount": amount,
       "chain": chain,
       "destinationAddress": destinationAddress,
@@ -1283,7 +1307,6 @@ class AuthService {
 
       final Map<String, dynamic> data = _handleResponse(res);
 
-      // ✅ Safely parse expected structure
       if (data['success'] != true || data['data'] == null) {
         throw ApiException(
           'Invalid swap quote response',
@@ -1295,7 +1318,6 @@ class AuthService {
       final quoteData = data['data'] as Map<String, dynamic>;
       final fees = (quoteData['fees'] ?? {}) as Map<String, dynamic>;
 
-      // ✅ Construct parsed response model
       final parsed = {
         "provider": provider,
         "fromToken": quoteData['fromToken'],
@@ -1318,7 +1340,6 @@ class AuthService {
     }
 
     try {
-      // ✅ First try the standard endpoint
       return await _call('/api/swaps/getQuote');
     } on ApiException catch (e) {
       if (e.statusCode == 404 || e.statusCode == 405) {
@@ -1343,10 +1364,54 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
+    // ✅ Normalize token names based on chain
+    String normalizeToken(String token, String chain) {
+      token = token.toUpperCase().trim();
+      final net = chain.toUpperCase().trim();
+
+      // USDT mapping
+      if (token == 'USDT') {
+        switch (net) {
+          case 'ETH':
+            return 'USDTERC20';
+
+          default:
+            return 'USDT';
+        }
+      }
+
+      // USDC mapping (optional but helpful)
+      if (token == 'USDC') {
+        switch (net) {
+          case 'ETH':
+            return 'USDCERC20';
+          case 'BNB':
+          case 'BSC':
+            return 'USDCBEP20';
+          case 'TRON':
+          case 'TRX':
+            return 'USDCTRC20';
+          case 'SOL':
+            return 'USDCSPL';
+          default:
+            return 'USDC';
+        }
+      }
+
+      // BTC Lightning mapping
+      if (token == 'BTC' && net == 'LN') return 'BTCLN';
+
+      return token;
+    }
+
+    final normalizedFrom = normalizeToken(fromToken, chainI);
+    final normalizedTo = normalizeToken(toToken, chainI);
+
+    // ✅ Build request body with normalized tokens
     final body = {
       "walletId": walletId,
-      "fromToken": fromToken,
-      "toToken": toToken,
+      "fromToken": normalizedFrom,
+      "toToken": normalizedTo,
       "amount": amount,
       "slippage": slippage,
       "chainI": chainI,
@@ -1367,6 +1432,7 @@ class AuthService {
       );
 
       debugPrint("📥 Raw response: ${res.statusCode} ${res.body}");
+
       final data = _handleResponse(res);
       return AuthResponse.success(data: data);
     }
@@ -1502,7 +1568,6 @@ class AuthService {
 
   // ===================== BALANCES =====================
 
-  /// GET /api/get-balance/walletId/:walletId
   static Future<BalancesPayload> fetchBalancesAndTotal({
     String? token,
     String? walletId, // optional; falls back to stored
@@ -1518,8 +1583,8 @@ class AuthService {
     }
 
     try {
-      final endpoint =
-          '/api/get-balance/walletId/${Uri.encodeComponent(walletId)}';
+      // ✅ Correct endpoint (removed extra "walletId/" segment)
+      final endpoint = '/api/get-balance/${Uri.encodeComponent(walletId)}';
       debugPrint('🌐 GET $endpoint');
 
       final res = await _makeRequest(
@@ -1531,7 +1596,6 @@ class AuthService {
 
       debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
       final map = _handleResponse(res);
-
       final dynamic data = map['data'] ?? map;
 
       List<dynamic> listDyn = const [];

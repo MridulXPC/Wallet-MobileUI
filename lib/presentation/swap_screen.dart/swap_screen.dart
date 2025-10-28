@@ -1052,8 +1052,7 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
-    final hasSupported =
-        context.read<BalanceStore>().symbols.isNotEmpty; // known?
+    final hasSupported = context.read<BalanceStore>().symbols.isNotEmpty;
     if (hasSupported &&
         (!_walletSupportsCoin(fromCoinId) || !_walletSupportsCoin(toCoinId))) {
       _showErrorSnack('Selected coins are not supported by this wallet');
@@ -1082,7 +1081,7 @@ class _SwapScreenState extends State<SwapScreen> {
       // Optional: refresh quote just before swap
       await _fetchQuote();
 
-      final slippageValue = (_slippage ?? 0.01); // raw number (e.g., 0.01)
+      final slippageValue = (_slippage ?? 0.01);
       final res = await AuthService.swapTokens(
         walletId: creds['walletId']!,
         fromToken: fromSymbol,
@@ -1104,17 +1103,61 @@ class _SwapScreenState extends State<SwapScreen> {
         _swapTxId = txId?.toString();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Swap submitted${_swapTxId != null ? " (tx: $_swapTxId)" : ""}'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+      // ✅ Show success dialog
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1D29),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 6,
-          duration: const Duration(milliseconds: 1800),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.greenAccent, size: 26),
+              SizedBox(width: 8),
+              Text(
+                'Swap Completed',
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your swap from $fromSymbol → $toSymbol was successful.',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              if (_swapTxId != null)
+                SelectableText(
+                  'Tx ID: $_swapTxId',
+                  style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 12,
+                      fontFamily: 'monospace'),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushReplacementNamed(
+                    context, AppRoutes.swaphistory); // go to history screen
+              },
+              child: const Text('View History',
+                  style: TextStyle(color: Colors.blueAccent)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child:
+                  const Text('Done', style: TextStyle(color: Colors.white70)),
+            ),
+          ],
         ),
       );
     } catch (e) {
@@ -1410,9 +1453,30 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  // ---------------- API-backed Picker ----------------
+// ---------------- API-backed Picker ----------------
+  Future<void> _selectCoinApi(
+      {required bool isFrom, required String walletId}) async {
+    final portfolioStore = context.read<PortfolioStore>();
 
-  void _selectCoinApi({required bool isFrom, required String walletId}) {
+    // ✅ 1. Fetch latest tokens before opening the modal
+    try {
+      await portfolioStore.fetchPortfolio(walletId, forceRefresh: true);
+    } catch (e) {
+      debugPrint('⚠️ Portfolio fetch failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load portfolio tokens'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
+
+    // ✅ 2. Now open the modal with the freshly loaded tokens
+    if (!mounted) return;
+
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1A1D29),
@@ -1423,17 +1487,16 @@ class _SwapScreenState extends State<SwapScreen> {
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final portfolioStore = context.watch<PortfolioStore>();
             final tokens = portfolioStore.tokens;
 
-            // build base chip list
+            // 🔹 build chip list
             final baseSet = <String>{};
             for (final t in tokens) {
               baseSet.add(t.symbol.toUpperCase());
             }
             final chips = ['ALL', ...baseSet.toList()..sort()];
 
-            // filter
+            // 🔹 filter list by chip + search
             final filtered = tokens.where((t) {
               final matchesChip =
                   _chipFilter == 'ALL' || t.symbol == _chipFilter;
@@ -1470,7 +1533,7 @@ class _SwapScreenState extends State<SwapScreen> {
                                 TextStyle(color: Colors.white, fontSize: 18)),
                         const SizedBox(height: 12),
 
-                        // 🔹 Search bar
+                        // 🔹 Search field
                         Row(
                           children: [
                             Expanded(
@@ -1497,7 +1560,7 @@ class _SwapScreenState extends State<SwapScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        // 🔹 Chip filter row
+                        // 🔹 Chip filter
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(

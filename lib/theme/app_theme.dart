@@ -78,7 +78,7 @@ class AppTheme {
         color: Colors.black,
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: const Color(0xFFF8F8F8),
       elevation: 2.0,
       shadowColor: const Color(0x1F000000),
@@ -229,7 +229,7 @@ class AppTheme {
       overlayColor: primary.withValues(alpha: 0.2),
       inactiveTrackColor: primary.withValues(alpha: 0.3),
     ),
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primary,
       unselectedLabelColor: const Color(0xFF6C6C6C),
       indicatorColor: primary,
@@ -315,10 +315,10 @@ class AppTheme {
         color: onSurface,
       ),
     ),
-    cardTheme: CardTheme(
-      color: cardDark,
+    cardTheme: CardThemeData(
+      color: const Color(0xFFF8F8F8),
       elevation: 2.0,
-      shadowColor: shadowDark,
+      shadowColor: const Color(0x1F000000),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12.0),
       ),
@@ -466,9 +466,9 @@ class AppTheme {
       overlayColor: primary.withValues(alpha: 0.2),
       inactiveTrackColor: primary.withValues(alpha: 0.3),
     ),
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primary,
-      unselectedLabelColor: textMediumEmphasis,
+      unselectedLabelColor: const Color(0xFF6C6C6C),
       indicatorColor: primary,
       indicatorSize: TabBarIndicatorSize.label,
       labelStyle: GoogleFonts.inter(
