@@ -1334,18 +1334,38 @@ class _SwapScreenState extends State<SwapScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: canSwap ? _performSwap : null,
+                  onPressed: () {
+                    if (_swapping) return; // still swapping → disable
+                    if (_swapTxId != null) {
+                      Navigator.pop(context); // user presses "Continue"
+                    } else if (canSwap) {
+                      _performSwap();
+                    }
+                  },
                   style: swapBtnStyle,
                   child: _swapping
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Swap Now',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600)),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : (_swapTxId != null
+                          ? const Text(
+                              'Continue',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                          : const Text(
+                              'Swap Now',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )),
                 ),
               ),
             ],

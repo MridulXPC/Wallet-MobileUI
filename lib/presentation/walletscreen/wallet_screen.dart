@@ -11,7 +11,56 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart'; // for Clipboard
 
 import 'package:cryptowallet/stores/coin_store.dart';
-import 'package:cryptowallet/core/currency_notifier.dart'; // 👈 currency
+import 'package:cryptowallet/core/currency_notifier.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 currency
+
+class ScaleLoader extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  const ScaleLoader({
+    Key? key,
+    this.icon = Icons.currency_bitcoin,
+    this.color = Colors.white,
+    this.size = 42,
+  }) : super(key: key);
+
+  @override
+  State<ScaleLoader> createState() => _ScaleLoaderState();
+}
+
+class _ScaleLoaderState extends State<ScaleLoader>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _scale = Tween<double>(begin: 0.9, end: 1.2)
+        .chain(CurveTween(curve: Curves.easeInOut))
+        .animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: Icon(widget.icon, color: widget.color, size: widget.size),
+    );
+  }
+}
 
 class WalletInfoScreen extends StatefulWidget {
   const WalletInfoScreen({Key? key}) : super(key: key);
@@ -27,6 +76,12 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   // Animation controllers
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
+  Future<String> get walletId => _getStoredWalletId();
+
+  Future<String> _getStoredWalletId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('wallet_id') ?? '';
+  }
 
   // State variables
   bool _isCardFlipped = false;
@@ -166,10 +221,10 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         return 'TRX';
       case 'XMR':
         return 'XMR';
-      case 'USDT-ETH':
-        return 'USDT-ETH';
-      case 'USDT-TRX':
-        return 'USDT-TRX';
+      case 'USDTERC20':
+        return 'USDTERC20';
+      case 'USDTTRC20':
+        return 'USDTTRC20';
       default:
         return c;
     }
@@ -177,9 +232,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
   Future<void> _loadWallets() async {
     try {
-      // (Optional) You can cache wallet name here if your API returns it
-      // final wallets = await AuthService.fetchWallets();
-      setState(() {});
+      // Optional future use.
     } catch (e) {
       debugPrint('Error loading wallets: $e');
     }
@@ -466,8 +519,11 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            TransactionDetailsScreen(transaction: transaction),
+        builder: (context) => TransactionDetailsScreen(
+          transaction: transaction,
+          priceLookup: _priceForCoinUsd, // 👈 pass the function
+          formatFiatFromUsd: (v) => _formatFiatFromUsd(context, v), // optional
+        ),
       ),
     );
   }
@@ -486,7 +542,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       return Scaffold(
         backgroundColor: kBg,
         body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+          child: ScaleLoader(icon: Icons.wallet, color: Colors.white),
         ),
       );
     }
@@ -581,7 +637,16 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: _showWalletChainSelector,
+              onTap: () async {
+                final walletId = await _getStoredWalletId();
+                if (walletId.isNotEmpty) {
+                  _showWalletChainSelector(walletId);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('No active wallet found')),
+                  );
+                }
+              },
               child: Row(
                 children: [
                   Container(
@@ -644,7 +709,17 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
             ),
           ),
           GestureDetector(
-            onTap: _showWalletChainSelector,
+            onTap: () async {
+              final prefs = await SharedPreferences.getInstance();
+              final walletId = prefs.getString('wallet_id') ?? '';
+              if (walletId.isNotEmpty) {
+                _showWalletChainSelector(walletId);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No active wallet found')),
+                );
+              }
+            },
             child: Container(
               width: 36,
               height: 36,
@@ -652,11 +727,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                 color: kTile,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: const Icon(Icons.keyboard_arrow_down,
+                  color: Colors.white, size: 20),
             ),
           ),
         ],
@@ -1585,179 +1657,161 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
     return s.isEmpty ? c : s;
   }
 
-  void _showWalletChainSelector() {
+  void _showWalletChainSelector(String walletId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          final store = context.read<CoinStore>();
+      builder: (context) {
+        final portfolioStore = context.read<PortfolioStore>();
+        final coinStore = context.read<CoinStore>();
 
-          return FutureBuilder<List<Map<String, dynamic>>>(
-            future: AuthService.fetchWallets(),
-            builder: (context, snap) {
-              final wallets = snap.data ?? const <Map<String, dynamic>>[];
+        // ✅ Trigger fetch after first frame to avoid build-phase exception
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          portfolioStore.fetchPortfolio(walletId, forceRefresh: true);
+        });
 
-              final List<dynamic> chains =
-                  (wallets.isNotEmpty && (wallets.first)['chains'] is List)
-                      ? (wallets.first)['chains'] as List
-                      : const <dynamic>[];
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return AnimatedBuilder(
+              animation: portfolioStore,
+              builder: (context, _) {
+                final tokens = portfolioStore.tokens;
 
-              return ClipRect(
-                child: Container(
-                  decoration: const BoxDecoration(gradient: kSheetGrad),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: kTile,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Select Network / Chain',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (snap.connectionState == ConnectionState.waiting)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(color: Colors.white),
-                        ),
-                      if (snap.hasError)
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            'Failed to load wallets.\n${snap.error}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white70),
+                return ClipRect(
+                  child: Container(
+                    decoration: const BoxDecoration(gradient: kSheetGrad),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: kTile,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                      if (snap.connectionState == ConnectionState.done &&
-                          chains.isEmpty)
+                        const SizedBox(height: 16),
                         const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text(
-                            'No chains found in this wallet.',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      if (chains.isNotEmpty)
-                        Expanded(
-                          child: ListView.builder(
-                            controller: scrollController,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            itemCount: chains.length,
-                            itemBuilder: (context, i) {
-                              final c =
-                                  chains[i] as Map<String, dynamic>? ?? {};
-                              final chain = (c['chain'] ?? '').toString();
-                              final addr = (c['address'] ?? '').toString();
-                              final bal = (c['balance'] ?? '0').toString();
-
-                              final coinId = _coinIdFromChain(chain);
-                              final coin = store.getById(coinId);
-
-                              final isSelected = selectedCoinId == coinId;
-
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                child: ListTile(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  tileColor: isSelected
-                                      ? kTile
-                                      : const Color(0xFF1F2329),
-                                  leading: Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: Colors.transparent,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: (coin != null &&
-                                            coin.assetPath.isNotEmpty)
-                                        ? Image.asset(
-                                            coin.assetPath,
-                                            width: 24,
-                                            height: 24,
-                                          )
-                                        : const Icon(
-                                            Icons.language,
-                                            color: Colors.white,
-                                            size: 20,
-                                          ),
-                                  ),
-                                  title: Text(
-                                    chain,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    addr.isEmpty ? '—' : _shortenAddress(addr),
-                                    style: const TextStyle(
-                                      color: kMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  trailing: Text(
-                                    '$bal $chain',
-                                    style: const TextStyle(
-                                      color: kMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  onTap: () async {
-                                    Navigator.pop(context);
-                                    setState(() {
-                                      selectedCoinId = coinId;
-                                      _currentWalletAddress = addr;
-                                      _isCardFlipped = false;
-                                      _flipController.reset();
-                                      _lightningState = 'sync';
-                                      _isLightningComplete = false;
-                                      _exploreData = null;
-                                    });
-                                    await _loadTransactionData();
-                                  },
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Select Network / Chain',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 12),
+                        if (portfolioStore.loading)
+                          const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: ScaleLoader(
+                                icon: Icons.token,
+                                color: Colors.greenAccent,
+                                size: 40),
+                          ),
+                        if (portfolioStore.error != null)
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              portfolioStore.error!,
+                              style: const TextStyle(color: Colors.redAccent),
+                            ),
+                          ),
+                        if (!portfolioStore.loading && tokens.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              'No tokens found for this wallet.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                        if (tokens.isNotEmpty)
+                          Expanded(
+                            child: ListView.builder(
+                              controller: scrollController,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
+                              itemCount: tokens.length,
+                              itemBuilder: (context, i) {
+                                final t = tokens[i];
+                                final chain = t.chain;
+                                final symbol = t.symbol;
+                                final bal = t.balance.toStringAsFixed(4);
+
+                                final coinId = _coinIdFromChain(chain);
+                                final coin = coinStore.getById(coinId);
+                                final isSelected = selectedCoinId == coinId;
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  child: ListTile(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    tileColor: isSelected
+                                        ? kTile
+                                        : const Color(0xFF1F2329),
+                                    leading: (coin != null &&
+                                            coin.assetPath.isNotEmpty)
+                                        ? Image.asset(coin.assetPath,
+                                            width: 28, height: 28)
+                                        : const Icon(Icons.language,
+                                            color: Colors.white, size: 22),
+                                    title: Text(
+                                      '$symbol (${chain.toUpperCase()})',
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                    trailing: Text(
+                                      '$bal $symbol',
+                                      style: const TextStyle(
+                                          color: Colors.white54, fontSize: 12),
+                                    ),
+                                    onTap: () async {
+                                      Navigator.pop(context);
+                                      setState(() {
+                                        selectedCoinId = coinId;
+                                        _currentWalletAddress =
+                                            null; // clear old address
+                                        _isCardFlipped = false;
+                                        _flipController.reset();
+                                        _lightningState = 'sync';
+                                        _isLightningComplete = false;
+                                        _exploreData = null;
+                                      });
+
+                                      // First load the address for the new chain...
+                                      await _loadWalletAddress();
+
+                                      // ...then load transactions for that address.
+                                      await _loadTransactionData();
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -1766,9 +1820,15 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
 class TransactionDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> transaction;
+  final double Function(String coinKey) priceLookup;
+  final String Function(double usd)? formatFiatFromUsd; // optional helper
 
-  const TransactionDetailsScreen({Key? key, required this.transaction})
-      : super(key: key);
+  const TransactionDetailsScreen({
+    Key? key,
+    required this.transaction,
+    required this.priceLookup,
+    this.formatFiatFromUsd,
+  }) : super(key: key);
 
   Color _getStatusColor() {
     switch (transaction['status'].toLowerCase()) {
@@ -1852,11 +1912,12 @@ class TransactionDetailsScreen extends StatelessWidget {
     final double amount =
         double.tryParse((transaction['amount'] ?? '0').toString()) ?? 0.0;
     final String coinKey = (transaction['coin'] ?? '').toString();
-    final double priceUsd =
-        context.read<_WalletInfoScreenState?>()?._priceForCoinUsd(coinKey) ??
-            0.0;
-    final String? fiat =
-        priceUsd > 0 ? fx.formatFromUsd(amount * priceUsd) : null;
+    final double priceUsd = priceLookup(coinKey);
+    final String? fiat = priceUsd > 0
+        ? (formatFiatFromUsd != null
+            ? formatFiatFromUsd!(amount * priceUsd)
+            : '≈ \$${(amount * priceUsd).toStringAsFixed(2)}')
+        : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0D1A),
