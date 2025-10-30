@@ -1338,7 +1338,9 @@ class AuthService {
 
       final provider = data['provider'] ?? 'Unknown';
       final quoteData = data['data'] as Map<String, dynamic>;
-      final fees = (quoteData['fees'] ?? {}) as Map<String, dynamic>;
+      final fees = (quoteData['fees'] is Map)
+          ? (quoteData['fees'] as Map<String, dynamic>)
+          : {'total': quoteData['fees']?.toString() ?? '0'};
 
       final parsed = {
         "provider": provider,
@@ -1346,16 +1348,8 @@ class AuthService {
         "toToken": quoteData['toToken'],
         "amountIn": quoteData['amountIn'],
         "estimatedAmountOut": quoteData['estimatedAmountOut'],
-        "router": quoteData['router'],
-        "fees": {
-          "asset": fees['asset'],
-          "affiliate": fees['affiliate'],
-          "outbound": fees['outbound'],
-          "liquidity": fees['liquidity'],
-          "total": fees['total'],
-          "slippage_bps": fees['slippage_bps'],
-          "total_bps": fees['total_bps'],
-        },
+        "router": quoteData['provider'],
+        "fees": fees
       };
 
       return AuthResponse.success(data: parsed);

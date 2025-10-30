@@ -788,7 +788,7 @@ class _SwapScreenState extends State<SwapScreen> {
                   decoration:
                       BoxDecoration(borderRadius: BorderRadius.circular(20)),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.max,
                     children: [
                       _coinAvatar(path, symbol),
                       const SizedBox(width: 8),
@@ -803,9 +803,8 @@ class _SwapScreenState extends State<SwapScreen> {
                 ),
               ),
               const Spacer(),
-              // Amount lane - stable width so layout doesn't jump
-              SizedBox(
-                width: 210,
+              // Flexible width to avoid overflow
+              Expanded(
                 child: isFrom
                     ? TextField(
                         controller: _fromController,
@@ -1004,6 +1003,7 @@ class _SwapScreenState extends State<SwapScreen> {
       if (destinationAddress == null || destinationAddress.isEmpty) {
         throw 'No valid wallet address found for $toChain';
       }
+      print('in line 1007');
 
       // 🔹 Call quote API
       final res = await AuthService.getSwapQuote(
@@ -1014,6 +1014,7 @@ class _SwapScreenState extends State<SwapScreen> {
         destinationAddress: destinationAddress,
         slippage: (_slippage ?? 0.01),
       );
+      print('in line 1017');
 
       final data = res.data ?? {};
       final provider = data['provider'] ?? 'Unknown';
@@ -1021,6 +1022,7 @@ class _SwapScreenState extends State<SwapScreen> {
 
       // 🔹 Parse estimated output from response
       dynamic estOut = quoteData['estimatedAmountOut'] ?? quoteData['toAmount'];
+      print('estOut raw: $estOut');
       double? parsedOut;
 
       if (estOut is num) {
@@ -1030,7 +1032,7 @@ class _SwapScreenState extends State<SwapScreen> {
       }
 
       // ✅ Convert from base units → actual token units (divide by 10^8)
-      if (parsedOut != null) {
+      if (parsedOut != null && provider == 'Thorchain') {
         parsedOut = parsedOut / pow(10, 8);
         // ✅ Round to 6 digits
         parsedOut = double.parse(parsedOut.toStringAsFixed(6));
