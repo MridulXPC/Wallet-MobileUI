@@ -1285,14 +1285,14 @@ class _SwapScreenState extends State<SwapScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            onPressed: () {
-              _stopQuoteCountdown();
-              _fetchQuote();
-            },
-          ),
+          // const SizedBox(width: 8),
+          // IconButton(
+          //   icon: const Icon(Icons.refresh, color: Colors.white70),
+          //   onPressed: () {
+          //     _stopQuoteCountdown();
+          //     _fetchQuote();
+          //   },
+          // ),
           IconButton(
             icon: const Icon(Icons.history, color: Colors.white70),
             onPressed: () {

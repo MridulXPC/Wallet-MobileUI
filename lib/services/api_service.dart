@@ -1241,6 +1241,56 @@ class AuthService {
     );
   }
 
+  /// GET /api/transaction/history
+  /// Fetches all transactions visible to the authenticated user.
+  /// Uses JWT from SharedPreferences for authentication.
+  static Future<List<TxRecord>> fetchAllTransactionHistory({
+    String? chain,
+    int? page,
+    int? limit,
+    String? token,
+  }) async {
+    token ??= await getStoredToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('No authentication token available');
+    }
+
+    // Optional query params
+    final qp = <String, String>{};
+    if (chain != null && chain.isNotEmpty) qp['chain'] = chain;
+    if (page != null && page > 0) qp['page'] = page.toString();
+    if (limit != null && limit > 0) qp['limit'] = limit.toString();
+
+    final query = qp.isEmpty ? '' : '?${Uri(queryParameters: qp).query}';
+    const endpoint = '/api/transaction/history';
+
+    try {
+      debugPrint('🌐 GET $endpoint$query');
+      debugPrint('🔐 Authorization: Bearer ***JWT***');
+
+      final res = await _makeRequest(
+        method: 'GET',
+        endpoint: '$endpoint$query',
+        token: token,
+        requireAuth: true,
+      );
+
+      debugPrint('📥 Raw response: ${res.statusCode} ${res.body}');
+      final data = _handleResponse(res);
+
+      // Extract transaction list from common fields: data[], transactions[], etc.
+      final list = _TxJson.extractList(data);
+      final txs = list.map(TxRecord.fromJson).toList(growable: false);
+      debugPrint('✅ ${txs.length} transactions fetched.');
+
+      return txs;
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Failed to fetch all transaction history: $e');
+    }
+  }
+
   // ===================== SWAPS =====================
 
   static Future<AuthResponse> getSwapQuote({

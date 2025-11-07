@@ -185,18 +185,24 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                                     Shadow(
                                         color: Colors.black26,
                                         offset: Offset(0, 1),
-                                        blurRadius: 3)
+                                        blurRadius: 3),
                                   ],
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.refresh,
-                                    color: Colors.white70, size: 20),
-                                tooltip: 'Recalculate',
-                                onPressed: _loadingTotal
-                                    ? null
-                                    : _loadTotalFromWallets,
-                              ),
+                              const SizedBox(width: 8),
+                              _loadingTotal
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : IconButton(
+                                      icon: const Icon(Icons.refresh,
+                                          color: Colors.white70, size: 20),
+                                      tooltip: 'Recalculate',
+                                      onPressed: _loadTotalFromWallets,
+                                    ),
                             ],
                           ),
                         ],

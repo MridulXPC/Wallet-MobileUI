@@ -1,4 +1,5 @@
 // lib/presentation/send_cryptocurrency/SendConfirmationView.dart
+import 'package:cryptowallet/presentation/send_cryptocurrency/TransactionSuccessScreen.dart';
 import 'package:cryptowallet/presentation/send_cryptocurrency/send_cryptocurrency.dart';
 import 'package:cryptowallet/services/api_service.dart';
 import 'package:flutter/material.dart';
@@ -172,9 +173,18 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
 
       if (res.success) {
         final txId = _extractTxId(res.data);
-        await _showSuccessDialog(context, txId);
         if (!mounted) return;
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => TransactionSuccessScreen(
+              txId: txId,
+              assetSymbol: _assetSymbol,
+              amount: _amountCrypto,
+              fee: _networkFee,
+              toAddress: toAddr,
+            ),
+          ),
+        );
       } else {
         setState(() => _error = res.message ?? 'Transaction failed.');
       }

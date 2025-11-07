@@ -49,9 +49,7 @@ class _TransactionHistoryState extends State<TransactionHistory>
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final id = context.read<WalletStore>().activeWalletId;
-      _lastWalletId = id;
-      _fetchTransactions(walletId: id);
+      _fetchTransactions(); // no walletId required
     });
   }
 
@@ -86,35 +84,15 @@ class _TransactionHistoryState extends State<TransactionHistory>
 
   // ---------------- data fetch ----------------
 
-  Future<void> _fetchTransactions({required String? walletId}) async {
+  Future<void> _fetchTransactions({String? walletId}) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      String? useId = walletId;
-      if (useId == null || useId.isEmpty) {
-        final wallets = await AuthService.fetchWallets();
-        if (wallets.isNotEmpty) {
-          useId = wallets.first['_id']?.toString();
-        }
-      }
-
-      if (useId == null || useId.isEmpty) {
-        setState(() {
-          _allTransactions = const [];
-          _filteredTransactions = const [];
-          _isLoading = false;
-          _error = 'No wallet available.';
-        });
-        return;
-      }
-
-      final records = await AuthService.fetchTransactionHistoryByWallet(
-        walletId: useId,
-        limit: 200,
-      );
+      // ✅ JWT-based transaction history (not walletId)
+      final records = await AuthService.fetchAllTransactionHistory(limit: 200);
 
       final mapped = records.map(_mapTxRecordToUi).toList();
 
