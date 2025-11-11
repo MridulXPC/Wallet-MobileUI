@@ -163,6 +163,15 @@ class _AppLockScreenState extends State<AppLockScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // 🖼️ App Logo at top
+                  Image.asset(
+                    'assets/Zayralogopng.png',
+                    height: 100,
+                    width: 100,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 24),
+
                   const Text(
                     "Enter your wallet password",
                     style: TextStyle(
@@ -171,6 +180,7 @@ class _AppLockScreenState extends State<AppLockScreen>
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+
                   const SizedBox(height: 20),
 
                   // Password input

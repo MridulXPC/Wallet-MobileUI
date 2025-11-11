@@ -162,12 +162,12 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                               ),
                               if (_loadingTotal) ...[
                                 const SizedBox(width: 6),
-                                const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                ),
+                                // const SizedBox(
+                                //   width: 14,
+                                //   height: 14,
+                                //   child:
+                                //       CircularProgressIndicator(strokeWidth: 2),
+                                // ),
                               ],
                             ],
                           ),
