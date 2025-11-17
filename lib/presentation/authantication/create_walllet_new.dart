@@ -719,7 +719,7 @@ class _Step4ConfirmRecoveryPhraseScreenState
                       Checkbox(
                         value: agree,
                         onChanged: (v) => setSheet(() => agree = v ?? false),
-                        activeColor: Colors.tealAccent[700],
+                        activeColor: Colors.white,
                         checkColor: Colors.black,
                       ),
                       const Expanded(
@@ -755,9 +755,8 @@ class _Step4ConfirmRecoveryPhraseScreenState
                                 }
                               : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: agree
-                                ? Colors.tealAccent[700]
-                                : Colors.grey[700],
+                            backgroundColor:
+                                agree ? Colors.white : Colors.grey[700],
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),

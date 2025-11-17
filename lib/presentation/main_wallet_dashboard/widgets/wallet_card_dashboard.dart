@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:cryptowallet/core/currency_notifier.dart';
@@ -7,6 +8,7 @@ import 'package:cryptowallet/services/api_service.dart';
 import 'package:cryptowallet/stores/wallet_store.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 
 class VaultHeaderCard extends StatefulWidget {
   final String totalValue;
@@ -32,77 +34,55 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
   bool _hidden = false;
   double? _computedTotalUsd;
   bool _loadingTotal = false;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadTotalFromWallets();
+    _loadTotal();
+    _setupAutoRefresh();
   }
 
-  Future<void> _loadTotalFromWallets() async {
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 20), (t) {
+      _loadTotal();
+    });
+  }
+
+  Future<void> _loadTotal() async {
+    if (!mounted) return;
+
     setState(() => _loadingTotal = true);
+
     try {
-      final wallets = await AuthService.fetchWallets();
-      final totalUsd = _sumAllWalletsUsd(wallets);
+      final payload = await AuthService.fetchBalancesAndTotal();
       if (!mounted) return;
-      setState(() => _computedTotalUsd = totalUsd);
-    } catch (_) {
-      // keep fallback
+
+      setState(() {
+        _computedTotalUsd = payload.totalUsd;
+      });
+    } catch (e) {
+      debugPrint('⚠️ Failed to load balances: $e');
     } finally {
       if (mounted) setState(() => _loadingTotal = false);
     }
   }
 
-  double _sumAllWalletsUsd(List<Map<String, dynamic>> wallets) {
-    double total = 0.0;
-    for (final w in wallets) {
-      total += _walletUsd(w);
-    }
-    return total;
-  }
-
-  double _walletUsd(Map<String, dynamic> w) {
-    final chains = (w['chains'] as List?) ?? const [];
-    if (chains.isNotEmpty) {
-      double sum = 0.0;
-      for (final c in chains) {
-        if (c is! Map) continue;
-        final m = c.cast<String, dynamic>();
-        final usdDirect = _asDouble(m['fiatValue']) ??
-            _asDouble(m['usdValue']) ??
-            _asDouble(m['balanceUSD']);
-        if (usdDirect != null) {
-          sum += usdDirect;
-          continue;
-        }
-        final bal = _asDouble(m['balance']) ?? _asDouble(m['amount']);
-        final price = _asDouble(m['priceUsd']) ??
-            _asDouble(m['usdPrice']) ??
-            _asDouble(m['price']);
-        if (bal != null && price != null) sum += bal * price;
-      }
-      return sum;
-    }
-    return _asDouble(w['fiatValue']) ??
-        _asDouble(w['usdValue']) ??
-        _asDouble(w['totalUsd']) ??
-        _asDouble(w['total']) ??
-        0.0;
-  }
-
-  double? _asDouble(dynamic v) {
-    if (v == null) return null;
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v);
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final fx = context.watch<CurrencyNotifier>();
+
     final String display = (_computedTotalUsd != null)
         ? fx.formatFromUsd(_computedTotalUsd!)
         : widget.totalValue;
+
     final masked = _hidden ? '•••••••' : display;
 
     return GestureDetector(
@@ -120,20 +100,12 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                   end: Alignment.bottomRight,
                   colors: [
                     Colors.white.withOpacity(0.15),
-                    Colors.white.withOpacity(0.05)
+                    Colors.white.withOpacity(0.05),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
                     color: Colors.white.withOpacity(0.2), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 20,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: Padding(
                 padding:
@@ -144,6 +116,7 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          /// -------- Title Row --------
                           Row(
                             children: [
                               Text(
@@ -160,54 +133,65 @@ class _VaultHeaderCardState extends State<VaultHeaderCard> {
                                 onPressed: () =>
                                     setState(() => _hidden = !_hidden),
                               ),
-                              if (_loadingTotal) ...[
-                                const SizedBox(width: 6),
-                                // const SizedBox(
-                                //   width: 14,
-                                //   height: 14,
-                                //   child:
-                                //       CircularProgressIndicator(strokeWidth: 2),
-                                // ),
-                              ],
                             ],
                           ),
+
+                          /// -------- Value Row --------
                           Row(
                             children: [
-                              Text(
-                                masked,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  shadows: [
-                                    Shadow(
-                                        color: Colors.black26,
-                                        offset: Offset(0, 1),
-                                        blurRadius: 3),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
                               _loadingTotal
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
+                                  ? Shimmer.fromColors(
+                                      baseColor: Colors.white24,
+                                      highlightColor: Colors.white54,
+                                      child: Container(
+                                        width: 120,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white30,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      masked,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+
+                              const SizedBox(width: 10),
+
+                              /// --- Refresh Button ---
+                              _loadingTotal
+                                  ? Shimmer.fromColors(
+                                      baseColor: Colors.white24,
+                                      highlightColor: Colors.white54,
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white30,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
                                     )
                                   : IconButton(
                                       icon: const Icon(Icons.refresh,
                                           color: Colors.white70, size: 20),
-                                      tooltip: 'Recalculate',
-                                      onPressed: _loadTotalFromWallets,
+                                      onPressed: _loadTotal,
                                     ),
                             ],
                           ),
                         ],
                       ),
                     ),
+
+                    /// Right Menu
                     _VaultMenuButton(
                       title: widget.vaultName,
                       onChangeWallet: widget.onChangeWallet,
@@ -239,8 +223,11 @@ class _EyeButton extends StatelessWidget {
         radius: 18,
         child: Padding(
           padding: const EdgeInsets.all(4.0),
-          child: Icon(hidden ? Icons.visibility_off : Icons.visibility,
-              size: 20, color: Colors.white70),
+          child: Icon(
+            hidden ? Icons.visibility_off : Icons.visibility,
+            size: 20,
+            color: Colors.white70,
+          ),
         ),
       ),
     );
@@ -276,11 +263,12 @@ class _VaultMenuButton extends StatelessWidget {
               initialActiveWalletId:
                   navContext.read<WalletStore>().activeWalletId,
               onSelectWallet: (wallet) async {
-                final wid = AuthService.walletIdOf(wallet); // ✅ UUID
+                final wid = AuthService.walletIdOf(wallet);
                 await navContext.read<WalletStore>().setActive(wid);
                 ScaffoldMessenger.of(navContext).showSnackBar(
                   SnackBar(
-                      content: Text('Active: ${wallet['name'] ?? 'Wallet'}')),
+                    content: Text('Active: ${wallet['name'] ?? 'Wallet'}'),
+                  ),
                 );
               },
             );
@@ -302,12 +290,18 @@ class _VaultMenuButton extends StatelessWidget {
         PopupMenuItem(
           value: 'change_wallet',
           child: _MenuTile(
-              icon: Icons.swap_horiz, title: 'Change wallet', subtitle: title),
+            icon: Icons.swap_horiz,
+            title: 'Change wallet',
+            subtitle: title,
+          ),
         ),
         PopupMenuItem(
           value: 'activities',
           child: _MenuTile(
-              icon: Icons.history, title: 'Activities', subtitle: title),
+            icon: Icons.history,
+            title: 'Activities',
+            subtitle: title,
+          ),
         ),
       ],
     );
@@ -318,8 +312,11 @@ class _MenuTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  const _MenuTile(
-      {required this.icon, required this.title, required this.subtitle});
+  const _MenuTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -335,9 +332,11 @@ class _MenuTile extends StatelessWidget {
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
-              Text(subtitle,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ),

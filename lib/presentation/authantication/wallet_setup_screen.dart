@@ -13,11 +13,17 @@ class WalletSetupScreen extends StatelessWidget {
       backgroundColor: _pageBg,
       body: SafeArea(
         child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Image.asset(
+                  'assets/Zayralogopng.png',
+                  height: 100,
+                  width: 100,
+                  fit: BoxFit.contain,
+                ),
                 const SizedBox(height: 40),
 
                 const Text(
@@ -305,7 +311,7 @@ These Terms, together with the Privacy Policy, form the entire agreement between
                                     isChecked = val ?? false;
                                   });
                                 },
-                                activeColor: Colors.tealAccent[700],
+                                activeColor: Colors.white,
                                 checkColor: Colors.black,
                               ),
                               const Expanded(
@@ -346,7 +352,7 @@ These Terms, together with the Privacy Policy, form the entire agreement between
                                       : null,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: isChecked
-                                        ? Colors.tealAccent[700]
+                                        ? Colors.white
                                         : Colors.grey[700],
                                     foregroundColor: Colors.black,
                                     padding: const EdgeInsets.symmetric(

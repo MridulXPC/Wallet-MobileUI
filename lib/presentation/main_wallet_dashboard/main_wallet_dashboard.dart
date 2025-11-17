@@ -112,8 +112,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     });
 
     // Balance refresh timer - every 20 seconds
-    _balanceRefreshTimer =
-        Timer.periodic(const Duration(seconds: 2000000000000000000), (t) {
+    _balanceRefreshTimer = Timer.periodic(const Duration(seconds: 20), (t) {
       _fetchBalance();
     });
 
@@ -274,22 +273,6 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                           Navigator.of(context, rootNavigator: true)
                               .pushNamed(AppRoutes.transactionHistory),
                     ),
-                    // Loading indicator
-                    if (_isLoadingBalance)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white.withOpacity(0.7),
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
                 const MainCoinsOnly(),

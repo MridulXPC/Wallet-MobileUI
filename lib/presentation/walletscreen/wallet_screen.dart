@@ -176,7 +176,9 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
   // ---------------- API Integration ----------------
 
   Future<void> _initializeWallet() async {
+    if (!mounted) return; // extra safety
     try {
+      if (!mounted) return;
       setState(() {
         _isLoading = true;
         _error = null;
@@ -184,6 +186,7 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
 
       await Future.wait([_loadWallets(), _loadSpotPrices()]);
 
+      if (!mounted) return;
       if (_tokens.isNotEmpty) {
         final firstBase =
             _baseFromToken(_tokens.first.symbol, _tokens.first.chain);
@@ -191,14 +194,18 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       }
 
       await _loadWalletAddress();
+
+      if (!mounted) return;
       if (_currentWalletAddress != null) {
         await _loadTransactionData();
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Failed to load wallet data: ${e.toString()}';
       });
     } finally {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -1663,27 +1670,40 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final portfolioStore = context.read<PortfolioStore>();
-        final coinStore = context.read<CoinStore>();
+        return FutureBuilder<List<ChainBalance>>(
+          future: AuthService.fetchWalletsForUser(walletId: walletId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(
+                  child: Padding(
+                padding: EdgeInsets.all(40),
+                child: ScaleLoader(icon: Icons.token, color: Colors.green),
+              ));
+            }
 
-        // ✅ Trigger fetch after first frame to avoid build-phase exception
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          portfolioStore.fetchPortfolio(walletId, forceRefresh: true);
-        });
+            if (snapshot.hasError) {
+              return Center(
+                  child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  snapshot.error.toString(),
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                ),
+              ));
+            }
 
-        return DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return AnimatedBuilder(
-              animation: portfolioStore,
-              builder: (context, _) {
-                final tokens = portfolioStore.tokens;
+            final chains = snapshot.data!;
 
-                return ClipRect(
+            return DraggableScrollableSheet(
+              initialChildSize: 0.7,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              builder: (_, scrollController) {
+                return ClipRRect(
                   child: Container(
-                    decoration: const BoxDecoration(gradient: kSheetGrad),
+                    decoration: const BoxDecoration(
+                      gradient: kSheetGrad,
+                    ),
                     child: Column(
                       children: [
                         const SizedBox(height: 12),
@@ -1696,6 +1716,8 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                           ),
                         ),
                         const SizedBox(height: 16),
+
+                        // Title
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20),
                           child: Row(
@@ -1711,98 +1733,78 @@ class _WalletInfoScreenState extends State<WalletInfoScreen>
                             ],
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        if (portfolioStore.loading)
-                          const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: ScaleLoader(
-                                icon: Icons.token,
-                                color: Colors.greenAccent,
-                                size: 40),
-                          ),
-                        if (portfolioStore.error != null)
-                          Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              portfolioStore.error!,
-                              style: const TextStyle(color: Colors.redAccent),
-                            ),
-                          ),
-                        if (!portfolioStore.loading && tokens.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                              'No tokens found for this wallet.',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        if (tokens.isNotEmpty)
-                          Expanded(
-                            child: ListView.builder(
-                              controller: scrollController,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
-                              itemCount: tokens.length,
-                              itemBuilder: (context, i) {
-                                final t = tokens[i];
-                                final chain = t.chain;
-                                final symbol = t.symbol;
-                                final bal = t.balance.toStringAsFixed(4);
 
-                                final coinId = _coinIdFromChain(chain);
-                                final coin = coinStore.getById(coinId);
-                                final isSelected = selectedCoinId == coinId;
+                        const SizedBox(height: 16),
 
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  child: ListTile(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    tileColor: isSelected
-                                        ? kTile
-                                        : const Color(0xFF1F2329),
-                                    leading: (coin != null &&
-                                            coin.assetPath.isNotEmpty)
-                                        ? Image.asset(coin.assetPath,
-                                            width: 28, height: 28)
-                                        : const Icon(Icons.language,
-                                            color: Colors.white, size: 22),
-                                    title: Text(
-                                      '$symbol (${chain.toUpperCase()})',
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                    trailing: Text(
-                                      '$bal $symbol',
-                                      style: const TextStyle(
-                                          color: Colors.white54, fontSize: 12),
-                                    ),
-                                    onTap: () async {
-                                      Navigator.pop(context);
-                                      setState(() {
-                                        selectedCoinId = coinId;
-                                        _currentWalletAddress =
-                                            null; // clear old address
-                                        _isCardFlipped = false;
-                                        _flipController.reset();
-                                        _lightningState = 'sync';
-                                        _isLightningComplete = false;
-                                        _exploreData = null;
-                                      });
+                        // List
+                        Expanded(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            itemCount: chains.length,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 8),
+                            itemBuilder: (_, i) {
+                              final c = chains[i];
 
-                                      // First load the address for the new chain...
-                                      await _loadWalletAddress();
+                              final chain = c.blockchain;
+                              final symbol = c.symbol;
+                              final coinId = _coinIdFromChain(chain);
+                              final coin =
+                                  context.read<CoinStore>().getById(coinId);
+                              final isSelected = selectedCoinId.toUpperCase() ==
+                                  coinId.toUpperCase();
 
-                                      // ...then load transactions for that address.
-                                      await _loadTransactionData();
-                                    },
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: ListTile(
+                                  tileColor: isSelected
+                                      ? kTile
+                                      : const Color(0xFF1F2329),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                );
-                              },
-                            ),
+                                  leading: coin != null
+                                      ? Image.asset(coin.assetPath,
+                                          width: 28, height: 28)
+                                      : const Icon(Icons.token,
+                                          color: Colors.white, size: 22),
+                                  title: Text(
+                                    '$symbol (${chain.toUpperCase()})',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(
+                                    'Address: ${c.address}',
+                                    style: const TextStyle(
+                                        color: Colors.white54, fontSize: 11),
+                                  ),
+                                  trailing: Text(
+                                    '${c.balance} $symbol',
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+
+                                    setState(() {
+                                      selectedCoinId = coinId;
+                                      _currentWalletAddress = c.address;
+                                      _isCardFlipped = false;
+                                      _flipController.reset();
+                                      _lightningState = 'sync';
+                                      _isLightningComplete = false;
+                                      _exploreData = null;
+                                    });
+
+                                    // Load transactions for this new chain address
+                                    await _loadTransactionData();
+                                  },
+                                ),
+                              );
+                            },
                           ),
+                        ),
                       ],
                     ),
                   ),

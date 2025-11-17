@@ -68,7 +68,7 @@ class TransactionSuccessScreen extends StatelessWidget {
             Center(
               child: ElevatedButton(
                 onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  Navigator.pushNamed(context, '/main-dashboard');
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,

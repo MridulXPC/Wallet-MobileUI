@@ -740,166 +740,31 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
   List<Widget> _buildCoinHoldings(FxAdapter fx) {
-    final bs = context.watch<BalanceStore>();
-    final walletStore = context.watch<WalletStore>();
-    final store = context.read<CoinStore>();
+    // Get the portfolio row passed from CryptoPortfolioWidget
+    final Map<String, dynamic> item =
+        ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
 
-    final wantedSym = sym.toUpperCase();
+    final String symbol = (item["symbol"] ?? "").toString().toUpperCase();
 
-    // 🧩 Log wallet store state
-    debugPrint(
-        '🟢 WalletStore has ${walletStore.wallets.length} wallets loaded');
-    for (final w in walletStore.wallets) {
-      debugPrint('   → walletId=${w.id}, chains=${w.chains.length}');
-    }
+    final double balance =
+        double.tryParse(item["balance"]?.toString() ?? "0") ?? 0.0;
 
-    debugPrint(
-        '🟢 BalanceStore rows = ${bs.rows.length}, loading=${bs.loading}');
+    final double usdValueNum = (item["usdBalanceNum"] is num)
+        ? (item["usdBalanceNum"] as num).toDouble()
+        : 0.0;
 
-    // ✅ Prefer balance store data if non-empty
-    List<Widget> holdings = [];
-
-    if (bs.rows.isNotEmpty) {
-      final rowsForCoin = bs.rows.where((r) {
-        final s = (r.symbol.isNotEmpty
-                ? r.symbol
-                : (r.token.isNotEmpty ? r.token : r.blockchain))
-            .toUpperCase();
-        return s == wantedSym || s.startsWith('$wantedSym ');
-      }).toList();
-
-      debugPrint(
-          '✅ Found ${rowsForCoin.length} rows in BalanceStore for $wantedSym');
-
-      if (rowsForCoin.isNotEmpty) {
-        holdings = rowsForCoin.map((r) {
-          final chainNorm = _normalizeChain(r.blockchain.toUpperCase());
-          final balance = double.tryParse(r.balance) ?? 0.0;
-          final usd = (r.value ?? 0.0);
-          final nickname = (r.nickname ?? '').trim();
-
-          final coinIdGuess = switch (wantedSym) {
-            'USDT' => 'USDT-$chainNorm',
-            'BTC' => chainNorm == 'LN' ? 'BTC-LN' : 'BTC',
-            _ => '$wantedSym-$chainNorm',
-          };
-
-          final coinForIcon =
-              store.getById(coinIdGuess) ?? store.getById(wantedSym);
-          final icon =
-              coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-
-          final baseTitle = coinForIcon?.name ??
-              (wantedSym == 'USDT'
-                  ? 'USDT (${_chainUiName(chainNorm)})'
-                  : '$wantedSym (${_chainUiName(chainNorm)})');
-          final title =
-              nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
-
-          final networkSubtitle = wantedSym == 'USDT'
-              ? '${_networkShort(chainNorm)} • ${_chainUiName(chainNorm)} Network'
-              : '${_chainUiName(chainNorm)} Network';
-
-          return _buildHoldingCard(
-            icon: icon,
-            title: title,
-            networkSubtitle: networkSubtitle,
-            balance: balance,
-            usd: usd,
-            symbol: wantedSym,
-            nickname: nickname,
-            chain: chainNorm,
-          );
-        }).toList();
-      }
-    }
-
-    // ✅ Fallback to WalletStore if BalanceStore empty or incomplete
-    if (holdings.isEmpty && walletStore.wallets.isNotEmpty) {
-      final allChains =
-          walletStore.wallets.expand((w) => w.chains).toList(growable: false);
-      debugPrint(
-          '⚡ Fallback: ${allChains.length} total chains across all wallets');
-
-      final chains = allChains.where((c) {
-        final symbol = (c.symbol).toString().toUpperCase();
-        final chainCode = (c.chain).toString().toUpperCase();
-        return symbol == wantedSym || chainCode == wantedSym;
-      }).toList();
-
-      debugPrint(
-          '⚡ Found ${chains.length} $wantedSym chains in WalletStore fallback');
-
-      holdings = chains.map((chain) {
-        final chainCode = (chain.blockchain).toUpperCase();
-        final nickname = (chain.nickname ?? '').trim();
-        final balance = double.tryParse(chain.balance) ?? 0.0;
-        final usd = chain.value ?? 0.0;
-
-        final coinForIcon =
-            store.getById('$wantedSym-$chainCode') ?? store.getById(wantedSym);
-        final icon =
-            coinForIcon?.assetPath ?? 'assets/currencyicons/bitcoin.png';
-        final baseTitle =
-            coinForIcon?.name ?? '$wantedSym (${_chainUiName(chainCode)})';
-        final title =
-            nickname.isNotEmpty ? '$baseTitle ($nickname)' : baseTitle;
-        final networkSubtitle =
-            '${_networkShort(chainCode)} • ${_chainUiName(chainCode)} Network';
-
-        return _buildHoldingCard(
-          icon: icon,
-          title: title,
-          networkSubtitle: networkSubtitle,
-          balance: balance,
-          usd: usd,
-          symbol: wantedSym,
-          nickname: nickname,
-          chain: chainCode,
-        );
-      }).toList();
-    }
-
-    // ✅ Final fallback — default templates
-// ✅ Final fallback — default templates
-    if (holdings.isEmpty) {
-      debugPrint(
-          '⚠️ No holdings found for $wantedSym, showing default template.');
-      final defaultChains = switch (wantedSym) {
-        'BTC' => ['BTC', 'LN'],
-        'USDT' => ['ETH', 'TRX', 'GASFREE'],
-        _ => ['MAIN'],
-      };
-
-      holdings = defaultChains.map((chainCode) {
-        final icon = store.getById('$wantedSym-$chainCode')?.assetPath ??
-            store.getById(wantedSym)?.assetPath ??
-            'assets/currencyicons/bitcoin.png';
-
-        final title = wantedSym == 'USDT'
-            ? 'USDT (${_chainUiName(chainCode)})'
-            : '$wantedSym (${_chainUiName(chainCode)})';
-
-        final networkSubtitle = wantedSym == 'USDT'
-            ? '${_networkShort(chainCode)} • ${_chainUiName(chainCode)} Network'
-            : '${_chainUiName(chainCode)} Network';
-
-        // 👇  No address here, just use chainCode to make the key unique
-        return _buildHoldingCard(
-          icon: icon,
-          title: title,
-          networkSubtitle: networkSubtitle,
-          balance: 0.0,
-          usd: 0.0,
-          symbol: wantedSym,
-          nickname: null,
-          chain: chainCode,
-          address: chainCode, // <- safe unique id
-        );
-      }).toList();
-    }
-
-    return holdings;
+    return [
+      _buildHoldingCard(
+        icon: item["icon"] ?? 'assets/currencyicons/bitcoin.png',
+        title: item["name"] ?? symbol,
+        networkSubtitle: symbol, // simple network label
+        balance: balance,
+        usd: usdValueNum,
+        symbol: symbol,
+        chain: symbol, // safe fallback
+        address: symbol, // unique key
+      ),
+    ];
   }
 
   Widget _buildHoldingCard({
