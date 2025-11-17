@@ -32,6 +32,7 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? tokenData;
   final Set<String> _deletedKeys = {}; // track dismissed wallets
+  Future<List<Map<String, dynamic>>>? _walletsFuture;
 
   // ---- live price state (Binance) ----
   WebSocketChannel? _ws;
@@ -70,23 +71,27 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
 
     if (args != null && tokenData == null) {
       setState(() => tokenData = args);
+
+      // 👇 Initialize future ONLY ONCE here
+      _walletsFuture = _fetchAllWalletsForSymbol();
+
       _applyInitialTabFromArgs();
       _startLiveStream();
       _loadChartFor(selectedPeriod);
       _txFuture = AuthService.fetchTransactionHistoryByWallet(limit: 100);
 
-      // 👇 Add this block — refresh wallet and balance stores
+      // Refresh stores
       final bs = context.read<BalanceStore>();
       final walletStore = context.read<WalletStore>();
-
       Future.microtask(() async {
-        await walletStore.loadWalletsFromBackend(); // 🆕
-        await bs.refresh(); // 🆕 ensures holdings up to date
+        await walletStore.loadWalletsFromBackend();
+        await bs.refresh();
         if (mounted) setState(() {});
       });
     }
@@ -692,51 +697,259 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     );
   }
 
+// Replace the _buildHoldingsTab and _buildCoinHoldings methods in token_detail_screen.dart
+
+// ============================================================================
+// COMPLETE HOLDINGS TAB IMPLEMENTATION - Copy this entire section
+// ============================================================================
+
+// Replace _buildHoldingsTab, remove old _buildCoinHoldings, and add these methods:
+
 // ------------------ Holdings tab ------------------
   Widget _buildHoldingsTab(FxAdapter fx) {
-    final items = _buildCoinHoldings(fx);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _walletsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.only(top: 40),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF00D4AA),
+              ),
+            ),
+          );
+        }
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 3.w),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: 1.h),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16.0),
-                  child: Text(
-                    'Your Holdings',
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline,
+                      color: Colors.redAccent, size: 48),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Failed to load holdings',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${snapshot.error}',
+                    style:
+                        const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: () => setState(() {}),
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    label: const Text('Retry',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final wallets = snapshot.data ?? [];
+        final items = _buildWalletCards(wallets, fx);
+
+        return Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(horizontal: 3.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(height: 1.h),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 16.0),
+                      child: Text(
+                        'Your Holdings',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (items.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 56,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No ${sym.toUpperCase()} wallets yet',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Create your first wallet to get started',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...items,
+                    SizedBox(height: 12.h),
+                  ],
                 ),
-                ...items,
-                SizedBox(height: 12.h), // space above bottom button
-              ],
+              ),
             ),
-          ),
-        ),
-        // 👇 fixed bottom button
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-              vertical: 10, horizontal: 16), // 🔽 smaller
-          decoration: const BoxDecoration(
-            color: Color(0xFF0B0D1A),
-            border: Border(
-              top: BorderSide(color: Color(0xFF1E1E1E), width: 1),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0B0D1A),
+                border: Border(
+                  top: BorderSide(color: Color(0xFF1E1E1E), width: 1),
+                ),
+              ),
+              child: _buildCreateWalletButton(context),
             ),
-          ),
-          child: _buildCreateWalletButton(context),
-        ),
-      ],
+          ],
+        );
+      },
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllWalletsForSymbol() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final walletId = prefs.getString('wallet_id');
+
+      if (walletId == null || walletId.isEmpty) {
+        throw Exception('No wallet ID found');
+      }
+
+      final tokens = await AuthService.fetchTokensByWallet(walletId: walletId);
+
+      final String currentSym = sym.toUpperCase();
+
+      final List<Map<String, dynamic>> wallets = [];
+
+      for (final token in tokens) {
+        final tokenSymbol = (token.symbol ?? '').trim().toUpperCase();
+        final tokenChain = (token.chain ?? '').trim().toUpperCase();
+        final tokenName = (token.name ?? '').trim();
+        final tokenId = token.id?.toString() ?? '';
+
+        // ---------- MATCHING LOGIC ----------
+        bool matches = false;
+
+        // USDT → show only USDT variants
+        if (currentSym == 'USDT') {
+          matches = tokenSymbol.contains('USDT');
+        }
+        // BTC → show BTC + Lightning wallets
+        else if (currentSym == 'BTC') {
+          matches = tokenSymbol == 'BTC' || tokenChain == 'LN';
+        }
+        // Default tokens → match symbol only
+        else {
+          matches = tokenSymbol == currentSym;
+        }
+
+        if (!matches) continue;
+        // ------------------------------------
+
+        // Convert numbers safely
+        final balance = double.tryParse('${token.balance}') ?? 0.0;
+        final usdValue = (token.value as num?)?.toDouble() ?? 0.0;
+
+        // Network label for UI
+        final networkLabel = _networkShort(tokenChain);
+
+        // Extract nickname (from “Name - Nickname”)
+        String? nickname;
+        if (tokenName.contains(' - ')) {
+          nickname = tokenName.split(' - ')[1].trim();
+        }
+
+        // ---------- ADD WALLET ENTRY ----------
+        wallets.add({
+          'icon': iconPath, // asset icon
+          'name':
+              tokenName.isNotEmpty // "Ethereum" or "Ethereum - Trading Wallet"
+                  ? tokenName
+                  : currentSym,
+          'symbol': currentSym,
+          'chain': tokenChain,
+          'balance': balance,
+          'usdBalanceNum': usdValue,
+          'networkSubtitle': networkLabel,
+          'address': token.contractAddress ?? token.chain,
+          'walletId': tokenId,
+          'nickname': nickname,
+          '_id': tokenId,
+        });
+      }
+
+      return wallets;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+// 🔄 Build wallet cards from fetched data
+  List<Widget> _buildWalletCards(
+      List<Map<String, dynamic>> wallets, FxAdapter fx) {
+    if (wallets.isEmpty) return [];
+
+    return wallets.map((wallet) {
+      final nickname = wallet['nickname']?.toString();
+      final hasNickname = nickname != null && nickname.isNotEmpty;
+
+      // Show nickname in title if available, otherwise show token name
+      final displayTitle =
+          hasNickname ? nickname : (wallet['name'] ?? wallet['symbol'] ?? sym);
+
+      return _buildHoldingCard(
+        icon: wallet['icon'] ?? iconPath,
+        title: displayTitle,
+        networkSubtitle: wallet['networkSubtitle'] ?? wallet['chain'] ?? sym,
+        balance: (wallet['balance'] as num?)?.toDouble() ?? 0.0,
+        usd: (wallet['usdBalanceNum'] as num?)?.toDouble() ?? 0.0,
+        symbol: wallet['symbol'] ?? sym,
+        nickname: nickname,
+        chain: wallet['chain'],
+        address: wallet['address'],
+        walletId: wallet['walletId'],
+      );
+    }).toList();
+  }
+
+// 🆕 After creating a new wallet, refresh the holdings tab
+  void _refreshHoldingsAfterCreate() {
+    if (mounted) {
+      setState(() {
+        // This will trigger FutureBuilder to refetch
+      });
+    }
   }
 
   List<Widget> _buildCoinHoldings(FxAdapter fx) {
@@ -779,19 +992,18 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     String? address,
     String? walletId, // 👈 optional backend wallet ID
   }) {
-    // ✅ Always generate a unique fallback key
-    final safeUnique = address?.isNotEmpty == true
-        ? address!
-        : (walletId ?? Object.hash(symbol, chain, nickname).toString());
+    // ✅ 100% unique key logic
+    final uniqueKey = (walletId != null && walletId!.isNotEmpty)
+        ? walletId! // backend id → always unique
+        : 'LOCAL_${symbol}_${chain}_${nickname}_${DateTime.now().microsecondsSinceEpoch}';
 
-    final keyValue = '${symbol}_${chain ?? ''}_${nickname ?? ''}_$safeUnique'
-        .replaceAll(' ', '_')
-        .trim();
+    final keyValue = uniqueKey;
 
+    // Prevent showing deleted items
     if (_deletedKeys.contains(keyValue)) return const SizedBox.shrink();
 
     return Dismissible(
-      key: ValueKey(keyValue), // ✅ now guaranteed unique
+      key: ValueKey(keyValue),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -836,10 +1048,15 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
       },
       onDismissed: (_) async {
         _deletedKeys.add(keyValue);
-        setState(() {});
+
+        // Delete wallet from backend
         if (nickname != null && nickname.isNotEmpty) {
           await _deleteChainWallet(context, nickname);
         }
+
+        // 👇 REFRESH WALLET LIST AFTER DELETE
+        _walletsFuture = _fetchAllWalletsForSymbol();
+        setState(() {});
       },
       child: Container(
         margin: EdgeInsets.only(bottom: 2.h),
@@ -1717,14 +1934,15 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         backgroundColor: Colors.green,
       ));
 
-      // ✅ 1️⃣ Instantly add the new chain wallet to holdings
+      // 1️⃣ Update BalanceStore temporarily
       await bs.addTempChainFromResponse(result.data!);
 
-      // ✅ 2️⃣ Optional delayed refresh to sync USD balances from backend
+      // 2️⃣ Refresh backend balances after delay (optional)
       Future.delayed(const Duration(seconds: 3), () => bs.refresh());
 
-      // ✅ 3️⃣ Force UI rebuild of holdings tab
-      if (mounted) setState(() {});
+      // 3️⃣ 🔥 REFRESH HOLDINGS LIST IMMEDIATELY
+      _walletsFuture = _fetchAllWalletsForSymbol();
+      setState(() {}); // ⬅️ THIS makes the holdings rebuild instantly
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('❌ ${result.message ?? 'Failed to create wallet'}'),

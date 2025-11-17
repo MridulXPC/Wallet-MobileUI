@@ -163,7 +163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.contact_page_outlined,
                     title: 'Address Book',
                     onTap: () {
-                      // Navigator.pushNamed(context, AppRoutes.addressbook);
+                      Navigator.pushNamed(context, AppRoutes.addressbook);
                     },
                   ),
                 ),

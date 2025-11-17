@@ -60,6 +60,34 @@ class WalletStore extends ChangeNotifier {
     );
   }
 
+// Add this method to WalletStore class (lib/stores/wallet_store.dart)
+
+  /// 🆕 Get all chain balances for a specific chain
+  List<ChainBalance>? getChainWallets(String chain) {
+    final wallet = activeWallet;
+    if (wallet == null) return null;
+
+    final chainUpper = chain.toUpperCase();
+    return wallet.chains
+        .where((c) => (c.chain ?? '').toUpperCase() == chainUpper)
+        .toList();
+  }
+
+  /// 🆕 Get chain balance by address or symbol
+  ChainBalance? getChainByAddress(String chain, String address) {
+    final wallet = activeWallet;
+    if (wallet == null) return null;
+
+    final chainUpper = chain.toUpperCase();
+    try {
+      return wallet.chains.firstWhere(
+        (c) =>
+            (c.chain ?? '').toUpperCase() == chainUpper && c.address == address,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
   // ---------------- Hydration ----------------
 
   Future<void> hydrateFromBackend({required String walletId}) async {
