@@ -1011,11 +1011,8 @@ class AuthService {
     }
   }
 
-  /// DELETE /api/delete-single-chain
-  /// Deletes a specific single-chain wallet by walletId + nickname
   /// POST /api/delete-single-chain
   /// Deletes a specific single-chain wallet by walletId + nickname
-  /// DELETE /api/wallet/delete-single-chain
   static Future<AuthResponse> deleteSingleChainWallet({
     required String walletId,
     required String nickname,
@@ -1026,15 +1023,15 @@ class AuthService {
       throw const ApiException('No authentication token available');
     }
 
-    const endpoint = '/api/wallet/delete-single-chain';
+    const endpoint = '/api/delete-single-chain'; // ✅ CORRECTED
     final body = {"walletId": walletId, "nickname": nickname};
 
     try {
-      debugPrint('🌐 POST (delete) $endpoint');
+      debugPrint('🌐 POST $endpoint');
       debugPrint('📦 Body: ${jsonEncode(body)}');
 
       final res = await _makeRequest(
-        method: 'POST', // ✅ switch from DELETE to POST
+        method: 'POST',
         endpoint: endpoint,
         token: token,
         body: body,
@@ -1045,7 +1042,6 @@ class AuthService {
       debugPrint('✅ Deleted wallet nickname="$nickname" for ID=$walletId');
       return AuthResponse.success(data: data);
     } catch (e, st) {
-      debugPrint('🚨 deleteSingleChainWallet error: $e\n$st');
       return AuthResponse.failure('Failed to delete wallet: $e');
     }
   }

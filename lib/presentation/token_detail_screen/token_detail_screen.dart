@@ -846,71 +846,89 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
         throw Exception('No wallet ID found');
       }
 
-      final tokens = await AuthService.fetchTokensByWallet(walletId: walletId);
+      // 🔥 FETCH FROM BACKEND API DIRECTLY
+      final dynamic response = await AuthService.fetchWallets();
+
+      // Handle different response structures
+      List<dynamic> walletsList = [];
+
+      if (response is Map<String, dynamic>) {
+        // Structure: { wallets: { wallets: [...] } }
+        final walletsData = response['wallets'];
+        if (walletsData is Map<String, dynamic>) {
+          walletsList = (walletsData['wallets'] as List<dynamic>?) ?? [];
+        } else if (walletsData is List) {
+          walletsList = walletsData;
+        }
+      } else if (response is List) {
+        walletsList = response;
+      }
+
+      if (walletsList.isEmpty) return [];
+
+      final wallet =
+          walletsList[0] as Map<String, dynamic>; // Main wallet object
+      final List<dynamic> chains = wallet['chains'] ?? [];
 
       final String currentSym = sym.toUpperCase();
-
       final List<Map<String, dynamic>> wallets = [];
 
-      for (final token in tokens) {
-        final tokenSymbol = (token.symbol ?? '').trim().toUpperCase();
-        final tokenChain = (token.chain ?? '').trim().toUpperCase();
-        final tokenName = (token.name ?? '').trim();
-        final tokenId = token.id?.toString() ?? '';
+      for (final chain in chains) {
+        final chainCode =
+            (chain['chain'] ?? '').toString().trim().toUpperCase();
+        final nickname = chain['nickname']?.toString().trim();
+        final address = chain['address']?.toString() ?? '';
+        final balance = double.tryParse('${chain['balance']}') ?? 0.0;
 
         // ---------- MATCHING LOGIC ----------
         bool matches = false;
 
-        // USDT → show only USDT variants
+        // USDT → show only USDT variants (not applicable here, but keeping logic)
         if (currentSym == 'USDT') {
-          matches = tokenSymbol.contains('USDT');
+          matches = chainCode.contains('USDT');
         }
         // BTC → show BTC + Lightning wallets
         else if (currentSym == 'BTC') {
-          matches = tokenSymbol == 'BTC' || tokenChain == 'LN';
+          matches = chainCode == 'BTC' || chainCode == 'BTC-LN';
         }
         // Default tokens → match symbol only
         else {
-          matches = tokenSymbol == currentSym;
+          matches = chainCode == currentSym;
         }
 
         if (!matches) continue;
         // ------------------------------------
 
-        // Convert numbers safely
-        final balance = double.tryParse('${token.balance}') ?? 0.0;
-        final usdValue = (token.value as num?)?.toDouble() ?? 0.0;
-
         // Network label for UI
-        final networkLabel = _networkShort(tokenChain);
+        final networkLabel = _networkShort(chainCode);
 
-        // Extract nickname (from “Name - Nickname”)
-        String? nickname;
-        if (tokenName.contains(' - ')) {
-          nickname = tokenName.split(' - ')[1].trim();
+        // Create display name
+        String displayName;
+        if (nickname != null && nickname.isNotEmpty) {
+          displayName = nickname; // Show only nickname
+        } else {
+          displayName = currentSym; // Default to symbol for main wallet
         }
 
         // ---------- ADD WALLET ENTRY ----------
         wallets.add({
-          'icon': iconPath, // asset icon
-          'name':
-              tokenName.isNotEmpty // "Ethereum" or "Ethereum - Trading Wallet"
-                  ? tokenName
-                  : currentSym,
+          'icon': iconPath,
+          'name': displayName,
           'symbol': currentSym,
-          'chain': tokenChain,
+          'chain': chainCode,
           'balance': balance,
-          'usdBalanceNum': usdValue,
+          'usdBalanceNum': 0.0, // Will be calculated by BalanceStore
           'networkSubtitle': networkLabel,
-          'address': token.contractAddress ?? token.chain,
-          'walletId': tokenId,
+          'address': address,
+          'walletId': address, // Use address as unique ID
           'nickname': nickname,
-          '_id': tokenId,
+          '_id': address,
         });
       }
 
       return wallets;
     } catch (e) {
+      debugPrint('❌ Error fetching wallets: $e');
       rethrow;
     }
   }
@@ -944,41 +962,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
   }
 
 // 🆕 After creating a new wallet, refresh the holdings tab
-  void _refreshHoldingsAfterCreate() {
-    if (mounted) {
-      setState(() {
-        // This will trigger FutureBuilder to refetch
-      });
-    }
-  }
-
-  List<Widget> _buildCoinHoldings(FxAdapter fx) {
-    // Get the portfolio row passed from CryptoPortfolioWidget
-    final Map<String, dynamic> item =
-        ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-
-    final String symbol = (item["symbol"] ?? "").toString().toUpperCase();
-
-    final double balance =
-        double.tryParse(item["balance"]?.toString() ?? "0") ?? 0.0;
-
-    final double usdValueNum = (item["usdBalanceNum"] is num)
-        ? (item["usdBalanceNum"] as num).toDouble()
-        : 0.0;
-
-    return [
-      _buildHoldingCard(
-        icon: item["icon"] ?? 'assets/currencyicons/bitcoin.png',
-        title: item["name"] ?? symbol,
-        networkSubtitle: symbol, // simple network label
-        balance: balance,
-        usd: usdValueNum,
-        symbol: symbol,
-        chain: symbol, // safe fallback
-        address: symbol, // unique key
-      ),
-    ];
-  }
 
   Widget _buildHoldingCard({
     required String icon,
@@ -1192,25 +1175,6 @@ class _TokenDetailScreenState extends State<TokenDetailScreen>
     s = s.replaceAll(RegExp(r'0+$'), '');
     if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     return s.isEmpty ? '0' : s;
-  }
-
-  String _chainUiName(String code) {
-    switch (code.toUpperCase()) {
-      case 'ETH':
-        return 'Ethereum';
-      case 'BNB':
-        return 'BNB Chain';
-      case 'SOL':
-        return 'Solana';
-      case 'TRX':
-        return 'Tron';
-      case 'BTC':
-        return 'Bitcoin';
-      case 'LN':
-        return 'Lightning';
-      default:
-        return code.toUpperCase();
-    }
   }
 
   String _networkShort(String code) {
