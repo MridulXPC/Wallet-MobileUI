@@ -54,10 +54,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
   double get _amountCrypto =>
       double.tryParse(widget.flowData.amount.trim()) ?? 0.0;
 
-  double get _willReceive {
-    final v = _amountCrypto - _activationFee;
-    return v < 0 ? 0.0 : v; // preview only
-  }
+  double get _willReceive => _amountCrypto;
 
   String get _timeText => _dateFmt.format(DateTime.now());
 
@@ -70,41 +67,13 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
   }
 
   void _recalcFees() {
-    final base = _baseFeeForSymbol(_assetSymbol);
-    final computedNetwork = _priority == "Fast" ? base * 1.5 : base;
-    final computedActivation = computedNetwork;
-
-    if (computedNetwork != _networkFee ||
-        computedActivation != _activationFee) {
-      setState(() {
-        _networkFee = computedNetwork;
-        _activationFee = computedActivation;
-      });
-    }
+    setState(() {
+      _networkFee = 0.0;
+      _activationFee = 0.0;
+    });
   }
 
-  double _baseFeeForSymbol(String sym) {
-    switch (sym.toUpperCase()) {
-      case 'BTC':
-      case 'BTC-LN':
-        return 0.00015;
-      case 'ETH':
-      case 'USDT-ETH':
-        return 0.0012;
-      case 'SOL':
-      case 'SOL-SOL':
-        return 0.00005;
-      case 'BNB':
-      case 'BNB-BNB':
-        return 0.0003;
-      case 'TRX':
-      case 'USDT-TRX':
-      case 'TRX-TRX':
-        return 1.1; // demo for TRX units
-      default:
-        return 0.0001;
-    }
-  }
+  String get _amountRaw => widget.flowData.amount.trim();
 
   String get _apiChain {
     final c = widget.flowData.chain.trim().toUpperCase();
@@ -332,7 +301,7 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _willReceive.toStringAsFixed(5),
+                      _amountRaw,
                       style: const TextStyle(
                         color: textPrimary,
                         fontSize: 30,
@@ -379,18 +348,15 @@ class _SendConfirmationViewState extends State<SendConfirmationView> {
                     _kvRow('From', fromAccountLabel),
                     _kvRow('To', toAddress),
                     _kvRow('Time', _timeText),
+
                     _kvRow(
                       'Amount',
-                      '${_amountCrypto.toStringAsFixed(5)} $_assetSymbol  •  ≈ $amountFiatStr',
+                      '$_amountRaw $_assetSymbol  •  ≈ $amountFiatStr',
                     ),
+
                     _kvRow(
-                      'Activation Fee',
-                      '(-) ${_activationFee.toStringAsFixed(_activationFee >= 1 ? 1 : 6)} $_assetSymbol  •  ≈ $activationFeeFiatStr',
-                    ),
-                    _kvRow(
-                      'Will Receive',
-                      '${_willReceive.toStringAsFixed(5)} $_assetSymbol  •  ≈ $willReceiveFiatStr',
-                      strong: true,
+                      'Estimated Network Fee',
+                      '0 $_assetSymbol  •  ≈ ${fx.formatFromUsd(0)}',
                     ),
 
                     const SizedBox(height: 10),
